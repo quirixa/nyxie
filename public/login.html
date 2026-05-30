@@ -8,265 +8,40 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *{
-      margin:0;
-      padding:0;
-      box-sizing:border-box;
-    }
-    body{
-      font-family:'Inter', sans-serif;
-      background:#0f0f10;
-      color:#f5f5f5;
-      min-height:100vh;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:24px;
-    }
-    .wrapper{
-      width:100%;
-      max-width:960px;
-      background:#151515;
-      border:1px solid #262626;
-      border-radius:18px;
-      overflow:hidden;
-      display:grid;
-      grid-template-columns:1fr 460px;
-    }
-    .info{
-      padding:70px;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      border-right:1px solid #262626;
-    }
-    .logo{
-      margin-bottom: 32px;
-      font-size: 0;
-      line-height: 1;
-    }
-    .logo pre{
-      font-family: 'Monaco', 'Courier New', 'Lucida Sans Typewriter', monospace;
-      font-size: 0.62rem;
-      font-weight: 400;
-      line-height: 1.25;
-      letter-spacing: normal;
-      background: linear-gradient(135deg, #8bbaff 0%, #c084fc 70%);
-      background-clip: text;
-      -webkit-background-clip: text;
-      color: transparent;
-      text-shadow: 0 0 6px rgba(139, 186, 255, 0.3);
-      margin: 0;
-      padding: 0;
-      white-space: pre;
-      overflow-x: auto;
-      overflow-y: visible;
-    }
-    .logo pre::-webkit-scrollbar {
-      height: 4px;
-      background: #2a2a2a;
-      border-radius: 10px;
-    }
-    .logo pre::-webkit-scrollbar-thumb {
-      background: #555;
-      border-radius: 10px;
-    }
-    .info h1{
-      font-size:3.2rem;
-      line-height:1.1;
-      font-weight:700;
-      margin-bottom:18px;
-      max-width:420px;
-    }
-    .info p{
-      color:#8b8b8b;
-      font-size:1rem;
-      line-height:1.7;
-      max-width:420px;
-    }
-    .login{
-      padding:50px 40px;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-    }
-    .login h2{
-      font-size:1.8rem;
-      margin-bottom:10px;
-    }
-    .login p{
-      color:#8b8b8b;
-      font-size:.95rem;
-      margin-bottom:32px;
-    }
-    form{
-      display:flex;
-      flex-direction:column;
-      gap:20px;
-    }
-    .input-group{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    label{
-      font-size:.9rem;
-      color:#cfcfcf;
-    }
-    input{
-      width:100%;
-      padding:14px;
-      border:1px solid #2c2c2c;
-      border-radius:10px;
-      background:#101010;
-      color:#f5f5f5;
-      font-size:.95rem;
-      outline:none;
-      transition:.2s ease;
-    }
-    input::placeholder{
-      color:#555;
-    }
-    input:focus{
-      border-color:#4a4a4a;
-      background:#141414;
-    }
-    .seed-input{
-      resize: vertical;
-      min-height: 100px;
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 0.85rem;
-      line-height: 1.5;
-      padding: 12px;
-    }
-    .login-btn{
-      margin-top:8px;
-      padding:14px;
-      border:none;
-      border-radius:10px;
-      background:#f5f5f5;
-      color:#111;
-      font-size:.95rem;
-      font-weight:600;
-      cursor:pointer;
-      transition:.2s ease;
-    }
-    .login-btn:hover{
-      opacity:.9;
-      background:#ffffff;
-    }
-    .bottom-text{
-      margin-top:24px;
-      text-align:center;
-      font-size:.9rem;
-      color:#777;
-    }
-    .bottom-text a{
-      color:#f5f5f5;
-      text-decoration:none;
-      font-weight:600;
-      transition: opacity 0.2s;
-    }
-    .bottom-text a:hover{
-      opacity:0.8;
-      text-decoration:underline;
-    }
-    .hint-text{
-      font-size:0.75rem;
-      color:#6a6a6a;
-      margin-top:2px;
-    }
-    .input-error{
-      border-color:#aa4a4a !important;
-    }
-    .error-message{
-      font-size:0.75rem;
-      color:#e68a8a;
-      margin-top:4px;
-    }
-    .toast-msg{
-      position:fixed;
-      bottom:30px;
-      left:50%;
-      transform:translateX(-50%);
-      background:#2a2a2a;
-      backdrop-filter:blur(8px);
-      border:1px solid #3a3a3a;
-      border-radius:40px;
-      padding:10px 24px;
-      font-size:0.85rem;
-      font-weight:500;
-      color:#e0e0e0;
-      pointer-events:none;
-      opacity:0;
-      transition: opacity 0.2s ease;
-      z-index:999;
-      white-space:nowrap;
-      font-family:'Inter', monospace;
-    }
-    @media(max-width:500px){
-      .toast-msg{
-        white-space:normal;
-        text-align:center;
-        width:90%;
-        border-radius:20px;
-      }
-    }
-    .demo-note{
-      font-size:0.7rem;
-      color:#555;
-      text-align:center;
-      margin-top:12px;
-      border-top:1px solid #222;
-      padding-top:12px;
-    }
-    @media(max-width:850px){
-      .wrapper{
-        grid-template-columns:1fr;
-      }
-      .info{
-        border-right:none;
-        border-bottom:1px solid #262626;
-        padding:50px 36px;
-      }
-      .info h1{
-        font-size:2.4rem;
-      }
-      .logo pre{
-        font-size: 0.55rem;
-      }
-    }
-    @media(max-width:500px){
-      body{
-        padding:12px;
-      }
-      .info, .login{
-        padding:32px 22px;
-      }
-      .info h1{
-        font-size:2rem;
-      }
-      .login h2{
-        font-size:1.5rem;
-      }
-      .logo pre{
-        font-size: 0.48rem;
-        line-height: 1.2;
-      }
-    }
-    @media (min-width: 1400px){
-      .logo pre{
-        font-size: 0.7rem;
-      }
-    }
+    *{ margin:0; padding:0; box-sizing:border-box; }
+    body{ font-family:'Inter', sans-serif; background:#0f0f10; color:#f5f5f5; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .wrapper{ width:100%; max-width:960px; background:#151515; border:1px solid #262626; border-radius:18px; overflow:hidden; display:grid; grid-template-columns:1fr 460px; }
+    .info{ padding:70px; display:flex; flex-direction:column; justify-content:center; border-right:1px solid #262626; }
+    .logo{ margin-bottom:32px; font-size:0; line-height:1; }
+    .logo pre{ font-family:'Monaco','Courier New','Lucida Sans Typewriter',monospace; font-size:0.62rem; font-weight:400; line-height:1.25; letter-spacing:normal; background:linear-gradient(135deg,#8bbaff 0%,#c084fc 70%); background-clip:text; -webkit-background-clip:text; color:transparent; text-shadow:0 0 6px rgba(139,186,255,0.3); margin:0; padding:0; white-space:pre; overflow-x:auto; }
+    .info h1{ font-size:3.2rem; line-height:1.1; font-weight:700; margin-bottom:18px; max-width:420px; }
+    .info p{ color:#8b8b8b; font-size:1rem; line-height:1.7; max-width:420px; }
+    .login{ padding:50px 40px; display:flex; flex-direction:column; justify-content:center; }
+    .login h2{ font-size:1.8rem; margin-bottom:10px; }
+    .login p{ color:#8b8b8b; font-size:.95rem; margin-bottom:32px; }
+    form{ display:flex; flex-direction:column; gap:20px; }
+    .input-group{ display:flex; flex-direction:column; gap:8px; }
+    label{ font-size:.9rem; color:#cfcfcf; }
+    input, textarea{ width:100%; padding:14px; border:1px solid #2c2c2c; border-radius:10px; background:#101010; color:#f5f5f5; font-size:.95rem; outline:none; transition:.2s ease; font-family:inherit; }
+    textarea{ resize:vertical; min-height:100px; font-family:'Monaco','Courier New',monospace; font-size:0.85rem; }
+    input:focus, textarea:focus{ border-color:#4a4a4a; background:#141414; }
+    .login-btn{ margin-top:8px; padding:14px; border:none; border-radius:10px; background:#f5f5f5; color:#111; font-size:.95rem; font-weight:600; cursor:pointer; transition:.2s; }
+    .login-btn:hover{ opacity:.9; background:#ffffff; }
+    .bottom-text{ margin-top:24px; text-align:center; font-size:.9rem; color:#777; }
+    .bottom-text a{ color:#f5f5f5; text-decoration:none; font-weight:600; }
+    .bottom-text a:hover{ opacity:0.8; text-decoration:underline; }
+    .hint-text{ font-size:0.75rem; color:#6a6a6a; margin-top:2px; }
+    .input-error{ border-color:#aa4a4a !important; }
+    .error-message{ font-size:0.75rem; color:#e68a8a; margin-top:4px; }
+    .toast-msg{ position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#2a2a2a; backdrop-filter:blur(8px); border:1px solid #3a3a3a; border-radius:40px; padding:10px 24px; font-size:0.85rem; font-weight:500; color:#e0e0e0; pointer-events:none; opacity:0; transition:opacity 0.2s; z-index:999; white-space:nowrap; }
+    @media(max-width:850px){ .wrapper{ grid-template-columns:1fr; } .info{ border-right:none; border-bottom:1px solid #262626; padding:50px 36px; } .info h1{ font-size:2.4rem; } }
+    @media(max-width:500px){ body{ padding:12px; } .info, .login{ padding:32px 22px; } .info h1{ font-size:2rem; } .login h2{ font-size:1.5rem; } .logo pre{ font-size:0.48rem; } }
   </style>
 </head>
 <body>
-
 <div class="wrapper">
   <section class="info">
-    <div class="logo">
-      <pre>__    __  __      __  __    __  ______  ________ 
+    <div class="logo"><pre>__    __  __      __  __    __  ______  ________ 
 |  \  |  \|  \    /  \|  \  |  \|      \|        \
 | ##\ | ## \##\  /  ##| ##  | ## \######| ########
 | ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__    
@@ -274,242 +49,165 @@
 | ##\## ##    \####    /  ####\   | ##  | #####   
 | ## \####    | ##    |  ## \##\ _| ##_ | ##_____ 
 | ##  \###    | ##    | ##  | ##|   ## \| ##     \
- \##   \##     \##     \##   \## \###### \########</pre>
-    </div>
+ \##   \##     \##     \##   \## \###### \########</pre></div>
     <h1>Join the private network.</h1>
     <p>Create an account and start communicating securely.</p>
   </section>
-
   <section class="login">
     <h2>Sign in</h2>
     <p>Enter your seed phrase to access your account.</p>
-
     <form id="loginForm">
       <div class="input-group" id="usernameGroup">
         <label>Username (optional)</label>
         <input type="text" id="username" placeholder="Your username (helps identify your account)" autocomplete="username">
         <div class="hint-text">You can skip this — we'll find your account by seed phrase.</div>
       </div>
-
       <div class="input-group" id="seedGroup">
         <label>Seed phrase <span style="color:#a5a5a5;">*</span></label>
         <textarea id="seedPhrase" class="seed-input" placeholder="Enter your 12, 15, 18, 21, or 24 word recovery phrase" rows="4"></textarea>
-        <div class="hint-text">Paste your BIP-39 seed phrase. Words should be separated by spaces.</div>
+        <div class="hint-text">BIP-39 seed phrase — words separated by spaces.</div>
       </div>
-
-      <button type="submit" class="login-btn">Sign in with seed</button>
+      <button type="submit" class="login-btn" id="loginBtn">Sign in with seed</button>
     </form>
-
-    <div class="bottom-text">
-      No account?
-      <a href="register.html" id="registerLink">Create one</a>
-    </div>
-    <div class="demo-note">
-      Demo mode: seed phrases are validated locally — never transmitted.
-    </div>
+    <div class="bottom-text">No account? <a href="register.html">Create one</a></div>
   </section>
 </div>
-
 <div id="toastMsg" class="toast-msg"></div>
-
 <script>
-    // BIP-39 English wordlist for validation
-    const WORDLIST = "abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual adapt add addict address adjust admit adult advance advice aerobic afford afraid again age agent agree ahead aim air airport aisle alarm album alcohol alert alien all alley allow almost alone alpha already also alter always amateur amazing among amount amused analyst anchor ancient anger angle angry animal ankle announce annual another answer antenna antique anxiety any apart apology appear apple approve april arch arctic area arena argue arm armed armor army around arrange arrest arrive arrow art artefact artist artwork ask aspect assault asset assist assume asthma athlete atom attack attend attitude attract auction audit august aunt author auto autumn average avocado avoid awake aware away awesome awful awkward axis baby balance bamboo banana banner bar barely bargain barrel base basic basket battle beach bean beauty because become beef before begin behave behind believe below belt bench benefit best betray better between beyond bicycle bid bike bind biology bird birth bitter black blade blame blanket blast bleak bless blind blood blossom blouse blue blur blush board boat body boil bomb bone book boost border boring borrow boss bottom bounce box boy bracket brain brand brave breeze brick bridge brief bright bring brisk broccoli broken bronze broom brother brown brush bubble buddy budget buffalo build bulb bulk bullet bundle bunker burden burger burst bus business busy butter buyer buzz cabbage cabin cable cactus cage cake call calm camera camp can canal cancel candy cannon canvas canyon capable capital captain car carbon card cargo carpet carry cart case cash casino castle casual cat catalog catch category cattle cause caution cave cereal chair chaos chapter charge chase chat cheap check cheese chef cherry chest chicken chief child chimney choice choose chronic circle citizen city civil claim clap clarify claw clay clean clerk clever click client cliff climb clinic clip clock clog close cloth cloud clown club clump cluster cobalt code coil coin collect color column combine come comfort comic common company concert conduct confirm congress connect consider control convince cook cool copper coral core corn correct cost cotton couch country couple course cousin cover coyote crack cradle craft cram crane crash crater crawl crazy cream credit creek crew cricket crime crisp critic crop cross crouch crowd crucial cruel cruise crumble crunch crush cry crystal cube culture cup cupboard curious current curtain curve cushion custom cute cycle dad damage damp dance danger daring dash daughter dawn day deal debate debris decade december decide decline decorate decrease deer defense define defy degree delay deliver demand demise denial dentist deny depart depend deposit depth deputy derive describe desert design desk despair destroy detail detect develop device devote diagram dial diamond diary dice diesel diet differ digital dignity dilemma dinner dinosaur direct dirt disagree discover disease dish dismiss disorder display distance divert divide divorce dizzy doctor document dog doll dolphin domain donate donkey donor door dose double dove draft dragon drama drastic draw dream dress drift drill drink drip drive drop drum dry duck dumb dune during dust dutch duty dwarf dynamic eager eagle early earn earth easily east easy echo ecology edge edit educate effort egg eight either elbow elder electric elegant element elephant elevator elite else embark embody embrace emerge emotion employ empower empty enable enact endless endorse enemy engage engine enhance enjoy enlist enough enrich enroll ensure enter entire entry envelope episode equal equip erase erode erosion error erupt escape essay essence estate eternal ethics evidence evil evoke evolve exact example excess exchange excite exclude exercise exhaust exhibit exile exist exit exotic expand expire explain expose express extend extra eye fable face faculty faint faith fall false fame family famous fancy fantasy far fashion fat fatal father fatigue fault favorite feature february federal fee feed feel feet fellow felt fence festival fetch fever few fiber fiction field figure file film filter final find fine finger finish fire firm first fiscal fish fit fitness fix flag flame flash flat flavor flee flight flip float flock floor flower fluid flush fly foam focus fog foil follow food force forest forget fork fortune forum forward fossil foster found fox fragile frame frequent fresh friend fringe frog front frost frown frozen fruit fuel fun funny furnace fury future gadget gain galaxy gallery game gap garbage garden garlic garment gasp gate gather gauge gaze general genius genre gentle genuine gesture ghost ginger giraffe girl give glad glance glare glass glide glimpse globe gloom glory glove glow glue goat goddess gold good goose gorilla gospel gossip govern gown grab grace grain grant grape grasp grass gravity great green grid grief grit grocery group grow grunt guard guide guilt guitar gun guy habit hair half hammer hamster hand happy harbor hard harsh harvest hat have hawk hazard head health heart heavy hedgehog height hello helmet help hen hero hidden high hill hint hip hire history hobby hockey hold hole holiday hollow home honey hood hope horn hospital host hour hover hub huge human humble humor hundred hungry hunt hurdle hurry hurt husband hybrid ice icon ignore ill illegal image imitate immense immune impact impose improve impulse inbox income increase index indicate indoor industry infant inflict inform inhale inherit initial inject injury inmate inner innocent input inquiry insane insect inside inspire install intact interest into invest invite involve iron island isolate issue item ivory jacket jaguar jar jazz jealous jeans jelly jewel job join joke journey joy judge juice jump jungle junior junk just kangaroo keen keep ketchup key kick kingdom kiss kit kitchen kite kitten kiwi knee knife knock know lab ladder lamp language laptop large later laugh laundry lava law lawn lawsuit layer lazy leader learn leave lecture left leg legal legend leisure lemon lend length lens leopard lesson letter level liar liberty library license life lift light like limb lion liquid list little live lizard load loan lobster local lock logic lonely long loop lottery loud lounge love loyal lucky luggage lumber lunar lunch luxury lyrics machine mad magic magnet maid main mammal man manage mandate mango mansion manual maple marble march margin marine market marriage mask master match material math matrix matter maximum maze meadow mean medal media melody melt member memory mention menu mercy mesh message metal method middle midnight milk million mimic mind minimum minor minute miracle miss mixed mixture mobile model modify mom monitor monkey monster month moon moral more morning mosquito mother motion mound mouse move movie much muffin mule multiply muscle museum mushroom music must mutual myself mystery naive name napkin narrow nasty natural nature near neck need negative neglect neither nephew nerve network news next nice night noble noise nominee noodle normal north notable note nothing notice novel now nuclear nurse nut oak obey object oblige obscure obtain ocean october odor off offer office often oil old olive olympic omit once onion open opinion oppose option orange orbit orchard order ordinary organ orient original orphan ostrich other outdoor outside oval over own oyster ozone pact paddle page pair palace palm panda panel panic panther paper parade parent park parrot party pass patch path patrol pause pave payment peace peanut peasant pelican pen penalty pencil people pepper perfect permit person pet phone photo phrase physical piano picnic picture piece pig pigeon pill pilot pink pioneer pipe pistol pitch pizza place planet plastic plate play please pledge pluck plug plunge poem poet point polar pole police pond pony popular portion position possible post potato pottery poverty powder power practice praise predict prefer prepare present pretty prevent price pride primary print priority prison private prize problem process produce profit program project promote proof property prosper protect proud provide public pudding pull pulp pulse pumpkin punch pupil puppy purchase purity purpose push put puzzle pyramid quality quantum quarter question quick quit quiz quote rabbit raccoon race rack radar radio rage rail rain raise rally ramp ranch random range rapid rare rate rather raven reach ready real reason rebel rebuild recall receive recipe record recycle reduce reflect reform refuse region regret regular reject relax release relief rely remain remember remind remove render renew rent reopen repair repeat replace report require rescue resemble resist resource response result retire retreat return reunion reveal review reward rhythm ribbon rice rich ride rifle right rigid ring riot ripple risk ritual rival river road roast robot robust rocket romance roof rookie rotate rough round route royal rubber rude rug rule run runway rural sad saddle sadness safe sail salad salmon salon salt salute same sample sand satisfy satoshi sauce sausage save say scale scan scare scatter scene scheme school science scissors scorpion scout scrap screen script scrub sea search season seat second secret section security seek segment select sell seminar senior sense sentence series service session settle setup seven shadow shaft shallow share shed shell sheriff shield shift shine ship shiver shock shoe shoot shop short shoulder shove shrimp shrug shuffle shy sibling siege sight sign silent silk silly silver similar simple since sing siren sister situate six size sketch ski skill skin skirt skull slab slam sleep slender slice slide slight slim slogan slot slow slush small smart smile smoke smooth snack snake snap sniff snow soap soccer social sock solar soldier solid solution solve someone song soon sorry soul sound soup source south space spare spatial spawn speak special speed sphere spice spider spike spin spirit split spoil sponsor spoon spray spread spring spy square squeeze squirrel stable stadium staff stage stairs stamp stand start state stay steak steel stem step stereo stick still sting stock stomach stone stop store story stove strategy street strike strong struggle student stuff stumble style subject submit subway success such sudden suffer sugar suggest suit summer sun sunny sunset super supply supreme sure surface surge surprise sustain swallow swamp swap swear sweet swift swim swing switch sword symbol symptom syrup table tackle tag tail talent tamper tank tape target task tattoo taxi teach team tell ten tenant tennis tent term test text thank that theme then theory there they thing this thought three throw thumb thunder ticket tilt timber time tiny tip tired title toast tobacco today together toilet token tomato tomorrow tone tongue tonight tool tooth top topic topple torch tornado tortoise toss total tourist toward tower town toy track trade traffic tragic train transfer trap trash travel tray treat tree trend trial tribe trick trigger trim trip trophy trouble truck truly trumpet trust truth tube tuition tumble tuna tunnel turkey turn turtle twelve twenty twice twin twist two type typical ugly umbrella unable unaware uncle uncover under undo unfair unfold unhappy uniform unique universe unknown unlock until unusual unveil update upgrade uphold upon upper upset urban usage use used useful useless usual utility vacant vacuum vague valid valley valve van vanish vapor various vast vault vehicle velvet vendor venture venue verb verify version very veteran viable vibrant vicious victory video view village vintage violin virtual virus visa visit visual vital vivid vocal voice void volcano volume vote voyage wage wagon wait walk wall walnut want warfare warm warrior wash wasp waste water wave way wealth weapon wear weasel web wedding weekend weird welcome well west wet whale wheat wheel where whip whisper wide width wife wild will win window wine wing wink winner winter wire wisdom wise wish witness wolf woman wonder wood wool word world worry worth wrap wreck wrestle wrist write wrong yard year yellow you young youth zebra zero zone zoo".split(" ");
-    const WORDLIST_SET = new Set(WORDLIST);
+  // BIP-39 wordlist (same as before, truncated for brevity – but full list is required)
+  const WORDLIST = "abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual adapt add addict address adjust admit adult advance advice aerobic afford afraid again age agent agree ahead aim air airport aisle alarm album alcohol alert alien all alley allow almost alone alpha already also alter always amateur amazing among amount amused analyst anchor ancient anger angle angry animal ankle announce annual another answer antenna antique anxiety any apart apology appear apple approve april arch arctic area arena argue arm armed armor army around arrange arrest arrive arrow art artefact artist artwork ask aspect assault asset assist assume asthma athlete atom attack attend attitude attract auction audit august aunt author auto autumn average avocado avoid awake aware away awesome awful awkward axis baby balance bamboo banana banner bar barely bargain barrel base basic basket battle beach bean beauty because become beef before begin behave behind believe below belt bench benefit best betray better between beyond bicycle bid bike bind biology bird birth bitter black blade blame blanket blast bleak bless blind blood blossom blouse blue blur blush board boat body boil bomb bone book boost border boring borrow boss bottom bounce box boy bracket brain brand brave breeze brick bridge brief bright bring brisk broccoli broken bronze broom brother brown brush bubble buddy budget buffalo build bulb bulk bullet bundle bunker burden burger burst bus business busy butter buyer buzz cabbage cabin cable cactus cage cake call calm camera camp can canal cancel candy cannon canvas canyon capable capital captain car carbon card cargo carpet carry cart case cash casino castle casual cat catalog catch category cattle cause caution cave cereal chair chaos chapter charge chase chat cheap check cheese chef cherry chest chicken chief child chimney choice choose chronic circle citizen city civil claim clap clarify claw clay clean clerk clever click client cliff climb clinic clip clock clog close cloth cloud clown club clump cluster cobalt code coil coin collect color column combine come comfort comic common company concert conduct confirm congress connect consider control convince cook cool copper coral core corn correct cost cotton couch country couple course cousin cover coyote crack cradle craft cram crane crash crater crawl crazy cream credit creek crew cricket crime crisp critic crop cross crouch crowd crucial cruel cruise crumble crunch crush cry crystal cube culture cup cupboard curious current curtain curve cushion custom cute cycle dad damage damp dance danger daring dash daughter dawn day deal debate debris decade december decide decline decorate decrease deer defense define defy degree delay deliver demand demise denial dentist deny depart depend deposit depth deputy derive describe desert design desk despair destroy detail detect develop device devote diagram dial diamond diary dice diesel diet differ digital dignity dilemma dinner dinosaur direct dirt disagree discover disease dish dismiss disorder display distance divert divide divorce dizzy doctor document dog doll dolphin domain donate donkey donor door dose double dove draft dragon drama drastic draw dream dress drift drill drink drip drive drop drum dry duck dumb dune during dust dutch duty dwarf dynamic eager eagle early earn earth easily east easy echo ecology edge edit educate effort egg eight either elbow elder electric elegant element elephant elevator elite else embark embody embrace emerge emotion employ empower empty enable enact endless endorse enemy engage engine enhance enjoy enlist enough enrich enroll ensure enter entire entry envelope episode equal equip erase erode erosion error erupt escape essay essence estate eternal ethics evidence evil evoke evolve exact example excess exchange excite exclude exercise exhaust exhibit exile exist exit exotic expand expire explain expose express extend extra eye fable face faculty faint faith fall false fame family famous fancy fantasy far fashion fat fatal father fatigue fault favorite feature february federal fee feed feel feet fellow felt fence festival fetch fever few fiber fiction field figure file film filter final find fine finger finish fire firm first fiscal fish fit fitness fix flag flame flash flat flavor flee flight flip float flock floor flower fluid flush fly foam focus fog foil follow food force forest forget fork fortune forum forward fossil foster found fox fragile frame frequent fresh friend fringe frog front frost frown frozen fruit fuel fun funny furnace fury future gadget gain galaxy gallery game gap garbage garden garlic garment gasp gate gather gauge gaze general genius genre gentle genuine gesture ghost ginger giraffe girl give glad glance glare glass glide glimpse globe gloom glory glove glow glue goat goddess gold good goose gorilla gospel gossip govern gown grab grace grain grant grape grasp grass gravity great green grid grief grit grocery group grow grunt guard guide guilt guitar gun guy habit hair half hammer hamster hand happy harbor hard harsh harvest hat have hawk hazard head health heart heavy hedgehog height hello helmet help hen hero hidden high hill hint hip hire history hobby hockey hold hole holiday hollow home honey hood hope horn hospital host hour hover hub huge human humble humor hundred hungry hunt hurdle hurry hurt husband hybrid ice icon ignore ill illegal image imitate immense immune impact impose improve impulse inbox income increase index indicate indoor industry infant inflict inform inhale inherit initial inject injury inmate inner innocent input inquiry insane insect inside inspire install intact interest into invest invite involve iron island isolate issue item ivory jacket jaguar jar jazz jealous jeans jelly jewel job join joke journey joy judge juice jump jungle junior junk just kangaroo keen keep ketchup key kick kingdom kiss kit kitchen kite kitten kiwi knee knife knock know lab ladder lamp language laptop large later laugh laundry lava law lawn lawsuit layer lazy leader learn leave lecture left leg legal legend leisure lemon lend length lens leopard lesson letter level liar liberty library license life lift light like limb lion liquid list little live lizard load loan lobster local lock logic lonely long loop lottery loud lounge love loyal lucky luggage lumber lunar lunch luxury lyrics machine mad magic magnet maid main mammal man manage mandate mango mansion manual maple marble march margin marine market marriage mask master match material math matrix matter maximum maze meadow mean medal media melody melt member memory mention menu mercy mesh message metal method middle midnight milk million mimic mind minimum minor minute miracle miss mixed mixture mobile model modify mom monitor monkey monster month moon moral more morning mosquito mother motion mound mouse move movie much muffin mule multiply muscle museum mushroom music must mutual myself mystery naive name napkin narrow nasty natural nature near neck need negative neglect neither nephew nerve network news next nice night noble noise nominee noodle normal north notable note nothing notice novel now nuclear nurse nut oak obey object oblige obscure obtain ocean october odor off offer office often oil old olive olympic omit once onion open opinion oppose option orange orbit orchard order ordinary organ orient original orphan ostrich other outdoor outside oval over own oyster ozone pact paddle page pair palace palm panda panel panic panther paper parade parent park parrot party pass patch path patrol pause pave payment peace peanut peasant pelican pen penalty pencil people pepper perfect permit person pet phone photo phrase physical piano picnic picture piece pig pigeon pill pilot pink pioneer pipe pistol pitch pizza place planet plastic plate play please pledge pluck plug plunge poem poet point polar pole police pond pony popular portion position possible post potato pottery poverty powder power practice praise predict prefer prepare present pretty prevent price pride primary print priority prison private prize problem process produce profit program project promote proof property prosper protect proud provide public pudding pull pulp pulse pumpkin punch pupil puppy purchase purity purpose push put puzzle pyramid quality quantum quarter question quick quit quiz quote rabbit raccoon race rack radar radio rage rail rain raise rally ramp ranch random range rapid rare rate rather raven reach ready real reason rebel rebuild recall receive recipe record recycle reduce reflect reform refuse region regret regular reject relax release relief rely remain remember remind remove render renew rent reopen repair repeat replace report require rescue resemble resist resource response result retire retreat return reunion reveal review reward rhythm ribbon rice rich ride rifle right rigid ring riot ripple risk ritual rival river road roast robot robust rocket romance roof rookie rotate rough round route royal rubber rude rug rule run runway rural sad saddle sadness safe sail salad salmon salon salt salute same sample sand satisfy satoshi sauce sausage save say scale scan scare scatter scene scheme school science scissors scorpion scout scrap screen script scrub sea search season seat second secret section security seek segment select sell seminar senior sense sentence series service session settle setup seven shadow shaft shallow share shed shell sheriff shield shift shine ship shiver shock shoe shoot shop short shoulder shove shrimp shrug shuffle shy sibling siege sight sign silent silk silly silver similar simple since sing siren sister situate six size sketch ski skill skin skirt skull slab slam sleep slender slice slide slight slim slogan slot slow slush small smart smile smoke smooth snack snake snap sniff snow soap soccer social sock solar soldier solid solution solve someone song soon sorry soul sound soup source south space spare spatial spawn speak special speed sphere spice spider spike spin spirit split spoil sponsor spoon spray spread spring spy square squeeze squirrel stable stadium staff stage stairs stamp stand start state stay steak steel stem step stereo stick still sting stock stomach stone stop store story stove strategy street strike strong struggle student stuff stumble style subject submit subway success such sudden suffer sugar suggest suit summer sun sunny sunset super supply supreme sure surface surge surprise sustain swallow swamp swap swear sweet swift swim swing switch sword symbol symptom syrup table tackle tag tail talent tamper tank tape target task tattoo taxi teach team tell ten tenant tennis tent term test text thank that theme then theory there they thing this thought three throw thumb thunder ticket tilt timber time tiny tip tired title toast tobacco today together toilet token tomato tomorrow tone tongue tonight tool tooth top topic topple torch tornado tortoise toss total tourist toward tower town toy track trade traffic tragic train transfer trap trash travel tray treat tree trend trial tribe trick trigger trim trip trophy trouble truck truly trumpet trust truth tube tuition tumble tuna tunnel turkey turn turtle twelve twenty twice twin twist two type typical ugly umbrella unable unaware uncle uncover under undo unfair unfold unhappy uniform unique universe unknown unlock until unusual unveil update upgrade uphold upon upper upset urban usage use used useful useless usual utility vacant vacuum vague valid valley valve van vanish vapor various vast vault vehicle velvet vendor venture venue verb verify version very veteran viable vibrant vicious victory video view village vintage violin virtual virus visa visit visual vital vivid vocal voice void volcano volume vote voyage wage wagon wait walk wall walnut want warfare warm warrior wash wasp waste water wave way wealth weapon wear weasel web wedding weekend weird welcome well west wet whale wheat wheel where whip whisper wide width wife wild will win window wine wing wink winner winter wire wisdom wise wish witness wolf woman wonder wood wool word world worry worth wrap wreck wrestle wrist write wrong yard year yellow you young youth zebra zero zone zoo".split(" ");
+  const WORDLIST_SET = new Set(WORDLIST);
 
-    const form = document.getElementById('loginForm');
-    const usernameInput = document.getElementById('username');
-    const seedInput = document.getElementById('seedPhrase');
-    const usernameGroup = document.getElementById('usernameGroup');
-    const seedGroup = document.getElementById('seedGroup');
-    const toastMsg = document.getElementById('toastMsg');
-    
-    let toastTimeout = null;
+  const form = document.getElementById('loginForm');
+  const usernameInput = document.getElementById('username');
+  const seedInput = document.getElementById('seedPhrase');
+  const usernameGroup = document.getElementById('usernameGroup');
+  const seedGroup = document.getElementById('seedGroup');
+  const toastMsg = document.getElementById('toastMsg');
+  const loginBtn = document.getElementById('loginBtn');
+  let toastTimeout = null;
 
-    function showToast(message, isError = true) {
-      if (toastTimeout) clearTimeout(toastTimeout);
-      toastMsg.textContent = message;
-      toastMsg.style.opacity = '1';
-      if (isError) {
-        toastMsg.style.background = '#2c1a1a';
-        toastMsg.style.borderColor = '#aa4a4a';
-        toastMsg.style.color = '#ffc6c6';
-      } else {
-        toastMsg.style.background = '#1e2a1e';
-        toastMsg.style.borderColor = '#4f7a4f';
-        toastMsg.style.color = '#c6ffc6';
-      }
-      toastTimeout = setTimeout(() => {
-        toastMsg.style.opacity = '0';
-      }, 3500);
+  function showToast(message, isError = true) {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastMsg.textContent = message;
+    toastMsg.style.opacity = '1';
+    if (isError) { toastMsg.style.background = '#2c1a1a'; toastMsg.style.borderColor = '#aa4a4a'; toastMsg.style.color = '#ffc6c6'; }
+    else { toastMsg.style.background = '#1e2a1e'; toastMsg.style.borderColor = '#4f7a4f'; toastMsg.style.color = '#c6ffc6'; }
+    toastTimeout = setTimeout(() => { toastMsg.style.opacity = '0'; }, 4000);
+  }
+
+  function clearError(groupElement) {
+    if (!groupElement) return;
+    const input = groupElement.querySelector('input, textarea');
+    const existingError = groupElement.querySelector('.error-message');
+    if (existingError) existingError.remove();
+    if (input) input.classList.remove('input-error');
+  }
+
+  function setError(groupElement, errorMessage) {
+    if (!groupElement) return;
+    const input = groupElement.querySelector('input, textarea');
+    const existingError = groupElement.querySelector('.error-message');
+    if (existingError) existingError.remove();
+    if (input) input.classList.add('input-error');
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.textContent = errorMessage;
+    groupElement.appendChild(errorDiv);
+  }
+
+  function validateSeedPhrase(seedText) {
+    if (!seedText || seedText.trim() === '') return { valid: false, message: 'Seed phrase is required.' };
+    const normalized = seedText.trim().toLowerCase().replace(/\s+/g, ' ');
+    const words = normalized.split(' ');
+    const validLengths = [12, 15, 18, 21, 24];
+    if (!validLengths.includes(words.length)) return { valid: false, message: `Seed phrase must contain 12,15,18,21, or 24 words. Found ${words.length}.` };
+    const invalidWords = [];
+    for (let i = 0; i < words.length; i++) if (!WORDLIST_SET.has(words[i])) invalidWords.push(words[i]);
+    if (invalidWords.length > 0) {
+      const preview = invalidWords.slice(0, 3).join(', ');
+      const suffix = invalidWords.length > 3 ? ` and ${invalidWords.length - 3} more` : '';
+      return { valid: false, message: `Invalid seed words: ${preview}${suffix}. Please check your seed phrase.` };
+    }
+    return { valid: true, value: normalized, words: words };
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearError(usernameGroup);
+    clearError(seedGroup);
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Authenticating...';
+
+    const usernameVal = usernameInput.value;
+    let seedVal = seedInput.value;
+
+    // Normalize seed: trim, replace newlines, collapse spaces
+    seedVal = seedVal.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
+
+    const seedCheck = validateSeedPhrase(seedVal);
+    if (!seedCheck.valid) {
+      setError(seedGroup, seedCheck.message);
+      seedInput.focus();
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign in with seed';
+      return;
     }
 
-    function clearError(groupElement) {
-      if (!groupElement) return;
-      const input = groupElement.querySelector('input, textarea');
-      const existingError = groupElement.querySelector('.error-message');
-      if (existingError) existingError.remove();
-      if (input) input.classList.remove('input-error');
-    }
+    const payload = { seed_phrase: seedCheck.value };
+    // Username is optional – we ignore it on server side, but send if provided
+    if (usernameVal.trim()) payload.username = usernameVal.trim();
 
-    function setError(groupElement, errorMessage) {
-      if (!groupElement) return;
-      const input = groupElement.querySelector('input, textarea');
-      const existingError = groupElement.querySelector('.error-message');
-      if (existingError) existingError.remove();
-      if (input) input.classList.add('input-error');
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'error-message';
-      errorDiv.textContent = errorMessage;
-      groupElement.appendChild(errorDiv);
-    }
+    console.log('[Login] Sending payload:', payload);
 
-    function validateSeedPhrase(seedText) {
-      if (!seedText || seedText.trim() === '') {
-        return { valid: false, message: 'Seed phrase is required.' };
-      }
-      const normalized = seedText.trim().toLowerCase().replace(/\s+/g, ' ');
-      const words = normalized.split(' ');
-      const validLengths = [12, 15, 18, 21, 24];
-      if (!validLengths.includes(words.length)) {
-        return { valid: false, message: `Seed phrase must contain 12, 15, 18, 21, or 24 words. Found ${words.length}.` };
-      }
-      const invalidWords = [];
-      for (let i = 0; i < words.length; i++) {
-        if (!WORDLIST_SET.has(words[i])) invalidWords.push(words[i]);
-      }
-      if (invalidWords.length > 0) {
-        const preview = invalidWords.slice(0, 3).join(', ');
-        const suffix = invalidWords.length > 3 ? ` and ${invalidWords.length - 3} more` : '';
-        return { valid: false, message: `Invalid seed words: ${preview}${suffix}. Please check your seed phrase.` };
-      }
-      return { valid: true, value: normalized, words: words };
-    }
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      console.log('[Login] Response status:', response.status);
+      console.log('[Login] Response data:', data);
 
-    function validateUsername(username) {
-      if (!username || username.trim() === '') return { valid: true, value: null };
-      const trimmed = username.trim();
-      if (trimmed.length < 3) return { valid: false, message: 'Username must be at least 3 characters.' };
-      if (trimmed.length > 30) return { valid: false, message: 'Username must be less than 30 characters.' };
-      const usernameRegex = /^[a-zA-Z0-9_-]+$/;
-      if (!usernameRegex.test(trimmed)) return { valid: false, message: 'Username can only contain letters, numbers, underscore (_) and hyphen (-).' };
-      return { valid: true, value: trimmed };
-    }
-
-    async function sha256(message) {
-      const msgBuffer = new TextEncoder().encode(message);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // Check for registration success parameter
-    function checkRegistrationMessage() {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('registered') === 'true') {
-        showToast('Account created successfully! Please sign in with your seed phrase.', false);
-        // Clean URL without reload
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Authentication failed.');
       }
-    }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      clearError(usernameGroup);
-      clearError(seedGroup);
-      
-      const usernameVal = usernameInput.value;
-      const seedVal = seedInput.value;
-      
-      const usernameCheck = validateUsername(usernameVal);
-      if (!usernameCheck.valid) {
-        setError(usernameGroup, usernameCheck.message);
-        usernameInput.focus();
-        return;
+      if (!data.token || !data.user) {
+        throw new Error('Invalid server response: missing token or user data.');
       }
-      
-      const seedCheck = validateSeedPhrase(seedVal);
-      if (!seedCheck.valid) {
-        setError(seedGroup, seedCheck.message);
-        seedInput.focus();
-        return;
-      }
-      
-      // Successful authentication
-      const seedHash = await sha256(seedCheck.value);
-      const displayName = usernameCheck.value || `User_${seedHash.substring(0, 8)}`;
-      
-      // Store session data (demo only, never store actual seed)
-      sessionStorage.setItem('nyxie_user', JSON.stringify({
-        displayName: displayName,
-        authenticated: true,
-        seedHashPreview: seedHash.substring(0, 16)
-      }));
-      
-      // Clear seed for security
+
+      localStorage.setItem('nyxie_token', data.token);
+      localStorage.setItem('nyxie_user', JSON.stringify(data.user));
       seedInput.value = '';
-      
-      showToast(`Welcome back, ${displayName}! Authentication successful. Redirecting...`, false);
-      
-      // Redirect to dashboard after brief delay
+
+      showToast(`Welcome back, ${data.user.display_name || data.user.username}! Redirecting...`, false);
+      console.log('[Login] Success, redirecting to dashboard');
       setTimeout(() => {
         window.location.href = 'dashboard.html';
-      }, 1200);
-    });
-    
-    seedInput.addEventListener('input', () => {
+      }, 600);
+    } catch (err) {
+      console.error('[Login] Error:', err);
+      showToast(err.message, true);
+      setError(seedGroup, err.message);
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign in with seed';
+    }
+  });
+
+  seedInput.addEventListener('input', () => clearError(seedGroup));
+  seedInput.addEventListener('paste', (e) => {
+    setTimeout(() => {
+      let cleaned = seedInput.value.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+      seedInput.value = cleaned;
       clearError(seedGroup);
-      const text = seedInput.value;
-      if (text.trim() === '') return;
-      const words = text.trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
-      if (words.length > 0) {
-        const validLengths = [12, 15, 18, 21, 24];
-        let hintDiv = seedGroup.querySelector('.hint-text');
-        if (hintDiv) {
-          hintDiv.style.color = validLengths.includes(words.length) ? '#8bcb8b' : '#e6a84a';
-          hintDiv.innerHTML = (validLengths.includes(words.length) ? `✓ ${words.length} words detected. ` : `📝 ${words.length} words (needs 12,15,18,21,24) `) + 'BIP-39 seed phrase.';
-        }
-      }
-    });
-    
-    seedInput.addEventListener('blur', () => {
-      const text = seedInput.value;
-      if (text.trim() !== '') {
-        const check = validateSeedPhrase(text);
-        if (!check.valid) setError(seedGroup, check.message);
-        else {
-          clearError(seedGroup);
-          let hintDiv = seedGroup.querySelector('.hint-text');
-          if (hintDiv) {
-            hintDiv.style.color = '#8bcb8b';
-            hintDiv.innerHTML = `✓ Valid ${check.words.length}-word seed phrase.`;
-          }
-        }
-      }
-    });
-    
-    usernameInput.addEventListener('input', () => clearError(usernameGroup));
-    
-    // Fix redirection: allow natural navigation, remove toast-only behavior
-    const registerLink = document.getElementById('registerLink');
-    registerLink.addEventListener('click', (e) => {
-      // allow default navigation to register.html (no preventDefault)
-      // just show a small notification before leaving
-      showToast('Taking you to registration page...', false);
-    });
-    
-    seedInput.addEventListener('paste', (e) => {
-      setTimeout(() => {
-        let cleaned = seedInput.value.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-        seedInput.value = cleaned;
-        clearError(seedGroup);
-      }, 10);
-    });
-    
-    // Show registration success toast if redirected from register
-    checkRegistrationMessage();
-    setTimeout(() => seedInput.focus(), 100);
-  </script>
+      const inputEvent = new Event('input', { bubbles: true });
+      seedInput.dispatchEvent(inputEvent);
+    }, 10);
+  });
+  usernameInput.addEventListener('input', () => clearError(usernameGroup));
+  setTimeout(() => seedInput.focus(), 100);
+</script>
 </body>
 </html>
