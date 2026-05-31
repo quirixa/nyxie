@@ -7,7 +7,7 @@ const authRoutes = require('./src/auth');
 const userRoutes = require('./src/users');
 const roomRoutes = require('./src/rooms');
 const serverRoutes = require('./src/servers');
-const { getDb } = require('./src/db');
+const { getUserDb } = require('./src/userDb');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,7 +24,7 @@ app.use('/api/servers', serverRoutes);
 const { broadcast } = setupWebSocket(server);
 app.locals.broadcast = broadcast;
 
-getDb().then(() => {
+getUserDb().then(() => {
   server.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });

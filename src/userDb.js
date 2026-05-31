@@ -2,7 +2,7 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'nyxie.db');
+const USER_DB_PATH = path.join(__dirname, '..', 'data', 'nyxie_users.db');
 
 let db = null;
 let SqlJs = null;
@@ -10,21 +10,21 @@ let SqlJs = null;
 function persist() {
   const data = db.export();
   const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
+  fs.writeFileSync(USER_DB_PATH, buffer);
 }
 
 let persistInterval = null;
 
-async function getDb() {
+async function getUserDb() {
   if (db) return db;
 
   SqlJs = await initSqlJs();
 
-  const dataDir = path.dirname(DB_PATH);
+  const dataDir = path.dirname(USER_DB_PATH);
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
+  if (fs.existsSync(USER_DB_PATH)) {
+    const fileBuffer = fs.readFileSync(USER_DB_PATH);
     db = new SqlJs.Database(fileBuffer);
   } else {
     db = new SqlJs.Database();
@@ -83,18 +83,6 @@ async function getDb() {
     )
   `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      room_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      edited_at INTEGER,
-      deleted INTEGER DEFAULT 0
-    )
-  `);
-
   const defaultServer = db.exec("SELECT id FROM servers WHERE name = 'Nyxie'");
   if (!defaultServer.length || !defaultServer[0].values.length) {
     const serverId = 'nyxie-default';
@@ -136,4 +124,4 @@ function run(db, sql, params = []) {
   persist();
 }
 
-module.exports = { getDb, all, get, run, persist };
+module.exports = { getUserDb, all, get, run };

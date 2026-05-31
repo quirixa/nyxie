@@ -1,7 +1,8 @@
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./auth');
-const { getDb, get, run, all } = require('./db');
+const { getUserDb, get, run, all } = require('./userDb');
+const { getMessageDb } = require('./messageDb');
 
 const roomClients = new Map();
 const clientMeta = new Map();
@@ -62,7 +63,7 @@ async function cleanupClient(ws) {
   }
 
   clientMeta.delete(ws);
-  const db = await getDb();
+  const db = await getUserDb();
   run(db, 'UPDATE users SET status = ?, last_seen = ? WHERE id = ?', ['offline', Date.now(), meta.userId]);
 }
 
@@ -86,7 +87,7 @@ function setupWebSocket(server) {
       return;
     }
 
-    const db = await getDb();
+    const db = await getUserDb();
     const user = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [payload.sub]);
     if (!user) {
       ws.close(4001);
@@ -116,7 +117,7 @@ function setupWebSocket(server) {
         case 'join_room': {
           const { room_id } = msg;
           if (!room_id) break;
-          const db2 = await getDb();
+          const db2 = await getUserDb();
           const isMember = get(db2, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room_id, meta.userId]);
           if (!isMember) {
             ws.send(JSON.stringify({ type: 'error', message: 'Not a member' }));
@@ -153,7 +154,7 @@ function setupWebSocket(server) {
           const { status } = msg;
           const allowed = ['online', 'idle', 'dnd', 'offline'];
           if (!allowed.includes(status)) break;
-          const db2 = await getDb();
+          const db2 = await getUserDb();
           run(db2, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?', [status, Date.now(), meta.userId]);
           for (const roomId of meta.rooms) {
             broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status, display_name: meta.display_name });

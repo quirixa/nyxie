@@ -3,29 +3,24 @@ const router = express.Router();
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { getDb, all, get, run } = require('./db');
+const { getUserDb, all, get, run } = require('./userDb');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nyxie-dev-secret-change-in-production';
 const JWT_EXPIRES = '7d';
 
 function hashSeed(seedPhrase) {
   const normalized = seedPhrase.trim().toLowerCase().replace(/\s+/g, ' ');
-  const hash = crypto.createHash('sha256').update('nyxie:' + normalized).digest('hex');
-  console.log('[hashSeed] normalized:', normalized);
-  console.log('[hashSeed] hash:', hash);
-  return hash;
+  return crypto.createHash('sha256').update('nyxie:' + normalized).digest('hex');
 }
 
 function signToken(userId) {
   return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
-// REGISTER
 router.post('/register', async (req, res) => {
   try {
-    const db = await getDb();
+    const db = await getUserDb();
     const { username, display_name, seed_phrase } = req.body;
-    console.log('[REGISTER] received seed_phrase:', seed_phrase);
 
     if (!username || !seed_phrase) {
       return res.status(400).json({ error: 'username and seed_phrase are required' });
@@ -61,7 +56,6 @@ router.post('/register', async (req, res) => {
        VALUES (?, ?, ?, ?, 'online', ?, ?)`,
       [userId, trimmedUsername, displayName, seedHash, now, now]
     );
-    console.log('[REGISTER] user created with seed_hash:', seedHash);
 
     const defaultServer = get(db, "SELECT id FROM servers WHERE name = 'Nyxie'");
     if (defaultServer) {
@@ -85,30 +79,20 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// LOGIN – simplified, only seed phrase required
 router.post('/login', async (req, res) => {
   try {
-    const db = await getDb();
+    const db = await getUserDb();
     const { seed_phrase } = req.body;
-    console.log('[LOGIN] received seed_phrase:', seed_phrase);
 
     if (!seed_phrase) {
       return res.status(400).json({ error: 'seed_phrase is required' });
     }
 
     const seedHash = hashSeed(seed_phrase);
-    console.log('[LOGIN] computed seed_hash:', seedHash);
-
     const user = get(db, 'SELECT * FROM users WHERE seed_hash = ?', [seedHash]);
     if (!user) {
-      console.log('[LOGIN] No user found with that hash');
-      // Optional: list existing hashes for debugging (remove in production)
-      const allUsers = all(db, 'SELECT id, username, seed_hash FROM users');
-      console.log('[LOGIN] Existing users:', allUsers);
       return res.status(401).json({ error: 'Invalid seed phrase. Not registered?' });
     }
-
-    console.log('[LOGIN] Found user:', user.username);
 
     run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
 
@@ -128,7 +112,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me
 router.get('/me', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -137,7 +120,7 @@ router.get('/me', async (req, res) => {
     }
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
-    const db = await getDb();
+    const db = await getUserDb();
     const user = get(db, 'SELECT id, username, display_name, status, created_at, last_seen FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     res.json({ user });
@@ -146,7 +129,6 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// UPDATE STATUS
 router.patch('/status', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -160,7 +142,7 @@ router.patch('/status', async (req, res) => {
     if (!status || !allowed.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-    const db = await getDb();
+    const db = await getUserDb();
     run(db, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?',
         [status, Date.now(), payload.sub]);
     res.json({ ok: true, status });

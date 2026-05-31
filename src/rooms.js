@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { getDb, all, get, run } = require('./db');
+const { getUserDb, all, get, run } = require('./userDb');
+const { getMessageDb, allMessages, getMessage, runMessage } = require('./messageDb');
 const { requireAuth } = require('./middleware');
 
+// GET /api/rooms – list DMs or server channels (user DB only)
 router.get('/', requireAuth, async (req, res) => {
-  const db = await getDb();
+  const db = await getUserDb();
   const { server_id } = req.query;
 
   let rooms;
@@ -46,8 +48,9 @@ router.get('/', requireAuth, async (req, res) => {
   res.json({ rooms });
 });
 
+// POST /api/rooms/dm – create or get DM room (user DB)
 router.post('/dm', requireAuth, async (req, res) => {
-  const db = await getDb();
+  const db = await getUserDb();
   const { target_user_id } = req.body;
   if (!target_user_id) return res.status(400).json({ error: 'target_user_id required' });
   if (target_user_id === req.user.id) return res.status(400).json({ error: 'Cannot DM yourself' });
@@ -76,15 +79,17 @@ router.post('/dm', requireAuth, async (req, res) => {
   res.status(201).json({ room_id: roomId });
 });
 
+// GET /api/rooms/:id/messages – fetch messages (message DB)
 router.get('/:id/messages', requireAuth, async (req, res) => {
-  const db = await getDb();
-  const isMember = get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  const userDb = await getUserDb();
+  const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
   if (!isMember) return res.status(403).json({ error: 'Not a member' });
 
+  const msgDb = await getMessageDb();
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
   const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
 
-  const messages = all(db, `
+  const messages = allMessages(msgDb, `
     SELECT m.id, m.room_id, m.content, m.created_at, m.edited_at, m.deleted,
            u.id AS user_id, u.username, u.display_name
     FROM messages m
@@ -97,9 +102,10 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   res.json({ messages: messages.reverse() });
 });
 
+// POST /api/rooms/:id/messages – create a message (message DB)
 router.post('/:id/messages', requireAuth, async (req, res) => {
-  const db = await getDb();
-  const isMember = get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  const userDb = await getUserDb();
+  const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
   if (!isMember) return res.status(403).json({ error: 'Not a member' });
 
   const { content } = req.body;
@@ -108,7 +114,8 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
 
   const msgId = uuidv4();
   const now = Date.now();
-  run(db, 'INSERT INTO messages (id, room_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
+  const msgDb = await getMessageDb();
+  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
     [msgId, req.params.id, req.user.id, content.trim(), now]);
 
   const message = {
@@ -125,9 +132,10 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   res.status(201).json({ message });
 });
 
+// PATCH /api/rooms/:roomId/messages/:msgId – edit (message DB)
 router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
-  const db = await getDb();
-  const msg = get(db, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
+  const msgDb = await getMessageDb();
+  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'Not your message' });
   if (msg.deleted) return res.status(400).json({ error: 'Cannot edit deleted message' });
@@ -136,7 +144,7 @@ router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   if (!content || !content.trim()) return res.status(400).json({ error: 'Content required' });
 
   const now = Date.now();
-  run(db, 'UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', [content.trim(), now, msg.id]);
+  runMessage(msgDb, 'UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', [content.trim(), now, msg.id]);
 
   req.app.locals.broadcast(req.params.roomId, {
     type: 'message_edited',
@@ -147,19 +155,21 @@ router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// DELETE /api/rooms/:roomId/messages/:msgId (message DB)
 router.delete('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
-  const db = await getDb();
-  const msg = get(db, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
+  const msgDb = await getMessageDb();
+  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'Not your message' });
 
-  run(db, 'UPDATE messages SET deleted = 1, content = \'[deleted]\' WHERE id = ?', [msg.id]);
+  runMessage(msgDb, 'UPDATE messages SET deleted = 1, content = \'[deleted]\' WHERE id = ?', [msg.id]);
   req.app.locals.broadcast(req.params.roomId, { type: 'message_deleted', message_id: msg.id });
   res.json({ ok: true });
 });
 
+// POST /api/rooms/:id/leave – remove membership (user DB)
 router.post('/:id/leave', requireAuth, async (req, res) => {
-  const db = await getDb();
+  const db = await getUserDb();
   run(db, 'DELETE FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
   res.json({ ok: true });
 });

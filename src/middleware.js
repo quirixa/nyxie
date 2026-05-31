@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./auth');
-const { getDb, get } = require('./db');
+const { getUserDb, get } = require('./userDb');
 
 async function requireAuth(req, res, next) {
   try {
@@ -10,7 +10,7 @@ async function requireAuth(req, res, next) {
     }
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
-    const db = await getDb();
+    const db = await getUserDb();
     const user = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     req.user = user;
