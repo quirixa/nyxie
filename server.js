@@ -7,6 +7,7 @@ const authRoutes = require('./src/auth');
 const userRoutes = require('./src/users');
 const roomRoutes = require('./src/rooms');
 const serverRoutes = require('./src/servers');
+const friendRoutes = require('./src/friends');
 const { getUserDb } = require('./src/userDb');
 
 const app = express();
@@ -20,6 +21,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/servers', serverRoutes);
+app.use('/api/friends', friendRoutes);
 
 const { broadcast } = setupWebSocket(server);
 app.locals.broadcast = broadcast;

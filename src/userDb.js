@@ -83,6 +83,27 @@ async function getUserDb() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS friend_requests (
+      id TEXT PRIMARY KEY,
+      from_id TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS friends (
+      id TEXT PRIMARY KEY,
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'accepted',
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_a, user_b)
+    )
+  `);
+
   const defaultServer = db.exec("SELECT id FROM servers WHERE name = 'Nyxie'");
   if (!defaultServer.length || !defaultServer[0].values.length) {
     const serverId = 'nyxie-default';
