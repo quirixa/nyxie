@@ -2,143 +2,103 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>nyxie</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
     body {
-      background: #020c02;
-      color: #00ff41;
-      font-family: 'VT323', 'Courier New', monospace;
+      font-family: 'Inter', sans-serif;
+      background: #0d0d0e;
+      color: #f0f0f0;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      text-shadow: 0 0 8px rgba(0,255,65,0.7);
-      overflow: hidden;
+      padding: 24px;
+      background-image: radial-gradient(circle at 20% 30%, #1a1a1f 0%, #0d0d0e 80%);
     }
-
-    body::before {
-      content: '';
-      position: fixed; inset: 0;
-      background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0,0,0,0.18) 2px,
-        rgba(0,0,0,0.18) 4px
-      );
-      pointer-events: none;
-      z-index: 100;
-    }
-
-    @keyframes flicker {
-      0%,100% { opacity:1; }
-      93% { opacity:1; }
-      94% { opacity:0.88; }
-      95% { opacity:1; }
-      98% { opacity:0.94; }
-    }
-    body { animation: flicker 14s infinite; }
-
     .wrap {
+      max-width: 640px;
       text-align: center;
-      user-select: none;
     }
-
-    /* big art */
-    .art {
-      font-size: 13px;
-      line-height: 1.22;
-      white-space: pre;
-      color: #00ff41;
-      letter-spacing: 0.05em;
-      margin-bottom: 6px;
+    .brand {
+      font-size: 4.2rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      background: linear-gradient(135deg, #b7a9ff 0%, #7c9bff 80%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+      line-height: 1.1;
     }
-
-    /* name */
-    .name {
-      font-size: 72px;
-      letter-spacing: 14px;
-      line-height: 1;
-      color: #00ff41;
-      text-shadow: 0 0 24px rgba(0,255,65,0.9), 0 0 60px rgba(0,255,65,0.3);
-      margin-bottom: 4px;
-    }
-
-    /* small line under name */
-    .sub {
-      font-size: 18px;
-      color: rgba(0,255,65,0.35);
-      letter-spacing: 0.3em;
+    .tagline {
+      font-size: 1.1rem;
+      font-weight: 400;
+      color: #888;
       margin-bottom: 40px;
+      letter-spacing: 0.3px;
     }
-
-    /* links */
     .links {
       display: flex;
-      gap: 40px;
+      gap: 24px;
       justify-content: center;
-      font-size: 22px;
-      letter-spacing: 0.2em;
+      flex-wrap: wrap;
     }
-
     .links a {
-      color: rgba(0,255,65,0.5);
-      text-decoration: none;
-      transition: all 0.1s;
-    }
-
-    .links a:hover {
-      color: #00ff41;
-      text-shadow: 0 0 16px rgba(0,255,65,1);
-    }
-
-    @keyframes blink { 50% { opacity:0; } }
-    .cursor {
       display: inline-block;
-      width: 10px; height: 18px;
-      background: rgba(0,255,65,0.5);
-      vertical-align: middle;
-      margin-left: 4px;
-      animation: blink 1.1s step-end infinite;
+      padding: 12px 32px;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 1rem;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      background: #2a2a30;
+      color: #e0e0e0;
+      border: 1px solid #3a3a42;
+    }
+    .links a:hover {
+      background: #3a3a44;
+      border-color: #5a5a68;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .links a.primary {
+      background: #5865f2;
+      border-color: #5865f2;
+      color: #fff;
+    }
+    .links a.primary:hover {
+      background: #4752c4;
+      border-color: #4752c4;
+    }
+    .footer {
+      margin-top: 48px;
+      font-size: 0.85rem;
+      color: #555;
+    }
+    @media (max-width: 480px) {
+      .brand { font-size: 3rem; }
+      .links a { padding: 10px 24px; font-size: 0.9rem; }
     }
   </style>
 </head>
 <body>
 <div class="wrap">
-
-<pre class="art">
-        /\          /\
-       /  \   /\   /  \
-      / /\ \ /  \ / /\ \
-  /\ / /  \ / /\ / /  \ \  /\
- /  / / /\ / /  / / /\ \ \/  \
-/  / / /  / /  / / /  \ \\   /
-\  \ \/  / /  / / /    \ \\  \
- \  \   / /  / / /      \ \\  \
-  \  \ / /  / / /   /\   \ \\  \
-   \  / /  / / /   /  \   \ \\  \
-    \/ /  / / /   / /\ \   \ \\  \
-    /  \  \ \/   / /  \ \  /  \\  \
-   / /\ \  \    / / /\ \ \/  / \\ /
-  / /  \ \     / / /  \ \   /   \/
- / /    \ \   / / /    \/  /
-/_/      \_\ /_/_/        /_/
-</pre>
-
-  <div class="name">NYXIE</div>
-  <div class="sub">// chat //<span class="cursor"></span></div>
-
+  <div class="brand">nyxie</div>
+  <div class="tagline">private · encrypted · simple</div>
   <div class="links">
-    <a href="login.html">sign in</a>
-    <a href="register.html">sign up</a>
+    <a href="login.html" class="primary">Sign in</a>
+    <a href="register.html">Sign up</a>
   </div>
-
+  <div class="footer">secure messaging for everyone</div>
 </div>
 </body>
 </html>

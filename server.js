@@ -23,8 +23,9 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/friends', friendRoutes);
 
-const { broadcast } = setupWebSocket(server);
+const { broadcast, broadcastToUser } = setupWebSocket(server);
 app.locals.broadcast = broadcast;
+app.locals.broadcastToUser = broadcastToUser;
 
 getUserDb().then(() => {
   server.listen(PORT, () => {

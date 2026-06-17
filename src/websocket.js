@@ -2,7 +2,6 @@ const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./auth');
 const { getUserDb, get, run, all } = require('./userDb');
-const { getMessageDb } = require('./messageDb');
 
 const roomClients = new Map();
 const clientMeta = new Map();
@@ -17,13 +16,22 @@ function broadcast(roomId, data) {
   }
 }
 
-function broadcastPresence(roomId, userId, status) {
-  const clients = roomClients.get(roomId);
-  if (!clients) return;
-  const payload = JSON.stringify({ type: 'presence_update', user_id: userId, status });
-  for (const ws of clients) {
+function broadcastToUser(userId, data) {
+  const conns = userConnections.get(userId);
+  if (!conns) return;
+  const payload = JSON.stringify(data);
+  for (const ws of conns) {
     if (ws.readyState === WebSocket.OPEN) ws.send(payload);
   }
+}
+
+function broadcastPresence(roomId, userId, status, displayName) {
+  broadcast(roomId, {
+    type: 'presence_update',
+    user_id: userId,
+    status,
+    display_name: displayName || null
+  });
 }
 
 function joinRoom(ws, roomId) {
@@ -100,6 +108,7 @@ function setupWebSocket(server) {
     if (!userConnections.has(user.id)) userConnections.set(user.id, new Set());
     userConnections.get(user.id).add(ws);
 
+    // Send initial presence to all rooms the user is in
     const userRooms = all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [user.id]);
     for (const row of userRooms) {
       broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: 'online', display_name: user.display_name });
@@ -124,7 +133,26 @@ function setupWebSocket(server) {
             break;
           }
           joinRoom(ws, room_id);
-          broadcastPresence(room_id, meta.userId, 'online');
+          broadcastPresence(room_id, meta.userId, 'online', meta.display_name);
+
+          // Send room state: list of members with their statuses
+          const members = all(db2, `
+            SELECT u.id, u.username, u.display_name, u.status
+            FROM room_members rm
+            JOIN users u ON u.id = rm.user_id
+            WHERE rm.room_id = ?
+          `, [room_id]);
+          ws.send(JSON.stringify({
+            type: 'room_state',
+            room_id,
+            members: members.map(m => ({
+              id: m.id,
+              username: m.username,
+              display_name: m.display_name,
+              status: m.status || 'offline'
+            }))
+          }));
+
           ws.send(JSON.stringify({ type: 'joined_room', room_id }));
           break;
         }
@@ -171,7 +199,7 @@ function setupWebSocket(server) {
     ws.on('error', () => cleanupClient(ws));
   });
 
-  return { wss, broadcast };
+  return { wss, broadcast, broadcastToUser };
 }
 
-module.exports = { setupWebSocket, broadcast };
+module.exports = { setupWebSocket, broadcast, broadcastToUser };

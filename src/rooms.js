@@ -5,7 +5,27 @@ const { getUserDb, all, get, run } = require('./userDb');
 const { getMessageDb, allMessages, getMessage, runMessage } = require('./messageDb');
 const { requireAuth } = require('./middleware');
 
-// GET /api/rooms – list DMs or server channels (user DB only)
+// Helper: get latest message for each room from messageDb
+async function getLatestMessages(roomIds) {
+  if (!roomIds.length) return {};
+  const msgDb = await getMessageDb();
+  // Use a subquery to get latest non‑deleted message per room
+  const rows = allMessages(msgDb, `
+    SELECT m.room_id, m.content, m.created_at
+    FROM messages m
+    WHERE m.deleted = 0
+      AND m.created_at = (
+        SELECT MAX(created_at) FROM messages
+        WHERE room_id = m.room_id AND deleted = 0
+      )
+      AND m.room_id IN (${roomIds.map(() => '?').join(',')})
+  `, roomIds);
+  const map = {};
+  rows.forEach(row => { map[row.room_id] = { content: row.content, created_at: row.created_at }; });
+  return map;
+}
+
+// GET /api/rooms – list DMs or server channels (user DB) + attach latest messages
 router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const { server_id } = req.query;
@@ -14,25 +34,22 @@ router.get('/', requireAuth, async (req, res) => {
   if (server_id) {
     rooms = all(db, `
       SELECT r.id, r.name, r.description, r.created_at, r.is_dm,
-             (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count,
-             (SELECT content FROM messages m WHERE m.room_id = r.id AND m.deleted = 0 ORDER BY m.created_at DESC LIMIT 1) AS last_message,
-             (SELECT created_at FROM messages m WHERE m.room_id = r.id AND m.deleted = 0 ORDER BY m.created_at DESC LIMIT 1) AS last_message_at
+        (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
       WHERE r.server_id = ? AND r.is_dm = 0 AND rm.user_id = ?
-      ORDER BY COALESCE(last_message_at, r.created_at) DESC
+      ORDER BY r.created_at DESC
     `, [server_id, req.user.id]);
   } else {
     rooms = all(db, `
       SELECT r.id, r.name, r.description, r.created_at, r.is_dm,
-             (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count,
-             (SELECT content FROM messages m WHERE m.room_id = r.id AND m.deleted = 0 ORDER BY m.created_at DESC LIMIT 1) AS last_message,
-             (SELECT created_at FROM messages m WHERE m.room_id = r.id AND m.deleted = 0 ORDER BY m.created_at DESC LIMIT 1) AS last_message_at
+        (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
       WHERE r.is_dm = 1 AND rm.user_id = ?
-      ORDER BY COALESCE(last_message_at, r.created_at) DESC
+      ORDER BY r.created_at DESC
     `, [req.user.id]);
+    // For DMs, add display_name and _otherId
     for (const room of rooms) {
       const members = all(db, `SELECT user_id FROM room_members WHERE room_id = ?`, [room.id]);
       const other = members.find(m => m.user_id !== req.user.id);
@@ -45,6 +62,16 @@ router.get('/', requireAuth, async (req, res) => {
       }
     }
   }
+
+  // Attach latest message info from messageDb
+  const roomIds = rooms.map(r => r.id);
+  const latestMap = await getLatestMessages(roomIds);
+  for (const room of rooms) {
+    const latest = latestMap[room.id];
+    room.last_message = latest ? latest.content : null;
+    room.last_message_at = latest ? latest.created_at : null;
+  }
+
   res.json({ rooms });
 });
 
@@ -76,10 +103,16 @@ router.post('/dm', requireAuth, async (req, res) => {
   run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, req.user.id, now]);
   run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, target_user_id, now]);
 
+  // Notify both participants
+  const initiator = { id: req.user.id, username: req.user.username, display_name: req.user.display_name };
+  const target    = { id: targetUser.id, username: targetUser.username, display_name: targetUser.display_name || targetUser.username };
+  req.app.locals.broadcastToUser(req.user.id,   { type: 'dm_created', room_id: roomId, with_user: target });
+  req.app.locals.broadcastToUser(target_user_id, { type: 'dm_created', room_id: roomId, with_user: initiator });
+
   res.status(201).json({ room_id: roomId });
 });
 
-// GET /api/rooms/:id/messages – fetch messages (message DB)
+// GET /api/rooms/:id/messages – fetch messages (message DB) + enrich with user info
 router.get('/:id/messages', requireAuth, async (req, res) => {
   const userDb = await getUserDb();
   const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
@@ -90,16 +123,30 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
 
   const messages = allMessages(msgDb, `
-    SELECT m.id, m.room_id, m.content, m.created_at, m.edited_at, m.deleted,
-           u.id AS user_id, u.username, u.display_name
-    FROM messages m
-    JOIN users u ON u.id = m.user_id
-    WHERE m.room_id = ? AND m.created_at < ?
-    ORDER BY m.created_at DESC
+    SELECT id, room_id, user_id, content, created_at, edited_at, deleted
+    FROM messages
+    WHERE room_id = ? AND created_at < ?
+    ORDER BY created_at DESC
     LIMIT ?
   `, [req.params.id, before, limit]);
 
-  res.json({ messages: messages.reverse() });
+  // Gather unique user IDs
+  const userIds = [...new Set(messages.map(m => m.user_id))];
+  let userMap = {};
+  if (userIds.length) {
+    const placeholders = userIds.map(() => '?').join(',');
+    const users = all(userDb, `SELECT id, username, display_name FROM users WHERE id IN (${placeholders})`, userIds);
+    users.forEach(u => { userMap[u.id] = u; });
+  }
+
+  // Enrich messages
+  const enriched = messages.map(m => ({
+    ...m,
+    username: userMap[m.user_id]?.username || 'unknown',
+    display_name: userMap[m.user_id]?.display_name || userMap[m.user_id]?.username || 'Unknown'
+  }));
+
+  res.json({ messages: enriched.reverse() });
 });
 
 // POST /api/rooms/:id/messages – create a message (message DB)
