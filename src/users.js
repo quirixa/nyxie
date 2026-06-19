@@ -51,10 +51,10 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json({ user });
 });
 
-// PATCH /api/users/me – update profile (username, display_name, bio, password)
+// PATCH /api/users/me – update profile (username, email, display_name, bio, password)
 router.patch('/me', requireAuth, async (req, res) => {
   const db = await getUserDb();
-  const { username, display_name, bio, current_password, new_password } = req.body;
+  const { username, email, display_name, bio, current_password, new_password } = req.body;
   const userId = req.user.id;
 
   // Start building updates
@@ -76,6 +76,18 @@ router.patch('/me', requireAuth, async (req, res) => {
     if (existing) return res.status(409).json({ error: 'Username already taken' });
     updates.push('username = ?');
     params.push(trimmed);
+  }
+
+  // Email change
+  if (email !== undefined) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    const existingEmail = get(db, 'SELECT id FROM users WHERE email = ? AND id != ?', [trimmedEmail, userId]);
+    if (existingEmail) return res.status(409).json({ error: 'Email already registered' });
+    updates.push('email = ?');
+    params.push(trimmedEmail);
   }
 
   // Display name
@@ -111,6 +123,16 @@ router.patch('/me', requireAuth, async (req, res) => {
     const newHash = await bcrypt.hash(new_password, 10);
     updates.push('password_hash = ?');
     params.push(newHash);
+  } else if (email !== undefined) {
+    // Email changes are sensitive — require current password even when not also changing password
+    if (!current_password) {
+      return res.status(400).json({ error: 'Current password is required to change email' });
+    }
+    const user = get(db, 'SELECT password_hash FROM users WHERE id = ?', [userId]);
+    const match = await bcrypt.compare(current_password, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
   }
 
   if (updates.length === 0) {
@@ -122,7 +144,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   run(db, sql, params);
 
   // Fetch updated user to return
-  const updated = get(db, 'SELECT id, username, display_name, avatar, bio, status FROM users WHERE id = ?', [userId]);
+  const updated = get(db, 'SELECT id, username, email, display_name, avatar, bio, status FROM users WHERE id = ?', [userId]);
   res.json({ ok: true, user: updated });
 });
 
@@ -153,6 +175,48 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
   run(db, 'UPDATE users SET avatar = ? WHERE id = ?', [avatarPath, req.user.id]);
   req.user.avatar = avatarPath;
   res.json({ ok: true, avatar: avatarPath });
+});
+
+// POST /api/users/disable – temporarily disable own account (requires password)
+router.post('/disable', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Password is required' });
+
+  const user = get(db, 'SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+  const match = await bcrypt.compare(password, user.password_hash);
+  if (!match) return res.status(401).json({ error: 'Incorrect password' });
+
+  run(db, "UPDATE users SET disabled = 1, status = 'offline' WHERE id = ?", [req.user.id]);
+  res.json({ ok: true });
+});
+
+// DELETE /api/users/me – permanently delete own account (requires password)
+router.delete('/me', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Password is required' });
+
+  const user = get(db, 'SELECT password_hash, avatar FROM users WHERE id = ?', [req.user.id]);
+  const match = await bcrypt.compare(password, user.password_hash);
+  if (!match) return res.status(401).json({ error: 'Incorrect password' });
+
+  const userId = req.user.id;
+
+  // Clean up avatar file
+  if (user.avatar) {
+    const avatarPath = path.join(__dirname, '..', 'public', user.avatar);
+    if (fs.existsSync(avatarPath)) fs.unlinkSync(avatarPath);
+  }
+
+  // Remove memberships, friendships, friend requests, and leave DMs/channels
+  run(db, 'DELETE FROM room_members WHERE user_id = ?', [userId]);
+  run(db, 'DELETE FROM server_members WHERE user_id = ?', [userId]);
+  run(db, 'DELETE FROM friends WHERE user_a = ? OR user_b = ?', [userId, userId]);
+  run(db, 'DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?', [userId, userId]);
+  run(db, 'DELETE FROM users WHERE id = ?', [userId]);
+
+  res.json({ ok: true });
 });
 
 module.exports = router;

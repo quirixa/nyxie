@@ -75,7 +75,7 @@ router.post('/register', async (req, res) => {
     const token = signToken(userId);
     res.status(201).json({
       token,
-      user: { id: userId, username: trimmedUsername, display_name: displayName, avatar: null, bio: null, status: 'online' }
+      user: { id: userId, username: trimmedUsername, email: trimmedEmail, display_name: displayName, avatar: null, bio: null, status: 'online' }
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -108,6 +108,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    if (user.disabled) {
+      if (!req.body.reactivate) {
+        return res.status(403).json({ error: 'Account disabled', disabled: true });
+      }
+      run(db, 'UPDATE users SET disabled = 0 WHERE id = ?', [user.id]);
+      user.disabled = 0;
+    }
+
     run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
 
     const token = signToken(user.id);
@@ -116,6 +124,7 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
+        email: user.email,
         display_name: user.display_name,
         avatar: user.avatar || null,
         bio: user.bio || null,
@@ -137,7 +146,7 @@ router.get('/me', async (req, res) => {
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name, avatar, bio, status, created_at, last_seen FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, bio, status, created_at, last_seen FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     res.json({ user });
   } catch (err) {

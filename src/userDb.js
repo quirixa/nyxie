@@ -42,13 +42,19 @@ async function getUserDb() {
       status TEXT DEFAULT 'online',
       status_updated_at INTEGER,
       created_at INTEGER NOT NULL,
-      last_seen INTEGER
+      last_seen INTEGER,
+      disabled INTEGER DEFAULT 0
     )
   `);
 
-  // If table already exists but missing 'bio' column, add it (for existing DBs)
+  // If table already exists but missing columns, add them (for existing DBs)
   try {
     db.run("ALTER TABLE users ADD COLUMN bio TEXT");
+  } catch (e) {
+    // column already exists – ignore
+  }
+  try {
+    db.run("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0");
   } catch (e) {
     // column already exists – ignore
   }
