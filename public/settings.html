@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nyxie · settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    :root {
+      --bg-primary: #191919;
+      --bg-secondary: #232323;
+      --bg-sidebar: #232323;
+      --bg-input: #2c2c2c;
+      --bg-hover: rgba(255, 255, 255, 0.06);
+      --bg-active: rgba(255, 255, 255, 0.10);
+      --bg-modal: #1a1b1e;
+      --bg-modal-sidebar: #1e1f22;
+      --bg-modal-card: #2b2d31;
+      --bg-modal-hover: #2f3136;
+      --text-primary: #ffffff;
+      --text-secondary: #b8b8b8;
+      --text-muted: #8c8c8c;
+      --border-color: #343434;
+      --border-medium: #404040;
+      --accent: #fd6671;
+      --accent-hover: #ff7b85;
+      --online: #3ba55c;
+      --offline: #6a6a72;
+      --danger: #ed4245;
+      --warning: #faa61a;
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      --radius: 8px;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-modal);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .settings-container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      background: var(--bg-modal);
+    }
+    .settings-sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--bg-modal-sidebar);
+      padding: 20px 0;
+      overflow-y: auto;
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .settings-sidebar::-webkit-scrollbar {
+      width: 2px;
+    }
+    .settings-sidebar::-webkit-scrollbar-thumb {
+      background: #3a3a42;
+      border-radius: 2px;
+    }
+    .settings-sidebar .nav-section {
+      padding: 0 12px 4px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-top: 12px;
+    }
+    .settings-sidebar .nav-section:first-child {
+      margin-top: 0;
+    }
+    .settings-sidebar .nav-item-settings {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 16px;
+      margin: 1px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: background 0.15s, color 0.15s;
+    }
+    .settings-sidebar .nav-item-settings:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .settings-sidebar .nav-item-settings.active {
+      background: var(--bg-active);
+      color: var(--text-primary);
+    }
+    .settings-sidebar .nav-item-settings svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+    .settings-sidebar .nav-item-settings.active svg {
+      opacity: 1;
+    }
+    .settings-sidebar .nav-item-settings .badge-settings {
+      margin-left: auto;
+      background: #ed4245;
+      color: #fff;
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 1px 8px;
+      border-radius: 10px;
+    }
+    .settings-sidebar-bottom {
+      margin-top: auto;
+      padding: 16px 16px 0;
+      border-top: 1px solid var(--border-color);
+    }
+    .settings-sidebar-bottom .logout-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      background: none;
+      color: var(--danger);
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .settings-sidebar-bottom .logout-btn:hover {
+      background: rgba(237, 66, 69, 0.12);
+    }
+    .settings-sidebar-bottom .logout-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+    .settings-sidebar-bottom .version-text {
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      padding: 8px 12px 4px;
+      text-align: center;
+    }
+    .settings-content {
+      flex: 1;
+      padding: 40px 48px;
+      overflow-y: auto;
+      background: var(--bg-modal);
+    }
+    .settings-content::-webkit-scrollbar {
+      width: 4px;
+    }
+    .settings-content::-webkit-scrollbar-thumb {
+      background: #3a3a42;
+      border-radius: 4px;
+    }
+    .settings-content .page-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      padding: 4px 0;
+      margin-bottom: 12px;
+      transition: color 0.15s;
+    }
+    .back-btn:hover {
+      color: var(--text-primary);
+    }
+    .back-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+    .profile-card {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      background: var(--bg-modal-card);
+      border-radius: var(--radius);
+      padding: 18px 24px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border-color);
+    }
+    .profile-card .pc-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #fd6671;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .profile-card .pc-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .profile-card .pc-info {
+      flex: 1;
+    }
+    .profile-card .pc-info .pc-name {
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-primary);
+    }
+    .profile-card .pc-info .pc-id {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .profile-card .pc-edit-btn {
+      background: none;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 6px 16px;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .profile-card .pc-edit-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .account-field {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      background: var(--bg-modal-card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border-color);
+      margin-bottom: 8px;
+    }
+    .account-field .af-icon {
+      color: var(--text-muted);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .account-field .af-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+    .account-field .af-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      min-width: 60px;
+    }
+    .account-field .af-value {
+      flex: 1;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+    }
+    .account-field .af-action {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, background 0.15s;
+    }
+    .account-field .af-action:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+    .account-field .af-action svg {
+      width: 16px;
+      height: 16px;
+    }
+    .settings-section {
+      margin-top: 32px;
+    }
+    .settings-section .section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .settings-section .section-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .twofa-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .twofa-card {
+      background: var(--bg-modal-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .twofa-card:hover {
+      background: var(--bg-modal-hover);
+      border-color: var(--border-medium);
+    }
+    .twofa-card .tc-icon {
+      color: var(--text-muted);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .twofa-card .tc-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+    .twofa-card .tc-info {
+      flex: 1;
+    }
+    .twofa-card .tc-info .tc-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .twofa-card .tc-info .tc-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .twofa-card .tc-chevron {
+      color: var(--text-muted);
+    }
+    .twofa-card .tc-chevron svg {
+      width: 18px;
+      height: 18px;
+    }
+    .warning-banner {
+      background: rgba(237, 66, 69, 0.08);
+      border: 1px solid rgba(237, 66, 69, 0.25);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--danger);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .warning-banner svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .account-mgmt-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .mgmt-card {
+      background: var(--bg-modal-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .mgmt-card:hover {
+      background: var(--bg-modal-hover);
+      border-color: var(--border-medium);
+    }
+    .mgmt-card .mc-icon {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .mgmt-card .mc-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+    .mgmt-card .mc-icon.danger svg {
+      color: var(--danger);
+    }
+    .mgmt-card .mc-icon.warning svg {
+      color: var(--warning);
+    }
+    .mgmt-card .mc-info {
+      flex: 1;
+    }
+    .mgmt-card .mc-info .mc-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .mgmt-card .mc-info .mc-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .mgmt-card .mc-chevron {
+      color: var(--text-muted);
+    }
+    .mgmt-card .mc-chevron svg {
+      width: 18px;
+      height: 18px;
+    }
+    .settings-footer-notice {
+      margin-top: 32px;
+      background: var(--bg-modal-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .settings-footer-notice svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+    /* Modals */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+    .modal {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .modal p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .modal label {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    .modal input,
+    .modal textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-medium);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      outline: none;
+      font-family: 'Inter', sans-serif;
+    }
+    .modal input:focus,
+    .modal textarea:focus {
+      border-color: var(--accent);
+      outline: 2px solid var(--accent);
+    }
+    .modal textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .btn-cancel {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: 0.15s;
+    }
+    .btn-cancel:hover {
+      color: var(--text-primary);
+    }
+    .btn-primary {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: 0.15s;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+    .btn-danger {
+      background: #ed4245 !important;
+    }
+    .btn-danger:hover {
+      background: #d93036 !important;
+    }
+    #edit-profile-modal .modal {
+      max-width: 480px;
+    }
+    #edit-profile-modal .avatar-preview {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0;
+    }
+    #edit-profile-modal .avatar-preview img {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #2a2a2a;
+    }
+    .edit-profile-btn {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+    }
+    .edit-profile-btn:hover {
+      background: var(--accent-hover);
+    }
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 10px 24px;
+      border-radius: 40px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      z-index: 400;
+      box-shadow: var(--shadow);
+      white-space: nowrap;
+    }
+    @media (max-width: 768px) {
+      .settings-sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 200px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding: 12px 0;
+        overflow-y: auto;
+      }
+      .settings-content {
+        padding: 24px 20px;
+      }
+      .twofa-grid,
+      .account-mgmt-grid {
+        grid-template-columns: 1fr;
+      }
+      .profile-card {
+        flex-wrap: wrap;
+      }
+    }
+    @media (max-width: 600px) {
+      .settings-content {
+        padding: 16px;
+      }
+      .back-btn span {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="settings-container">
+  <!-- Sidebar -->
+  <div class="settings-sidebar">
+    <div class="nav-section">User Settings</div>
+    <div class="nav-item-settings active" data-tab="my-account" onclick="switchTab('my-account')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>My Account</span></div>
+    <div class="nav-item-settings" data-tab="profile" onclick="switchTab('profile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Profile</span></div>
+    <div class="nav-item-settings" data-tab="sessions" onclick="switchTab('sessions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Sessions</span></div>
+    <div class="nav-section">Client Settings</div>
+    <div class="nav-item-settings" data-tab="voice" onclick="switchTab('voice')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg><span>Voice Settings</span></div>
+    <div class="nav-item-settings" data-tab="appearance" onclick="switchTab('appearance')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><span>Appearance</span></div>
+    <div class="nav-item-settings" data-tab="notifications" onclick="switchTab('notifications')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Notifications</span><span class="badge-settings">3</span></div>
+    <div class="nav-item-settings" data-tab="language" onclick="switchTab('language')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Language</span></div>
+    <div class="nav-item-settings" data-tab="sync" onclick="switchTab('sync')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14l4 4V4a2 2 0 0 0-2-2z"/><path d="M8 8h8"/><path d="M8 12h6"/></svg><span>Sync</span></div>
+    <div class="nav-item-settings" data-tab="experiments" onclick="switchTab('experiments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="10" y1="14" x2="14" y2="18"/><line x1="14" y1="14" x2="10" y2="18"/></svg><span>Experiments</span></div>
+    <div class="nav-section">Nyxie</div>
+    <div class="nav-item-settings" data-tab="bots" onclick="switchTab('bots')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a8 8 0 0 0-8-8z"/><path d="M8 13l2 2 4-4"/></svg><span>My Bots</span></div>
+    <div class="nav-item-settings" data-tab="feedback" onclick="switchTab('feedback')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Feedback</span></div>
+    <div class="nav-item-settings" data-tab="changelogs" onclick="switchTab('changelogs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Changelogs</span></div>
+    <div class="nav-item-settings" data-tab="source" onclick="switchTab('source')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg><span>Source Code</span></div>
+    <div class="nav-item-settings" data-tab="donate" onclick="switchTab('donate')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>Donate</span></div>
+    <div class="settings-sidebar-bottom">
+      <button class="logout-btn" onclick="logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log Out</button>
+      <div class="version-text">nyxie v0.1.0 — 2026</div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="settings-content">
+    <button class="back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Back to Dashboard</span></button>
+
+    <!-- My Account Tab -->
+    <div class="settings-tab" id="tab-my-account">
+      <div class="page-title">My Account</div>
+      <div class="profile-card">
+        <div class="pc-avatar" id="settings-avatar">U</div>
+        <div class="pc-info">
+          <div class="pc-name" id="settings-display-name">User</div>
+          <div class="pc-id" id="settings-user-id">User ID: 0000</div>
+        </div>
+        <button class="pc-edit-btn" onclick="openEditProfileModal()">Edit Profile</button>
+      </div>
+      <div class="account-field">
+        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <span class="af-label">Username</span>
+        <span class="af-value" id="settings-username">@username</span>
+        <button class="af-action" onclick="openChangeUsername()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+      </div>
+      <div class="account-field">
+        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+        <span class="af-label">Email</span>
+        <span class="af-value" id="settings-email">••••••••</span>
+        <button class="af-action" onclick="toggleEmailVisibility()" title="Reveal/hide email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="af-action" onclick="openChangeEmail()" title="Change email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+      </div>
+      <div class="account-field">
+        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <span class="af-label">Password</span>
+        <span class="af-value" style="color:var(--text-muted);">••••••••</span>
+        <button class="af-action" onclick="openChangePassword()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+      </div>
+      <div class="settings-section">
+        <div class="section-title">Two-Factor Authentication</div>
+        <div class="section-desc">Secure your account with two-factor authentication</div>
+        <div class="twofa-grid">
+          <div class="twofa-card" onclick="generateBackupCodes()">
+            <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+            <div class="tc-info"><div class="tc-title">Generate Backup Codes</div><div class="tc-desc">Get 10 one-time use backup codes</div></div>
+            <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="twofa-card" onclick="addAuthenticator()">
+            <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+            <div class="tc-info"><div class="tc-title">Add Authenticator</div><div class="tc-desc">Use an authenticator app to generate codes</div></div>
+            <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+        </div>
+        <div class="warning-banner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>You haven't enabled two-factor authentication!</div>
+      </div>
+      <div class="settings-section">
+        <div class="section-title">Account Management</div>
+        <div class="section-desc">Manage your account preferences and data</div>
+        <div class="account-mgmt-grid">
+          <div class="mgmt-card" onclick="openDisableAccount()">
+            <div class="mc-icon warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+            <div class="mc-info"><div class="mc-title">Disable Account</div><div class="mc-desc">Temporarily disable your account</div></div>
+            <div class="mc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="mgmt-card" onclick="openDeleteAccount()">
+            <div class="mc-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></div>
+            <div class="mc-info"><div class="mc-title">Delete Account</div><div class="mc-desc">Permanently delete your account and all data</div></div>
+            <div class="mc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="settings-footer-notice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Looking to customize your public profile? Head over to your profile settings.</span></div>
+    </div>
+
+    <!-- Other tabs -->
+    <div class="settings-tab" id="tab-profile" style="display:none;"><div class="page-title">Profile</div><p style="color:var(--text-muted);">Profile settings coming soon.</p></div>
+    <div class="settings-tab" id="tab-sessions" style="display:none;"><div class="page-title">Sessions</div><p style="color:var(--text-muted);">Session management coming soon.</p></div>
+    <div class="settings-tab" id="tab-voice" style="display:none;"><div class="page-title">Voice Settings</div><p style="color:var(--text-muted);">Voice settings coming soon.</p></div>
+    <div class="settings-tab" id="tab-appearance" style="display:none;"><div class="page-title">Appearance</div><p style="color:var(--text-muted);">Appearance settings coming soon.</p></div>
+    <div class="settings-tab" id="tab-notifications" style="display:none;"><div class="page-title">Notifications</div><p style="color:var(--text-muted);">Notification settings coming soon.</p></div>
+    <div class="settings-tab" id="tab-language" style="display:none;"><div class="page-title">Language</div><p style="color:var(--text-muted);">Language settings coming soon.</p></div>
+    <div class="settings-tab" id="tab-sync" style="display:none;"><div class="page-title">Sync</div><p style="color:var(--text-muted);">Sync settings coming soon.</p></div>
+    <div class="settings-tab" id="tab-experiments" style="display:none;"><div class="page-title">Experiments</div><p style="color:var(--text-muted);">Experimental features coming soon.</p></div>
+    <div class="settings-tab" id="tab-bots" style="display:none;"><div class="page-title">My Bots</div><p style="color:var(--text-muted);">Bot management coming soon.</p></div>
+    <div class="settings-tab" id="tab-feedback" style="display:none;"><div class="page-title">Feedback</div><p style="color:var(--text-muted);">Send feedback coming soon.</p></div>
+    <div class="settings-tab" id="tab-changelogs" style="display:none;"><div class="page-title">Changelogs</div><p style="color:var(--text-muted);">Changelogs coming soon.</p></div>
+    <div class="settings-tab" id="tab-source" style="display:none;"><div class="page-title">Source Code</div><p style="color:var(--text-muted);">Source code information coming soon.</p></div>
+    <div class="settings-tab" id="tab-donate" style="display:none;"><div class="page-title">Donate</div><p style="color:var(--text-muted);">Support nyxie development coming soon.</p></div>
+  </div>
+</div>
+
+<!-- Modals -->
+<!-- Change Username -->
+<div class="overlay" id="change-username-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Change Username</h2>
+    <p>Enter a new username. It must be 3‑30 characters, letters, numbers, underscore or hyphen.</p>
+    <label>New Username</label>
+    <input type="text" id="new-username-input" placeholder="New username" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('change-username-modal').style.display='none'">Cancel</button>
+      <button class="btn-primary" onclick="saveUsername()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change Email -->
+<div class="overlay" id="change-email-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Change Email</h2>
+    <p>Enter a new email address and confirm with your current password.</p>
+    <label>New Email</label>
+    <input type="email" id="new-email-input" placeholder="new@example.com" />
+    <label>Current Password</label>
+    <input type="password" id="email-current-password" placeholder="Your current password" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('change-email-modal').style.display='none'">Cancel</button>
+      <button class="btn-primary" onclick="saveEmail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change Password -->
+<div class="overlay" id="change-password-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Change Password</h2>
+    <p>Enter your current password and choose a new one.</p>
+    <label>Current Password</label>
+    <input type="password" id="change-current-password" placeholder="Current password" />
+    <label>New Password</label>
+    <input type="password" id="change-new-password" placeholder="New password (min 8 chars)" />
+    <label>Confirm New Password</label>
+    <input type="password" id="change-confirm-password" placeholder="Confirm new password" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('change-password-modal').style.display='none'">Cancel</button>
+      <button class="btn-primary" onclick="savePassword()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Disable Account -->
+<div class="overlay" id="disable-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Disable Account</h2>
+    <p>Your account will be disabled. You can re‑enable it by logging in later.</p>
+    <label>Password</label>
+    <input type="password" id="disable-password" placeholder="Your current password" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('disable-account-modal').style.display='none'">Cancel</button>
+      <button class="btn-danger" onclick="disableAccount()">Disable</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Account -->
+<div class="overlay" id="delete-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Delete Account</h2>
+    <p>This action is PERMANENT and cannot be undone. All your data will be lost.</p>
+    <label>Password</label>
+    <input type="password" id="delete-password" placeholder="Your current password" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('delete-account-modal').style.display='none'">Cancel</button>
+      <button class="btn-danger" onclick="deleteAccount()">Delete Forever</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Profile Modal -->
+<div class="overlay" id="edit-profile-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Edit Profile</h2>
+    <p>Update your information.</p>
+    <form id="editProfileForm" onsubmit="return false;">
+      <label>Username</label>
+      <input type="text" id="edit-username" placeholder="Username" />
+      <label>Display Name</label>
+      <input type="text" id="edit-displayname" placeholder="Display name" />
+      <label>Bio</label>
+      <textarea id="edit-bio" placeholder="Tell something about yourself…" rows="3"></textarea>
+      <div class="avatar-preview">
+        <img id="edit-avatar-preview" src="" alt="Avatar" />
+        <button type="button" class="edit-profile-btn" onclick="document.getElementById('edit-avatar-input').click()">Change Avatar</button>
+        <input type="file" id="edit-avatar-input" accept="image/*" style="display:none" onchange="uploadAvatarFromEdit(this.files[0])" />
+      </div>
+      <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
+        <p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:8px;">Change Password (optional)</p>
+        <label>Current Password</label>
+        <input type="password" id="edit-current-password" placeholder="Current password" autocomplete="off" />
+        <label>New Password</label>
+        <input type="password" id="edit-new-password" placeholder="New password (min 8 chars)" autocomplete="off" />
+        <label>Confirm New Password</label>
+        <input type="password" id="edit-confirm-password" placeholder="Confirm new password" autocomplete="off" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeEditProfileModal()">Cancel</button>
+        <button type="submit" class="btn-primary" id="edit-profile-save-btn">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ---- State ----
+  const API = '';
+  let token = localStorage.getItem('nyxie_token');
+  let currentUser = JSON.parse(localStorage.getItem('nyxie_user') || 'null');
+  let emailVisible = false;
+
+  if (!token || !currentUser) window.location.href = 'login.html';
+
+  // ---- Helpers ----
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => el.style.opacity = '0', 2500);
+  }
+
+  function logout() {
+    localStorage.removeItem('nyxie_token');
+    localStorage.removeItem('nyxie_user');
+    localStorage.removeItem('nyxie_status');
+    window.location.href = 'login.html';
+  }
+
+  function goBack() {
+    window.location.href = 'dashboard.html';
+  }
+
+  async function api(method, path, body) {
+    try {
+      const res = await fetch(API + '/api' + path, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (res.status === 401) { logout(); return null; }
+      if (res.status === 403) {
+        const data = await res.json();
+        if (data.disabled) {
+          toast('Account disabled. Please re‑enable it by logging in.');
+        }
+        return data;
+      }
+      return res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  // ---- Tab switching ----
+  function switchTab(tab) {
+    document.querySelectorAll('.settings-sidebar .nav-item-settings').forEach(el => {
+      el.classList.toggle('active', el.dataset.tab === tab);
+    });
+    document.querySelectorAll('.settings-tab').forEach(el => {
+      el.style.display = el.id === 'tab-' + tab ? 'block' : 'none';
+    });
+  }
+
+  // ---- Load user data ----
+  async function loadUserData() {
+    const data = await api('GET', '/auth/me');
+    if (data?.user) {
+      currentUser = data.user;
+      localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+    }
+    const name = currentUser.display_name || currentUser.username;
+    const avatarEl = document.getElementById('settings-avatar');
+    avatarEl.textContent = name[0].toUpperCase();
+    if (currentUser.avatar) {
+      avatarEl.innerHTML = `<img src="${currentUser.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    }
+    document.getElementById('settings-display-name').textContent = name;
+    document.getElementById('settings-user-id').textContent = `User ID: ${currentUser.id}`;
+    document.getElementById('settings-username').textContent = '@' + currentUser.username;
+    // Email masked by default
+    emailVisible = false;
+    document.getElementById('settings-email').textContent = '••••••••';
+  }
+
+  // ---- Change Username ----
+  function openChangeUsername() {
+    document.getElementById('change-username-modal').style.display = 'flex';
+    document.getElementById('new-username-input').value = '';
+    document.getElementById('new-username-input').focus();
+  }
+
+  async function saveUsername() {
+    const input = document.getElementById('new-username-input');
+    const newUsername = input.value.trim();
+    if (!newUsername) { toast('Please enter a username'); return; }
+    if (newUsername.length < 3 || newUsername.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(newUsername)) {
+      toast('Invalid username (3-30 chars, letters, numbers, _ or -)');
+      return;
+    }
+    const reserved = ['admin', 'root', 'system', 'nyxie', 'support'];
+    if (reserved.includes(newUsername.toLowerCase())) {
+      toast('Username not available');
+      return;
+    }
+    const check = await api('GET', `/users/search?q=${encodeURIComponent(newUsername)}`);
+    if (check?.users?.some(u => u.username.toLowerCase() === newUsername.toLowerCase() && u.id !== currentUser.id)) {
+      toast('Username already taken');
+      return;
+    }
+    const res = await api('PATCH', '/users/me', { username: newUsername });
+    if (res?.error) { toast(res.error); return; }
+    if (res.user) {
+      currentUser.username = res.user.username;
+      localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+      toast('Username updated');
+      document.getElementById('change-username-modal').style.display = 'none';
+      document.getElementById('settings-username').textContent = '@' + currentUser.username;
+      if (document.getElementById('edit-profile-modal').style.display === 'flex') {
+        document.getElementById('edit-username').value = currentUser.username;
+      }
+    }
+  }
+
+  // ---- Toggle Email ----
+  function toggleEmailVisibility() {
+    emailVisible = !emailVisible;
+    const el = document.getElementById('settings-email');
+    if (emailVisible) {
+      el.textContent = currentUser.email || 'user@example.com';
+    } else {
+      el.textContent = '••••••••';
+    }
+  }
+
+  // ---- Change Email ----
+  function openChangeEmail() {
+    document.getElementById('change-email-modal').style.display = 'flex';
+    document.getElementById('new-email-input').value = '';
+    document.getElementById('email-current-password').value = '';
+    document.getElementById('new-email-input').focus();
+  }
+
+  async function saveEmail() {
+    const email = document.getElementById('new-email-input').value.trim().toLowerCase();
+    const password = document.getElementById('email-current-password').value;
+    if (!email) { toast('Please enter an email'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast('Invalid email address');
+      return;
+    }
+    if (!password) { toast('Current password is required to change email'); return; }
+    const res = await api('PATCH', '/users/me', { email, current_password: password });
+    if (res?.error) { toast(res.error); return; }
+    if (res.user) {
+      currentUser.email = res.user.email;
+      localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+      toast('Email updated');
+      document.getElementById('change-email-modal').style.display = 'none';
+      emailVisible = false;
+      document.getElementById('settings-email').textContent = '••••••••';
+    }
+  }
+
+  // ---- Change Password ----
+  function openChangePassword() {
+    document.getElementById('change-password-modal').style.display = 'flex';
+    document.getElementById('change-current-password').value = '';
+    document.getElementById('change-new-password').value = '';
+    document.getElementById('change-confirm-password').value = '';
+    document.getElementById('change-current-password').focus();
+  }
+
+  async function savePassword() {
+    const current = document.getElementById('change-current-password').value;
+    const newPass = document.getElementById('change-new-password').value;
+    const confirm = document.getElementById('change-confirm-password').value;
+    if (!current) { toast('Current password required'); return; }
+    if (newPass.length < 8) { toast('New password must be at least 8 characters'); return; }
+    if (newPass !== confirm) { toast('Passwords do not match'); return; }
+    const res = await api('PATCH', '/users/me', {
+      current_password: current,
+      new_password: newPass
+    });
+    if (res?.error) { toast(res.error); return; }
+    toast('Password updated');
+    document.getElementById('change-password-modal').style.display = 'none';
+  }
+
+  // ---- Disable Account ----
+  function openDisableAccount() {
+    document.getElementById('disable-account-modal').style.display = 'flex';
+    document.getElementById('disable-password').value = '';
+    document.getElementById('disable-password').focus();
+  }
+
+  async function disableAccount() {
+    const password = document.getElementById('disable-password').value;
+    if (!password) { toast('Password is required'); return; }
+    const res = await api('POST', '/users/disable', { password });
+    if (res?.error) { toast(res.error); return; }
+    toast('Account disabled. You will be logged out.');
+    document.getElementById('disable-account-modal').style.display = 'none';
+    setTimeout(logout, 1500);
+  }
+
+  // ---- Delete Account ----
+  function openDeleteAccount() {
+    document.getElementById('delete-account-modal').style.display = 'flex';
+    document.getElementById('delete-password').value = '';
+    document.getElementById('delete-password').focus();
+  }
+
+  async function deleteAccount() {
+    const password = document.getElementById('delete-password').value;
+    if (!password) { toast('Password is required'); return; }
+    const res = await api('DELETE', '/users/me', { password });
+    if (res?.error) { toast(res.error); return; }
+    toast('Account permanently deleted.');
+    document.getElementById('delete-account-modal').style.display = 'none';
+    setTimeout(logout, 1500);
+  }
+
+  // ---- 2FA stubs ----
+  function generateBackupCodes() { toast('Backup codes generation coming soon'); }
+  function addAuthenticator() { toast('Authenticator setup coming soon'); }
+
+  // ---- Edit Profile Modal ----
+  function openEditProfileModal() {
+    document.getElementById('edit-profile-modal').style.display = 'flex';
+    document.getElementById('edit-username').value = currentUser.username || '';
+    document.getElementById('edit-displayname').value = currentUser.display_name || '';
+    document.getElementById('edit-bio').value = currentUser.bio || '';
+    const preview = document.getElementById('edit-avatar-preview');
+    if (currentUser.avatar) {
+      preview.src = currentUser.avatar + '?t=' + Date.now();
+      preview.style.display = 'block';
+    } else {
+      preview.style.display = 'none';
+    }
+    document.getElementById('edit-current-password').value = '';
+    document.getElementById('edit-new-password').value = '';
+    document.getElementById('edit-confirm-password').value = '';
+  }
+
+  function closeEditProfileModal() {
+    document.getElementById('edit-profile-modal').style.display = 'none';
+  }
+
+  document.getElementById('editProfileForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const username = document.getElementById('edit-username').value.trim();
+    const display_name = document.getElementById('edit-displayname').value.trim();
+    const bio = document.getElementById('edit-bio').value.trim();
+    const current_password = document.getElementById('edit-current-password').value;
+    const new_password = document.getElementById('edit-new-password').value;
+    const confirm_password = document.getElementById('edit-confirm-password').value;
+
+    if (!username || username.length < 3 || username.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(username)) {
+      toast('Invalid username'); return;
+    }
+    if (display_name && display_name.length > 64) { toast('Display name too long'); return; }
+    if (bio && bio.length > 500) { toast('Bio too long'); return; }
+    if (new_password && new_password !== confirm_password) { toast('Passwords do not match'); return; }
+    if (new_password && new_password.length < 8) { toast('New password must be at least 8 characters'); return; }
+    if (new_password && !current_password) { toast('Current password is required to change password'); return; }
+
+    const payload = {};
+    if (username !== currentUser.username) payload.username = username;
+    if (display_name !== currentUser.display_name) payload.display_name = display_name;
+    if (bio !== (currentUser.bio || '')) payload.bio = bio;
+    if (new_password) {
+      payload.current_password = current_password;
+      payload.new_password = new_password;
+    }
+
+    if (Object.keys(payload).length === 0) { toast('No changes made'); return; }
+
+    const saveBtn = document.getElementById('edit-profile-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+      const res = await api('PATCH', '/users/me', payload);
+      if (res?.error) { toast(res.error); return; }
+      if (res.user) {
+        currentUser.username = res.user.username;
+        currentUser.display_name = res.user.display_name;
+        currentUser.bio = res.user.bio;
+        localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+        toast('Profile updated');
+        closeEditProfileModal();
+        loadUserData();
+      }
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+    }
+  });
+
+  async function uploadAvatarFromEdit(file) {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('avatar', file);
+    try {
+      const res = await fetch('/api/users/avatar', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.ok) {
+        currentUser.avatar = data.avatar;
+        localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+        document.getElementById('edit-avatar-preview').src = data.avatar + '?t=' + Date.now();
+        document.getElementById('edit-avatar-preview').style.display = 'block';
+        toast('Avatar updated');
+        loadUserData();
+      } else {
+        toast(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      toast('Upload error');
+    }
+  }
+
+  // ---- Init ----
+  loadUserData();
+</script>
+</body>
+</html>

@@ -11,8 +11,9 @@ async function requireAuth(req, res, next) {
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, display_name, disabled FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
+    if (user.disabled) return res.status(403).json({ error: 'Account disabled' });
     req.user = user;
     next();
   } catch (err) {
