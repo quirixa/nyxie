@@ -189,17 +189,27 @@ nyxie/
 ├── server.js          # Main entry point
 ├── .env               # Config (JWT secret, port)
 ├── data/
-│   └── nyxie.db       # SQLite database (auto-created)
+│   ├── nyxie_users.db    # SQLite user database (auto-created)
+│   ├── nyxie_messages.db # SQLite messages database (auto-created)
+│   └── avatars/          # Uploaded profile pictures
 ├── public/            # Static frontend files
 │   ├── index.html
 │   ├── login.html
 │   ├── register.html
 │   └── dashboard.html
-└── src/
-    ├── auth.js        # Register/login routes + JWT
-    ├── db.js          # SQLite (sql.js) database layer
-    ├── middleware.js  # Auth middleware
-    ├── rooms.js       # Rooms + messages REST API
-    ├── users.js       # User routes
-    └── websocket.js   # WebSocket server (real-time)
+├── src/
+│   ├── auth.js        # Register/login routes + JWT
+│   ├── userDb.js      # SQLite (sql.js) user database layer
+│   ├── messageDb.js   # SQLite (sql.js) message database layer
+│   ├── messageDbPg.js # PostgreSQL alternative (optional)
+│   ├── middleware.js  # Auth middleware (JWT verification)
+│   ├── users.js       # User routes (search, profile, avatar)
+│   ├── friends.js     # Friend system (requests, accept/decline)
+│   ├── rooms.js       # Rooms + messages REST API
+│   ├── servers.js     # Server + channel management
+│   └── websocket.js   # WebSocket server (real-time)
+├── package.json       # Dependencies
+├── package-lock.json  # Locked dependency versions
+├── README.md          # Project documentation
+└── COMMIT.md          # Change log / commit summary
 ```
