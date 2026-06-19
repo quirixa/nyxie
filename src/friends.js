@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { getUserDb, all, get, run } = require('./userDb');
 const { requireAuth } = require('./middleware');
 
@@ -48,23 +48,20 @@ router.post('/request', requireAuth, async (req, res) => {
   const target = get(db, 'SELECT id FROM users WHERE id = ?', [to_id]);
   if (!target) return res.status(404).json({ error: 'User not found' });
 
-  // Already friends?
   const already = get(db, `
     SELECT 1 FROM friends
     WHERE ((user_a = ? AND user_b = ?) OR (user_a = ? AND user_b = ?)) AND status = 'accepted'
   `, [req.user.id, to_id, to_id, req.user.id]);
   if (already) return res.status(409).json({ error: 'Already friends' });
 
-  // Pending request already exists either direction?
   const pending = get(db, `
     SELECT id, from_id FROM friend_requests
     WHERE ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)) AND status = 'pending'
   `, [req.user.id, to_id, to_id, req.user.id]);
   if (pending) {
-    // If THEY already sent US one, auto-accept it
     if (pending.from_id === to_id) {
       run(db, 'UPDATE friend_requests SET status = ? WHERE id = ?', ['accepted', pending.id]);
-      const friendId = uuidv4();
+      const friendId = crypto.randomUUID();
       run(db, 'INSERT OR IGNORE INTO friends (id, user_a, user_b, status, created_at) VALUES (?, ?, ?, \'accepted\', ?)',
           [friendId, req.user.id, to_id, Date.now()]);
       return res.json({ ok: true, auto_accepted: true });
@@ -72,7 +69,7 @@ router.post('/request', requireAuth, async (req, res) => {
     return res.status(409).json({ error: 'Request already sent' });
   }
 
-  const reqId = uuidv4();
+  const reqId = crypto.randomUUID();
   run(db, 'INSERT INTO friend_requests (id, from_id, to_id, status, created_at) VALUES (?, ?, ?, \'pending\', ?)',
       [reqId, req.user.id, to_id, Date.now()]);
   res.status(201).json({ ok: true, request_id: reqId });
@@ -86,7 +83,7 @@ router.post('/requests/:id/accept', requireAuth, async (req, res) => {
   if (!fr) return res.status(404).json({ error: 'Request not found' });
 
   run(db, 'UPDATE friend_requests SET status = ? WHERE id = ?', ['accepted', fr.id]);
-  const friendId = uuidv4();
+  const friendId = crypto.randomUUID();
   run(db, 'INSERT OR IGNORE INTO friends (id, user_a, user_b, status, created_at) VALUES (?, ?, ?, \'accepted\', ?)',
       [friendId, fr.from_id, fr.to_id, Date.now()]);
   res.json({ ok: true });

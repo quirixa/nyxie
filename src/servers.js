@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { getUserDb, all, get, run } = require('./userDb');
 const { requireAuth } = require('./middleware');
 
@@ -28,14 +28,14 @@ router.post('/', requireAuth, async (req, res) => {
     let { name } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Server name required' });
     name = name.trim().substring(0, 50);
-    const serverId = uuidv4();
+    const serverId = crypto.randomUUID();
     const now = Date.now();
 
     run(db, 'INSERT INTO servers (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)',
         [serverId, name, req.user.id, now]);
     run(db, 'INSERT INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)',
         [serverId, req.user.id, now]);
-    const generalId = uuidv4();
+    const generalId = crypto.randomUUID();
     run(db, `INSERT INTO rooms (id, server_id, name, description, created_by, created_at, is_dm)
              VALUES (?, ?, 'general', 'Default channel', ?, ?, 0)`,
         [generalId, serverId, req.user.id, now]);
@@ -111,7 +111,7 @@ router.post('/:serverId/channels', requireAuth, async (req, res) => {
     if (!isMember) return res.status(403).json({ error: 'Not a member' });
 
     const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 32);
-    const channelId = uuidv4();
+    const channelId = crypto.randomUUID();
     const now = Date.now();
 
     run(db, `INSERT INTO rooms (id, server_id, name, description, created_by, created_at, is_dm)

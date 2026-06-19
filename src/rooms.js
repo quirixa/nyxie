@@ -1,15 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { getUserDb, all, get, run } = require('./userDb');
 const { getMessageDb, allMessages, getMessage, runMessage } = require('./messageDb');
 const { requireAuth } = require('./middleware');
 
-// Helper: get latest message for each room from messageDb
 async function getLatestMessages(roomIds) {
   if (!roomIds.length) return {};
   const msgDb = await getMessageDb();
-  // Use a subquery to get latest non‑deleted message per room
   const rows = allMessages(msgDb, `
     SELECT m.room_id, m.content, m.created_at
     FROM messages m
@@ -25,7 +23,6 @@ async function getLatestMessages(roomIds) {
   return map;
 }
 
-// GET /api/rooms – list DMs or server channels (user DB) + attach latest messages
 router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const { server_id } = req.query;
@@ -49,7 +46,6 @@ router.get('/', requireAuth, async (req, res) => {
       WHERE r.is_dm = 1 AND rm.user_id = ?
       ORDER BY r.created_at DESC
     `, [req.user.id]);
-    // For DMs, add display_name and _otherId
     for (const room of rooms) {
       const members = all(db, `SELECT user_id FROM room_members WHERE room_id = ?`, [room.id]);
       const other = members.find(m => m.user_id !== req.user.id);
@@ -63,7 +59,6 @@ router.get('/', requireAuth, async (req, res) => {
     }
   }
 
-  // Attach latest message info from messageDb
   const roomIds = rooms.map(r => r.id);
   const latestMap = await getLatestMessages(roomIds);
   for (const room of rooms) {
@@ -75,7 +70,6 @@ router.get('/', requireAuth, async (req, res) => {
   res.json({ rooms });
 });
 
-// POST /api/rooms/dm – create or get DM room (user DB)
 router.post('/dm', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const { target_user_id } = req.body;
@@ -96,14 +90,13 @@ router.post('/dm', requireAuth, async (req, res) => {
 
   if (existing) return res.json({ room_id: existing.id });
 
-  const roomId = uuidv4();
+  const roomId = crypto.randomUUID();
   const now = Date.now();
   run(db, 'INSERT INTO rooms (id, name, description, created_by, created_at, is_dm) VALUES (?, ?, ?, ?, ?, 1)',
     [roomId, `dm-${req.user.id}-${target_user_id}`, '', req.user.id, now]);
   run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, req.user.id, now]);
   run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, target_user_id, now]);
 
-  // Notify both participants
   const initiator = { id: req.user.id, username: req.user.username, display_name: req.user.display_name };
   const target    = { id: targetUser.id, username: targetUser.username, display_name: targetUser.display_name || targetUser.username };
   req.app.locals.broadcastToUser(req.user.id,   { type: 'dm_created', room_id: roomId, with_user: target });
@@ -112,7 +105,6 @@ router.post('/dm', requireAuth, async (req, res) => {
   res.status(201).json({ room_id: roomId });
 });
 
-// GET /api/rooms/:id/messages – fetch messages (message DB) + enrich with user info
 router.get('/:id/messages', requireAuth, async (req, res) => {
   const userDb = await getUserDb();
   const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
@@ -130,7 +122,6 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
     LIMIT ?
   `, [req.params.id, before, limit]);
 
-  // Gather unique user IDs
   const userIds = [...new Set(messages.map(m => m.user_id))];
   let userMap = {};
   if (userIds.length) {
@@ -139,7 +130,6 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
     users.forEach(u => { userMap[u.id] = u; });
   }
 
-  // Enrich messages
   const enriched = messages.map(m => ({
     ...m,
     username: userMap[m.user_id]?.username || 'unknown',
@@ -149,7 +139,6 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   res.json({ messages: enriched.reverse() });
 });
 
-// POST /api/rooms/:id/messages – create a message (message DB)
 router.post('/:id/messages', requireAuth, async (req, res) => {
   const userDb = await getUserDb();
   const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
@@ -159,7 +148,7 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   if (!content || !content.trim()) return res.status(400).json({ error: 'Message content required' });
   if (content.length > 4000) return res.status(400).json({ error: 'Message too long' });
 
-  const msgId = uuidv4();
+  const msgId = crypto.randomUUID();
   const now = Date.now();
   const msgDb = await getMessageDb();
   runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -179,7 +168,6 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   res.status(201).json({ message });
 });
 
-// PATCH /api/rooms/:roomId/messages/:msgId – edit (message DB)
 router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   const msgDb = await getMessageDb();
   const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
@@ -202,7 +190,6 @@ router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// DELETE /api/rooms/:roomId/messages/:msgId (message DB)
 router.delete('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   const msgDb = await getMessageDb();
   const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
@@ -214,7 +201,6 @@ router.delete('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/rooms/:id/leave – remove membership (user DB)
 router.post('/:id/leave', requireAuth, async (req, res) => {
   const db = await getUserDb();
   run(db, 'DELETE FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);

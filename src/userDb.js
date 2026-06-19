@@ -34,14 +34,24 @@ async function getUserDb() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL,
-      seed_hash TEXT UNIQUE NOT NULL,
+      avatar TEXT,
+      bio TEXT,
       status TEXT DEFAULT 'online',
       status_updated_at INTEGER,
       created_at INTEGER NOT NULL,
       last_seen INTEGER
     )
   `);
+
+  // If table already exists but missing 'bio' column, add it (for existing DBs)
+  try {
+    db.run("ALTER TABLE users ADD COLUMN bio TEXT");
+  } catch (e) {
+    // column already exists – ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS servers (
@@ -104,6 +114,7 @@ async function getUserDb() {
     )
   `);
 
+  // Default server (unchanged)
   const defaultServer = db.exec("SELECT id FROM servers WHERE name = 'Nyxie'");
   if (!defaultServer.length || !defaultServer[0].values.length) {
     const serverId = 'nyxie-default';

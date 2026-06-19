@@ -15,26 +15,26 @@
       box-sizing: border-box;
     }
     :root {
-      --bg-primary: #0d0d0e;
-      --bg-secondary: #161618;
-      --bg-sidebar: #1a1a1e;
-      --bg-input: #252529;
-      --bg-hover: rgba(255, 255, 255, 0.05);
-      --bg-active: rgba(255, 255, 255, 0.08);
-      --bg-bubble-own: #5865f2;
-      --bg-bubble-other: #2c2c32;
-      --text-primary: #f0f0f0;
-      --text-secondary: #a0a0a8;
-      --text-muted: #6a6a72;
-      --border-color: #2a2a30;
-      --accent: #5865f2;
-      --accent-hover: #4752c4;
+      --bg-primary: #191919;
+      --bg-secondary: #232323;
+      --bg-sidebar: #232323;
+      --bg-input: #2c2c2c;
+      --bg-hover: rgba(255, 255, 255, 0.06);
+      --bg-active: rgba(255, 255, 255, 0.10);
+      --bg-bubble-own: #fd6671;
+      --bg-bubble-other: #2c2c2c;
+      --msg-hover: rgba(255,255,255,0.03);
+      --text-primary: #ffffff;
+      --text-secondary: #b8b8b8;
+      --text-muted: #8c8c8c;
+      --border-color: #343434;
+      --border-medium: #404040;
+      --accent: #fd6671;
+      --accent-hover: #ff7b85;
       --online: #3ba55c;
-      --idle: #faa61a;
-      --dnd: #ed4245;
       --offline: #6a6a72;
       --radius: 10px;
-      --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     }
     html, body {
       height: 100%;
@@ -75,7 +75,7 @@
       font-weight: 700;
       font-size: 1.1rem;
       letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #b7a9ff, #7c9bff);
+      background: linear-gradient(135deg, #fd6671, #ff7b85);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -112,7 +112,7 @@
       position: absolute;
       top: -4px;
       right: -4px;
-      background: var(--dnd);
+      background: #ed4245;
       color: #fff;
       font-size: 0.6rem;
       font-weight: 700;
@@ -189,6 +189,13 @@
       font-size: 1rem;
       color: #fff;
       text-transform: uppercase;
+      background: #fd6671;
+      overflow: hidden;
+    }
+    .dm-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .status-pip {
       position: absolute;
@@ -200,8 +207,6 @@
       border: 2px solid var(--bg-sidebar);
     }
     .pip-online  { background: var(--online); }
-    .pip-idle    { background: var(--idle); }
-    .pip-dnd     { background: var(--dnd); }
     .pip-offline { background: var(--offline); }
 
     .dm-content {
@@ -236,7 +241,7 @@
       margin-top: 2px;
     }
     .dm-badge {
-      background: var(--dnd);
+      background: #ed4245;
       color: #fff;
       font-size: 0.65rem;
       font-weight: 700;
@@ -274,7 +279,7 @@
       color: var(--text-primary);
     }
     .dm-action-btn.danger:hover {
-      color: var(--dnd);
+      color: #ed4245;
       background: rgba(237, 66, 69, 0.15);
     }
 
@@ -334,7 +339,7 @@
       color: var(--text-primary);
     }
     .msb-delete {
-      background: var(--dnd);
+      background: #ed4245;
       color: #fff;
     }
     .msb-delete:hover {
@@ -348,7 +353,7 @@
     /* User panel at bottom */
     #user-panel {
       height: 56px;
-      background: #121214;
+      background: #1f1f1f;
       display: flex;
       align-items: center;
       padding: 0 10px;
@@ -371,6 +376,13 @@
       font-weight: 700;
       font-size: 0.9rem;
       color: #fff;
+      background: #fd6671;
+      overflow: hidden;
+    }
+    #up-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     #up-status-pip {
       position: absolute;
@@ -379,7 +391,7 @@
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      border: 2px solid #121214;
+      border: 2px solid #1f1f1f;
     }
     #up-info {
       flex: 1;
@@ -493,6 +505,13 @@
       font-weight: 700;
       font-size: 0.9rem;
       color: #fff;
+      background: #fd6671;
+      overflow: hidden;
+    }
+    .ch-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .ch-status-dot {
       position: absolute;
@@ -535,21 +554,21 @@
       color: var(--text-primary);
     }
     .ch-action-btn.danger:hover {
-      color: var(--dnd);
+      color: #ed4245;
     }
 
     #messages-container {
       flex: 1;
       overflow-y: auto;
-      padding: 16px 16px 8px;
+      padding: 8px 16px 8px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
     }
     .msg-date-divider {
       text-align: center;
-      margin: 8px 0 12px;
+      margin: 16px 0;
       position: relative;
+      padding: 0;
     }
     .msg-date-divider span {
       background: var(--bg-primary);
@@ -573,77 +592,78 @@
     }
     .msg-row {
       display: flex;
-      align-items: flex-end;
-      gap: 8px;
-      max-width: 75%;
+      padding: 2px 0;
       position: relative;
+      min-height: 22px;
+    }
+    .msg-row:hover {
+      background: var(--msg-hover);
+    }
+    .msg-row:hover .msg-actions {
+      display: flex;
+    }
+    .msg-row:hover .msg-timestamp-inline {
+      opacity: 1;
+    }
+    .msg-content-col {
+      flex: 1;
+      min-width: 0;
+    }
+    .msg-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
       margin-bottom: 2px;
     }
-    .msg-row.outgoing {
-      margin-left: auto;
-      flex-direction: row-reverse;
-    }
-    .msg-row.incoming {
-      margin-right: auto;
-    }
-    .bubble-avatar {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.7rem;
-      color: #fff;
-      flex-shrink: 0;
-      align-self: flex-end;
-    }
-    .bubble-avatar.hidden {
-      visibility: hidden;
-    }
-    .bubble {
-      padding: 8px 14px;
-      border-radius: 16px;
-      word-break: break-word;
-      line-height: 1.5;
-      font-size: 0.9rem;
-    }
-    .msg-row.incoming .bubble {
-      background: var(--bg-bubble-other);
+    .msg-author {
+      font-size: 0.92rem;
+      font-weight: 600;
       color: var(--text-primary);
-      border-bottom-left-radius: 4px;
+      cursor: pointer;
     }
-    .msg-row.outgoing .bubble {
-      background: var(--bg-bubble-own);
-      color: #fff;
-      border-bottom-right-radius: 4px;
+    .msg-author:hover {
+      text-decoration: underline;
     }
-    .bubble.deleted {
-      color: var(--text-muted) !important;
-      font-style: italic;
-      background: var(--bg-hover) !important;
-    }
-    .bubble-meta {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-top: 4px;
-      justify-content: flex-end;
-      font-size: 0.67rem;
-      color: rgba(255, 255, 255, 0.45);
-    }
-    .msg-row.incoming .bubble-meta {
+    .msg-timestamp {
+      font-size: 0.7rem;
       color: var(--text-muted);
+      font-weight: 400;
+    }
+    .msg-text {
+      font-size: 0.925rem;
+      color: var(--text-primary);
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .msg-text.deleted {
+      color: var(--text-muted);
+      font-style: italic;
     }
     .edited-tag {
-      font-size: 0.65rem;
-      opacity: 0.6;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-left: 4px;
     }
-    .bubble-actions {
+    .msg-row.compact .msg-timestamp-inline {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity 0.1s;
+      margin-right: 8px;
+    }
+    .msg-row.compact .msg-content-col {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .msg-row.compact .msg-content-col .msg-text {
+      flex: 1;
+    }
+    .msg-actions {
       position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
+      top: -14px;
+      right: 0;
       display: none;
       gap: 2px;
       background: var(--bg-sidebar);
@@ -653,35 +673,29 @@
       box-shadow: var(--shadow);
       z-index: 10;
     }
-    .msg-row.outgoing .bubble-actions {
-      right: calc(100% + 6px);
-    }
-    .msg-row.incoming .bubble-actions {
-      left: calc(100% + 6px);
-    }
-    .msg-row:hover .bubble-actions {
-      display: flex;
-    }
-    .bub-act-btn {
+    .msg-act-btn {
       background: none;
       border: none;
       border-radius: 4px;
       color: var(--text-secondary);
       cursor: pointer;
-      width: 26px;
-      height: 26px;
-      font-size: 0.78rem;
+      width: 28px;
+      height: 28px;
+      font-size: 0.82rem;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: 0.1s;
     }
-    .bub-act-btn:hover {
+    .msg-act-btn:hover {
       background: var(--bg-hover);
       color: var(--text-primary);
     }
-    .bub-act-btn.danger:hover {
-      color: var(--dnd);
+    .msg-act-btn.danger:hover {
+      color: #ed4245;
+    }
+    .msg-row.outgoing .msg-author {
+      color: #fd6671;
     }
 
     #typing-indicator {
@@ -817,6 +831,12 @@
       font-weight: 700;
       font-size: 0.9rem;
       color: #fff;
+      overflow: hidden;
+    }
+    .fr-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .fr-info {
       flex: 1;
@@ -859,7 +879,7 @@
     }
     .fr-btn.decline:hover {
       background: rgba(237, 66, 69, 0.15);
-      color: var(--dnd);
+      color: #ed4245;
     }
     .friends-empty {
       padding: 40px 20px;
@@ -921,102 +941,7 @@
       overflow-y: auto;
     }
 
-    /* ---------- Modals ---------- */
-    .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 200;
-    }
-    .modal {
-      background: var(--bg-secondary);
-      border-radius: 12px;
-      padding: 28px;
-      width: 100%;
-      max-width: 440px;
-      box-shadow: var(--shadow);
-      border: 1px solid var(--border-color);
-    }
-    .modal h2 {
-      font-size: 1.2rem;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-    .modal p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 16px;
-    }
-    .modal label {
-      display: block;
-      font-size: 0.7rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 4px;
-      margin-top: 12px;
-    }
-    .modal input {
-      width: 100%;
-      background: var(--bg-input);
-      border: none;
-      border-radius: 8px;
-      padding: 10px 14px;
-      color: var(--text-primary);
-      font-size: 0.9rem;
-      outline: none;
-      font-family: 'Inter', sans-serif;
-    }
-    .modal input:focus {
-      outline: 2px solid var(--accent);
-    }
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      margin-top: 20px;
-    }
-    .btn-cancel {
-      background: none;
-      border: none;
-      color: var(--text-secondary);
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 500;
-      transition: 0.15s;
-    }
-    .btn-cancel:hover {
-      color: var(--text-primary);
-    }
-    .btn-primary {
-      background: var(--accent);
-      border: none;
-      color: #fff;
-      padding: 8px 20px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-      transition: 0.15s;
-    }
-    .btn-primary:hover {
-      background: var(--accent-hover);
-    }
-    .btn-danger {
-      background: var(--dnd) !important;
-    }
-    .btn-danger:hover {
-      background: #d93036 !important;
-    }
-
-    /* ---------- Profile Popout ---------- */
+    /* ---------- Profile Popout (self) ---------- */
     #profile-popout {
       position: fixed;
       bottom: 70px;
@@ -1033,6 +958,7 @@
     .pp-banner {
       height: 80px;
       flex-shrink: 0;
+      background: linear-gradient(135deg, #fd6671, #ff7b85);
     }
     .pp-header-row {
       padding: 0 14px;
@@ -1058,6 +984,13 @@
       font-weight: 700;
       color: #fff;
       border: 4px solid var(--bg-secondary);
+      background: #fd6671;
+      overflow: hidden;
+    }
+    .pp-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .pp-avatar-status {
       position: absolute;
@@ -1079,7 +1012,14 @@
     .pp-tag {
       font-size: 0.8rem;
       color: var(--text-muted);
-      margin-bottom: 4px;
+      margin-bottom: 2px;
+    }
+    .pp-bio {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      margin: 6px 0 2px;
+      word-wrap: break-word;
+      white-space: pre-wrap;
     }
     .pp-divider {
       height: 1px;
@@ -1109,11 +1049,11 @@
       color: var(--text-primary);
     }
     .pp-menu-item.danger {
-      color: var(--dnd);
+      color: #ed4245;
     }
     .pp-menu-item.danger:hover {
       background: rgba(237, 66, 69, 0.12);
-      color: var(--dnd);
+      color: #ed4245;
     }
     .pp-menu-icon {
       width: 22px;
@@ -1157,64 +1097,209 @@
       color: var(--text-primary);
       font-weight: 600;
     }
-    #pp-edit-section {
+
+    /* ---------- User Profile Popout (view others – near author) ---------- */
+    #user-profile-popout {
+      position: fixed;
+      width: 380px;
+      max-width: 90vw;
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
+      z-index: 160;
       display: none;
-      padding: 6px 0 4px;
+      overflow: hidden;
+      padding: 20px 24px 24px;
     }
-    .pp-edit-label {
+    #user-profile-popout .up-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    #user-profile-popout .up-avatar-large {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #fff;
+      background: #fd6671;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    #user-profile-popout .up-avatar-large img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #user-profile-popout .up-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    #user-profile-popout .up-username {
+      color: var(--text-muted);
+    }
+    #user-profile-popout .up-bio {
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+    #user-profile-popout .up-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    #user-profile-popout .up-status-pip {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    #user-profile-popout .up-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+    }
+
+    /* ---------- Modals (overlay) ---------- */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+    .modal {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .modal p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .modal label {
+      display: block;
       font-size: 0.7rem;
       font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.06em;
       margin-bottom: 4px;
+      margin-top: 12px;
     }
-    .pp-edit-input {
+    .modal input, .modal textarea {
       width: 100%;
       background: var(--bg-input);
-      border: none;
-      border-radius: 6px;
-      padding: 8px 10px;
+      border: 1px solid var(--border-medium);
+      border-radius: 8px;
+      padding: 10px 14px;
       color: var(--text-primary);
-      font-size: 0.85rem;
-      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
       outline: none;
-      margin-bottom: 6px;
+      font-family: 'Inter', sans-serif;
     }
-    .pp-edit-input:focus {
+    .modal input:focus, .modal textarea:focus {
+      border-color: var(--accent);
       outline: 2px solid var(--accent);
     }
-    .pp-edit-actions {
-      display: flex;
-      gap: 6px;
-      justify-content: flex-end;
+    .modal textarea {
+      resize: vertical;
+      min-height: 60px;
     }
-    .pp-edit-cancel {
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .btn-cancel {
       background: none;
       border: none;
-      color: var(--text-muted);
-      font-size: 0.8rem;
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 6px;
       cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: 0.15s;
     }
-    .pp-edit-cancel:hover {
+    .btn-cancel:hover {
       color: var(--text-primary);
     }
-    .pp-edit-save {
+    .btn-primary {
       background: var(--accent);
       border: none;
-      border-radius: 4px;
       color: #fff;
-      padding: 4px 14px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      font-family: 'Inter', sans-serif;
+      padding: 8px 20px;
+      border-radius: 6px;
       cursor: pointer;
-      transition: 0.12s;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: 0.15s;
     }
-    .pp-edit-save:hover {
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+    .btn-danger {
+      background: #ed4245 !important;
+    }
+    .btn-danger:hover {
+      background: #d93036 !important;
+    }
+
+    /* Edit Profile Modal specific */
+    #edit-profile-modal .modal {
+      max-width: 480px;
+    }
+    #edit-profile-modal .avatar-preview {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0;
+    }
+    #edit-profile-modal .avatar-preview img {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #2a2a2a;
+    }
+    .edit-profile-btn {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+    }
+    .edit-profile-btn:hover {
       background: var(--accent-hover);
     }
 
@@ -1243,10 +1328,10 @@
       color: #fff;
     }
     .ctx-item.danger {
-      color: var(--dnd);
+      color: #ed4245;
     }
     .ctx-item.danger:hover {
-      background: var(--dnd);
+      background: #ed4245;
       color: #fff;
     }
 
@@ -1274,6 +1359,12 @@
       font-size: 0.85rem;
       color: #fff;
       flex-shrink: 0;
+      overflow: hidden;
+    }
+    .mini-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     /* ---------- Toast ---------- */
@@ -1336,8 +1427,12 @@
         width: auto;
         bottom: 70px;
       }
+      #user-profile-popout {
+        width: 90vw;
+        max-width: 90vw;
+      }
       .msg-row {
-        max-width: 90%;
+        max-width: 100%;
       }
     }
   </style>
@@ -1394,6 +1489,7 @@
       <div id="friends-header">
         <h2>Friends</h2>
         <button class="icon-btn" onclick="closeFriendsPanel()" style="font-size:1.2rem;">✕</button>
+        <button class="icon-btn" onclick="loadFriendsData().then(renderFriendsList)" title="Refresh">⟳</button>
       </div>
       <div class="friends-tab-bar">
         <button class="ftab active" id="ftab-all" onclick="switchFriendsTab('all')">All</button>
@@ -1445,7 +1541,7 @@
   </div>
 </div>
 
-<!-- Profile Popout -->
+<!-- Profile Popout (self) -->
 <div id="profile-popout">
   <div class="pp-banner" id="pp-banner"></div>
   <div class="pp-header-row">
@@ -1457,19 +1553,11 @@
   <div class="pp-body">
     <div class="pp-name" id="pp-name"></div>
     <div class="pp-tag" id="pp-tag"></div>
+    <div class="pp-bio" id="pp-bio"></div>
+
     <div class="pp-divider"></div>
 
-    <div id="pp-edit-section">
-      <div class="pp-edit-label">Display Name</div>
-      <input type="text" class="pp-edit-input" id="pp-display-input" placeholder="Display name" maxlength="64" />
-      <div class="pp-edit-actions">
-        <button class="pp-edit-cancel" onclick="closeEditProfile()">Cancel</button>
-        <button class="pp-edit-save" onclick="saveProfile()">Save</button>
-      </div>
-      <div class="pp-divider"></div>
-    </div>
-
-    <div class="pp-menu-item" onclick="openEditProfile()">
+    <div class="pp-menu-item" onclick="openEditProfileModal()">
       <span class="pp-menu-icon">✏️</span><span>Edit Profile</span>
     </div>
 
@@ -1480,8 +1568,6 @@
     </div>
     <div id="pp-status-submenu" style="display:none">
       <button class="pp-sub-btn" data-status="online" onclick="setStatus('online')"><span class="pp-dot pip-online"></span>Online</button>
-      <button class="pp-sub-btn" data-status="idle" onclick="setStatus('idle')"><span class="pp-dot pip-idle"></span>Idle</button>
-      <button class="pp-sub-btn" data-status="dnd" onclick="setStatus('dnd')"><span class="pp-dot pip-dnd"></span>Do Not Disturb</button>
       <button class="pp-sub-btn" data-status="offline" onclick="setStatus('offline')"><span class="pp-dot pip-offline"></span>Invisible</button>
     </div>
 
@@ -1493,6 +1579,63 @@
     <div class="pp-menu-item danger" onclick="logout()">
       <span class="pp-menu-icon">🚪</span><span>Log Out</span>
     </div>
+  </div>
+</div>
+
+<!-- Edit Profile Modal (overlay) -->
+<div class="overlay" id="edit-profile-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <h2>Edit Profile</h2>
+    <p>Update your information.</p>
+    <form id="editProfileForm" onsubmit="return false;">
+      <label>Username</label>
+      <input type="text" id="edit-username" placeholder="Username" />
+      <label>Display Name</label>
+      <input type="text" id="edit-displayname" placeholder="Display name" />
+      <label>Bio</label>
+      <textarea id="edit-bio" placeholder="Tell something about yourself…" rows="3"></textarea>
+
+      <div class="avatar-preview">
+        <img id="edit-avatar-preview" src="" alt="Avatar" />
+        <button type="button" class="edit-profile-btn" onclick="document.getElementById('edit-avatar-input').click()">Change Avatar</button>
+        <input type="file" id="edit-avatar-input" accept="image/*" style="display:none" onchange="uploadAvatarFromEdit(this.files[0])" />
+      </div>
+
+      <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
+        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">Change Password (optional)</p>
+        <label>Current Password</label>
+        <input type="password" id="edit-current-password" placeholder="Current password" autocomplete="off" />
+        <label>New Password</label>
+        <input type="password" id="edit-new-password" placeholder="New password (min 8 chars)" autocomplete="off" />
+        <label>Confirm New Password</label>
+        <input type="password" id="edit-confirm-password" placeholder="Confirm new password" autocomplete="off" />
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeEditProfileModal()">Cancel</button>
+        <button type="submit" class="btn-primary" id="edit-profile-save-btn">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- User Profile Popout (view others – near author) -->
+<div id="user-profile-popout">
+  <div class="up-header">
+    <div class="up-avatar-large" id="up-avatar-large">?</div>
+    <div>
+      <div class="up-name" id="up-name-display">Name</div>
+      <div class="up-username" id="up-username-display">@username</div>
+    </div>
+  </div>
+  <div class="up-bio" id="up-bio-display"></div>
+  <div class="up-status-row">
+    <span class="up-status-pip" id="up-status-pip-display"></span>
+    <span id="up-status-text-display" style="color:var(--text-muted);font-size:0.85rem;">Status</span>
+  </div>
+  <div class="up-actions">
+    <button class="btn-cancel" onclick="closeUserProfilePopout()">Close</button>
+    <button class="btn-primary" onclick="startDMFromProfile()">Message</button>
   </div>
 </div>
 
@@ -1553,6 +1696,8 @@
   let currentFriendsTab = 'all';
   let _searchTimer, _friendSearchTimer;
   let toastTimeout = null;
+  const sentMsgIds = new Set();
+  let _profileUserId = null;
 
   if (!token || !currentUser) window.location.href = 'login.html';
 
@@ -1581,14 +1726,14 @@
   }
 
   function hashColor(name) {
-    const colors = ['#5865f2','#eb459e','#ed4245','#3ba55c','#faa61a','#1abc9c','#e67e22','#9b59b6'];
+    const colors = ['#fd6671','#eb459e','#ed4245','#3ba55c','#faa61a','#1abc9c','#e67e22','#9b59b6'];
     let h = 0;
     for (let i=0; i<name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
     return colors[Math.abs(h) % colors.length];
   }
 
   function pipClass(status) {
-    return (status === 'offline' || status === 'invisible') ? 'pip-offline' : 'pip-online';
+    return status === 'online' ? 'pip-online' : 'pip-offline';
   }
 
   function fmtTime(ts) {
@@ -1657,6 +1802,7 @@
       switch (msg.type) {
         case 'new_message': {
           const m = msg.message;
+          if (sentMsgIds.has(m.id)) { sentMsgIds.delete(m.id); break; }
           if (currentRoom?.id === m.room_id) {
             appendMessage(m);
             scrollToBottom();
@@ -1675,14 +1821,14 @@
           break;
         }
         case 'message_edited': {
-          const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .bubble-text`);
-          if (el) el.innerHTML = escapeHtml(msg.content) + '<span class="edited-tag"> edited</span>';
+          const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
+          if (el) el.innerHTML = escapeHtml(msg.content) + '<span class="edited-tag">(edited)</span>';
           break;
         }
         case 'message_deleted': {
-          const bub = document.querySelector(`[data-msg-id="${msg.message_id}"] .bubble`);
-          if (bub) { bub.innerHTML = '<span class="bubble-text">Message deleted</span>'; bub.classList.add('deleted'); }
-          const acts = document.querySelector(`[data-msg-id="${msg.message_id}"] .bubble-actions`);
+          const textEl = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
+          if (textEl) { textEl.innerHTML = 'Message deleted'; textEl.classList.add('deleted'); }
+          const acts = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-actions`);
           if (acts) acts.remove();
           break;
         }
@@ -1690,15 +1836,17 @@
           if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id)
             showTyping(msg.display_name || msg.username);
           break;
-        case 'presence_update':
+        case 'presence_update': {
           updatePresence(msg.user_id, msg.status);
+          updateFriendStatus(msg.user_id, msg.status);
           break;
+        }
         case 'room_state': {
-          // Update statuses for all members in the room
           if (msg.room_id === currentRoom?.id) {
             msg.members.forEach(m => {
               if (m.id !== currentUser.id) {
                 updatePresence(m.id, m.status);
+                updateFriendStatus(m.id, m.status);
               }
             });
           }
@@ -1727,7 +1875,6 @@
           break;
         }
         case 'connected': {
-          // refresh status
           break;
         }
       }
@@ -1816,11 +1963,21 @@
     const activeDm = dms.find(d => d.id === currentRoom?.id);
     if (activeDm && activeDm._otherId === userId) {
       document.getElementById('ch-status-dot').className = `ch-status-dot ${pipClass(status)}`;
-      const statusLabels = { online:'online', idle:'online', dnd:'online', offline:'offline', invisible:'offline' };
-      document.getElementById('chat-status-text').textContent = statusLabels[status] || status;
+      const statusText = status === 'online' ? 'online' : 'offline';
+      document.getElementById('chat-status-text').textContent = statusText;
     }
     const dm = dms.find(d => d._otherId === userId);
     if (dm) dm._status = status;
+  }
+
+  function updateFriendStatus(userId, status) {
+    const friend = friends.find(f => f.id === userId);
+    if (friend) {
+      friend.status = status;
+      if (document.getElementById('friends-panel').style.display === 'flex') {
+        renderFriendsList();
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════
@@ -1843,8 +2000,9 @@
     wsJoin(room.id);
 
     const letter = (room.display_name || room.name)[0].toUpperCase();
-    document.getElementById('ch-avatar').textContent = letter;
-    document.getElementById('ch-avatar').style.background = hashColor(room.display_name || room.name);
+    const chAvatar = document.getElementById('ch-avatar');
+    chAvatar.textContent = letter;
+    chAvatar.style.background = hashColor(room.display_name || room.name);
     document.getElementById('chat-room-name').textContent = room.display_name || room.name;
     document.getElementById('msg-input').placeholder = `Message ${room.display_name || room.name}…`;
 
@@ -1874,7 +2032,7 @@
   }
 
   // ════════════════════════════════════════════════════════════
-  //  MESSAGES
+  //  MESSAGES – no avatars, clickable author name
   // ════════════════════════════════════════════════════════════
   function appendMessage(msg) {
     const container = document.getElementById('messages-container');
@@ -1882,6 +2040,7 @@
     const isOwn   = msg.user_id === currentUser.id;
     const msgDate = new Date(msg.created_at).toDateString();
     const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    const fullTime = new Date(msg.created_at).toLocaleString([], { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
     if (msgDate !== window._lastMsgDate) {
       window._lastMsgDate = msgDate;
@@ -1897,40 +2056,45 @@
 
     const now      = msg.created_at;
     const sameUser = msg.user_id === window._lastMsgUserId && (now - window._lastMsgTime) < 5 * 60 * 1000;
-    window._lastMsgUserId  = msg.user_id;
-    window._lastMsgTime    = now;
+    window._lastMsgUserId = msg.user_id;
+    window._lastMsgTime   = now;
 
-    const letter     = (msg.display_name || msg.username || '?')[0].toUpperCase();
-    const avatarColor= hashColor(msg.display_name || msg.username);
-    const textHtml = msg.deleted ? `<span class="bubble-text deleted">Message deleted</span>` :
-      `<span class="bubble-text">${escapeHtml(msg.content)}${msg.edited_at ? '<span class="edited-tag"> edited</span>' : ''}</span>`;
+    const displayName = msg.display_name || msg.username || 'Unknown';
+    const textHtml = msg.deleted
+      ? `<span class="msg-text deleted">Message deleted</span>`
+      : `<span class="msg-text">${escapeHtml(msg.content)}${msg.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}</span>`;
+
     const actions = isOwn && !msg.deleted ? `
-      <div class="bubble-actions">
-        <button class="bub-act-btn" title="Edit" onclick="editMsg('${msg.id}',this)">✏️</button>
-        <button class="bub-act-btn danger" title="Delete" onclick="deleteMsg('${msg.id}','${msg.room_id}')">🗑️</button>
+      <div class="msg-actions">
+        <button class="msg-act-btn" title="Edit" onclick="editMsg('${msg.id}',this)">✏️</button>
+        <button class="msg-act-btn danger" title="Delete" onclick="deleteMsg('${msg.id}','${msg.room_id}')">🗑️</button>
       </div>` : '';
 
     const row = document.createElement('div');
-    row.className = `msg-row ${isOwn ? 'outgoing' : 'incoming'}`;
     row.dataset.msgId = msg.id;
-    row.style.marginTop = sameUser ? '2px' : '8px';
 
-    if (isOwn) {
+    if (sameUser) {
+      row.className = 'msg-row compact' + (isOwn ? ' outgoing' : '');
       row.innerHTML = `
-        <div class="bubble">
+        <div class="msg-content-col">
+          <span class="msg-timestamp-inline" title="${fullTime}">${timeStr}</span>
           ${textHtml}
-          <div class="bubble-meta"><span class="bubble-time">${timeStr}</span></div>
-          ${actions}
-        </div>`;
+        </div>
+        ${actions}`;
     } else {
+      row.className = 'msg-row' + (isOwn ? ' outgoing' : '');
+      row.style.marginTop = '17px';
       row.innerHTML = `
-        <div class="bubble-avatar${sameUser ? ' hidden' : ''}" style="background:${avatarColor}">${letter}</div>
-        <div class="bubble">
+        <div class="msg-content-col">
+          <div class="msg-header">
+            <span class="msg-author" onclick="showUserProfile(event, '${msg.user_id}')">${escapeHtml(displayName)}</span>
+            <span class="msg-timestamp" title="${fullTime}">${timeStr}</span>
+          </div>
           ${textHtml}
-          <div class="bubble-meta"><span class="bubble-time">${timeStr}</span></div>
-          ${actions}
-        </div>`;
+        </div>
+        ${actions}`;
     }
+
     container.appendChild(row);
     if (wasBottom) scrollToBottom();
   }
@@ -1947,24 +2111,23 @@
     input.value = '';
     input.style.height = 'auto';
     const res = await api('POST', `/rooms/${currentRoom.id}/messages`, { content });
-    if (res?.error) toast(res.error);
-    else {
-      appendMessage(res.message);
-      scrollToBottom();
-      const dm = dms.find(d => d.id === currentRoom.id);
-      if (dm) {
-        dm.last_message = content;
-        dm.last_message_at = Date.now();
-        dms = [dm, ...dms.filter(d => d.id !== dm.id)];
-        renderDMList();
-        document.querySelector(`[data-room-id="${currentRoom.id}"]`)?.classList.add('active');
-      }
+    if (res?.error) { toast(res.error); return; }
+    if (res.message?.id) sentMsgIds.add(res.message.id);
+    appendMessage(res.message);
+    scrollToBottom();
+    const dm = dms.find(d => d.id === currentRoom.id);
+    if (dm) {
+      dm.last_message = content;
+      dm.last_message_at = Date.now();
+      dms = [dm, ...dms.filter(d => d.id !== dm.id)];
+      renderDMList();
+      document.querySelector(`[data-room-id="${currentRoom.id}"]`)?.classList.add('active');
     }
   }
 
   async function editMsg(msgId, btn) {
-    const textEl = btn.closest('[data-msg-id]').querySelector('.bubble-text');
-    const old    = textEl?.textContent?.replace(' edited','') || '';
+    const textEl = btn.closest('[data-msg-id]').querySelector('.msg-text');
+    const old    = textEl?.textContent?.replace('(edited)','').trim() || '';
     const newContent = prompt('Edit message:', old);
     if (!newContent || newContent === old) return;
     await api('PATCH', `/rooms/${currentRoom.id}/messages/${msgId}`, { content: newContent });
@@ -2002,17 +2165,115 @@
   }
 
   // ════════════════════════════════════════════════════════════
-  //  STATUS
+  //  USER PROFILE POPOUT (positioned near author name)
   // ════════════════════════════════════════════════════════════
-  const STATUS_LABELS = { online:'Online', idle:'Idle', dnd:'Do Not Disturb', offline:'Invisible' };
-  const STATUS_PIP_REAL = { online:'pip-online', idle:'pip-idle', dnd:'pip-dnd', offline:'pip-offline' };
+  async function showUserProfile(event, userId) {
+    if (userId === currentUser.id) {
+      toggleProfilePopout();
+      return;
+    }
+    const popout = document.getElementById('user-profile-popout');
+    popout.style.display = 'block';
+    _profileUserId = userId;
+
+    // Position near the clicked element
+    const rect = event.target.getBoundingClientRect();
+    const top = rect.bottom + 8; // 8px gap below
+    const left = rect.left;
+    // Adjust to keep inside viewport
+    const popoutWidth = 380;
+    const popoutHeight = 300; // approximate
+    let finalLeft = left;
+    let finalTop = top;
+    if (finalLeft + popoutWidth > window.innerWidth) finalLeft = window.innerWidth - popoutWidth - 16;
+    if (finalTop + popoutHeight > window.innerHeight) {
+      // Show above instead
+      finalTop = rect.top - popoutHeight - 8;
+    }
+    if (finalTop < 16) finalTop = 16;
+    if (finalLeft < 16) finalLeft = 16;
+    popout.style.left = finalLeft + 'px';
+    popout.style.top = finalTop + 'px';
+
+    // Loading state
+    document.getElementById('up-name-display').textContent = 'Loading…';
+    document.getElementById('up-username-display').textContent = '';
+    document.getElementById('up-bio-display').textContent = '';
+    const avatarEl = document.getElementById('up-avatar-large');
+    avatarEl.innerHTML = '…';
+    avatarEl.style.background = '#fd6671';
+
+    try {
+      const data = await api('GET', `/users/${userId}`);
+      if (!data?.user) { toast('User not found'); popout.style.display = 'none'; return; }
+      const user = data.user;
+      document.getElementById('up-name-display').textContent = user.display_name || user.username;
+      document.getElementById('up-username-display').textContent = '@' + user.username;
+      document.getElementById('up-bio-display').textContent = user.bio || '';
+
+      if (user.avatar) {
+        avatarEl.innerHTML = `<img src="${user.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+        avatarEl.style.background = 'none';
+      } else {
+        const letter = (user.display_name || user.username)[0].toUpperCase();
+        avatarEl.innerHTML = letter;
+        avatarEl.style.background = hashColor(user.display_name || user.username);
+      }
+
+      const status = user.status || 'offline';
+      const pip = document.getElementById('up-status-pip-display');
+      pip.className = 'up-status-pip ' + pipClass(status);
+      document.getElementById('up-status-text-display').textContent = status === 'online' ? 'Online' : 'Offline';
+    } catch (err) {
+      toast('Failed to load profile');
+      popout.style.display = 'none';
+    }
+  }
+
+  function closeUserProfilePopout() {
+    document.getElementById('user-profile-popout').style.display = 'none';
+    _profileUserId = null;
+  }
+
+  function startDMFromProfile() {
+    if (!_profileUserId) return;
+    const userId = _profileUserId;
+    closeUserProfilePopout();
+    const existing = dms.find(d => d._otherId === userId);
+    if (existing) {
+      openRoom(existing.id);
+    } else {
+      api('GET', `/users/${userId}`).then(data => {
+        if (data?.user) {
+          const name = data.user.display_name || data.user.username;
+          startDM(userId, name);
+        } else {
+          toast('User not found');
+        }
+      });
+    }
+  }
+
+  // Click outside to close the user profile popout (but not inside, and not on the author name itself)
+  document.addEventListener('click', (e) => {
+    const popout = document.getElementById('user-profile-popout');
+    if (popout.style.display === 'block' && !popout.contains(e.target) && !e.target.closest('.msg-author')) {
+      closeUserProfilePopout();
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════
+  //  STATUS – only online / offline
+  // ════════════════════════════════════════════════════════════
+  const STATUS_LABELS = { online:'Online', offline:'Invisible' };
+  const STATUS_PIP_REAL = { online:'pip-online', offline:'pip-offline' };
 
   async function setStatus(status) {
     document.getElementById('pp-status-submenu').style.display = 'none';
     document.querySelectorAll('.pp-sub-btn').forEach(b => b.classList.toggle('active', b.dataset.status === status));
     const curDot = document.getElementById('pp-cur-dot');
     if (curDot) curDot.className = `pp-dot ${STATUS_PIP_REAL[status]||'pip-offline'}`;
-    document.getElementById('pp-cur-label').textContent = STATUS_LABELS[status] || 'Online';
+    document.getElementById('pp-cur-label').textContent = STATUS_LABELS[status] || 'Invisible';
     document.getElementById('up-status-pip').className = `${pipClass(status)}`;
     document.getElementById('pp-avatar-status').className = `pp-avatar-status ${pipClass(status)}`;
     await api('PATCH', '/users/status', { status });
@@ -2029,59 +2290,199 @@
   }
 
   // ════════════════════════════════════════════════════════════
-  //  PROFILE POPOUT
+  //  PROFILE POPOUT (self)
   // ════════════════════════════════════════════════════════════
   function toggleProfilePopout() {
     const pp = document.getElementById('profile-popout');
     if (pp.style.display === 'block') { pp.style.display = 'none'; return; }
     const name = currentUser.display_name || currentUser.username;
-    document.getElementById('pp-avatar-letter').textContent = name[0].toUpperCase();
-    document.getElementById('pp-avatar-letter').style.background = hashColor(name);
+    const letter = name[0].toUpperCase();
+    const color = hashColor(name);
+    const avEl = document.getElementById('pp-avatar-letter');
+    avEl.textContent = letter;
+    avEl.style.background = color;
+    if (currentUser.avatar) {
+      avEl.innerHTML = `<img src="${currentUser.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    } else {
+      avEl.innerHTML = letter;
+      avEl.style.background = color;
+    }
+
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent  = '@' + currentUser.username;
+    document.getElementById('pp-bio').textContent  = currentUser.bio || '';
     document.getElementById('pp-banner').style.background =
-      `linear-gradient(135deg, ${hashColor(currentUser.username)}, #5865f2)`;
+      `linear-gradient(135deg, ${hashColor(currentUser.username)}, #fd6671)`;
     const curStatus = currentUser._status || currentUser.status || 'online';
     const curDot = document.getElementById('pp-cur-dot');
     if (curDot) curDot.className = `pp-dot ${STATUS_PIP_REAL[curStatus]||'pip-offline'}`;
-    document.getElementById('pp-cur-label').textContent = STATUS_LABELS[curStatus] || 'Online';
+    document.getElementById('pp-cur-label').textContent = STATUS_LABELS[curStatus] || 'Invisible';
     document.querySelectorAll('.pp-sub-btn').forEach(b => b.classList.toggle('active', b.dataset.status === curStatus));
     document.getElementById('pp-avatar-status').className = `pp-avatar-status ${pipClass(curStatus)}`;
     document.getElementById('pp-status-submenu').style.display = 'none';
-    document.getElementById('pp-edit-section').style.display = 'none';
     pp.style.display = 'block';
-  }
-
-  function openEditProfile() {
-    const sec = document.getElementById('pp-edit-section');
-    sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
-    if (sec.style.display === 'block') {
-      document.getElementById('pp-display-input').value = currentUser.display_name || '';
-      setTimeout(() => document.getElementById('pp-display-input').focus(), 50);
-    }
-  }
-
-  function closeEditProfile() {
-    document.getElementById('pp-edit-section').style.display = 'none';
-  }
-
-  async function saveProfile() {
-    const newName = document.getElementById('pp-display-input').value.trim();
-    if (newName && newName !== currentUser.display_name) {
-      const res = await api('PATCH', '/users/me', { display_name: newName });
-      if (res?.ok) {
-        currentUser.display_name = newName;
-        localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
-        document.getElementById('up-name').textContent = newName;
-        document.getElementById('pp-name').textContent = newName;
-        toast('Profile saved');
-      } else toast('Failed to save');
-    }
-    closeEditProfile();
   }
 
   function copyUserId() {
     navigator.clipboard.writeText(currentUser.id).then(() => toast('User ID copied!'));
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  EDIT PROFILE MODAL
+  // ════════════════════════════════════════════════════════════
+  function openEditProfileModal() {
+    const modal = document.getElementById('edit-profile-modal');
+    modal.style.display = 'flex';
+    document.getElementById('edit-username').value = currentUser.username || '';
+    document.getElementById('edit-displayname').value = currentUser.display_name || '';
+    document.getElementById('edit-bio').value = currentUser.bio || '';
+    const preview = document.getElementById('edit-avatar-preview');
+    if (currentUser.avatar) {
+      preview.src = currentUser.avatar + '?t=' + Date.now();
+      preview.style.display = 'block';
+    } else {
+      preview.style.display = 'none';
+    }
+    document.getElementById('edit-current-password').value = '';
+    document.getElementById('edit-new-password').value = '';
+    document.getElementById('edit-confirm-password').value = '';
+  }
+
+  function closeEditProfileModal() {
+    document.getElementById('edit-profile-modal').style.display = 'none';
+  }
+
+  document.getElementById('editProfileForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const username = document.getElementById('edit-username').value.trim();
+    const display_name = document.getElementById('edit-displayname').value.trim();
+    const bio = document.getElementById('edit-bio').value.trim();
+    const current_password = document.getElementById('edit-current-password').value;
+    const new_password = document.getElementById('edit-new-password').value;
+    const confirm_password = document.getElementById('edit-confirm-password').value;
+
+    if (!username || username.length < 3 || username.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(username)) {
+      toast('Invalid username');
+      return;
+    }
+    if (display_name && display_name.length > 64) {
+      toast('Display name too long');
+      return;
+    }
+    if (bio && bio.length > 500) {
+      toast('Bio too long');
+      return;
+    }
+    if (new_password && new_password !== confirm_password) {
+      toast('Passwords do not match');
+      return;
+    }
+    if (new_password && new_password.length < 8) {
+      toast('New password must be at least 8 characters');
+      return;
+    }
+    if (new_password && !current_password) {
+      toast('Current password is required to change password');
+      return;
+    }
+
+    const payload = {};
+    if (username !== currentUser.username) payload.username = username;
+    if (display_name !== currentUser.display_name) payload.display_name = display_name;
+    if (bio !== (currentUser.bio || '')) payload.bio = bio;
+    if (new_password) {
+      payload.current_password = current_password;
+      payload.new_password = new_password;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      toast('No changes made');
+      return;
+    }
+
+    const saveBtn = document.getElementById('edit-profile-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed');
+      if (data.user) {
+        currentUser.username = data.user.username;
+        currentUser.display_name = data.user.display_name;
+        currentUser.bio = data.user.bio;
+        localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+        document.getElementById('up-name').textContent = currentUser.display_name || currentUser.username;
+        document.getElementById('up-tag').textContent = '@' + currentUser.username;
+        toast('Profile updated');
+        closeEditProfileModal();
+        renderDMList();
+        if (document.getElementById('profile-popout').style.display === 'block') {
+          toggleProfilePopout();
+          setTimeout(toggleProfilePopout, 50);
+        }
+      } else {
+        toast('Update successful');
+        closeEditProfileModal();
+      }
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+    }
+  });
+
+  // Avatar upload from edit modal
+  async function uploadAvatarFromEdit(file) {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('avatar', file);
+    try {
+      const res = await fetch('/api/users/avatar', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.ok) {
+        currentUser.avatar = data.avatar;
+        localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
+        document.getElementById('edit-avatar-preview').src = data.avatar + '?t=' + Date.now();
+        document.getElementById('edit-avatar-preview').style.display = 'block';
+        updateAvatarUI(data.avatar);
+        toast('Avatar updated');
+      } else {
+        toast(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      toast('Upload error');
+    }
+  }
+
+  function updateAvatarUI(avatarUrl) {
+    const upAv = document.getElementById('up-avatar');
+    if (avatarUrl) {
+      upAv.innerHTML = `<img src="${avatarUrl}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    } else {
+      const name = currentUser.display_name || currentUser.username;
+      upAv.textContent = name[0].toUpperCase();
+      upAv.style.background = hashColor(name);
+      upAv.innerHTML = name[0].toUpperCase();
+    }
+    const ppAv = document.getElementById('pp-avatar-letter');
+    if (avatarUrl) {
+      ppAv.innerHTML = `<img src="${avatarUrl}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    } else {
+      const name = currentUser.display_name || currentUser.username;
+      ppAv.textContent = name[0].toUpperCase();
+      ppAv.style.background = hashColor(name);
+    }
   }
 
   // ════════════════════════════════════════════════════════════
@@ -2170,8 +2571,10 @@
       }
       results.innerHTML = res.users.map(u => {
         const name = u.display_name || u.username;
+        const letter = name[0].toUpperCase();
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : letter;
         return `<div class="search-result-item" onclick="startDM('${u.id}','${escapeJs(name)}')">
-          <div class="mini-avatar" style="background:${hashColor(name)}">${name[0].toUpperCase()}</div>
+          <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div>
             <div style="font-size:.88rem;font-weight:600">${escapeHtml(name)}</div>
             <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
@@ -2200,7 +2603,7 @@
       renderDMList();
       wsJoin(res.room_id);
       dm = fakeDm;
-      loadDMs(); // refresh in background
+      loadDMs();
     }
     openRoom(dm.id);
   }
@@ -2216,6 +2619,7 @@
     friends = fRes?.friends || [];
     friendRequests = { incoming: rRes?.incoming || [], outgoing: rRes?.outgoing || [] };
     updateFriendsBadge();
+    return { friends, friendRequests };
   }
 
   function updateFriendsBadge() {
@@ -2304,16 +2708,17 @@
     }
 
     let list = [...friends];
-    if (currentFriendsTab === 'online') list = list.filter(f => f.status === 'online' || f.status === 'idle');
+    if (currentFriendsTab === 'online') list = list.filter(f => f.status === 'online');
     if (!list.length) {
       el.innerHTML = `<div class="friends-empty">${currentFriendsTab === 'online' ? 'No friends online' : 'No friends yet'}</div>`;
       return;
     }
     el.innerHTML = list.map(f => {
       const name = f.display_name || f.username;
+      const avatarHtml = f.avatar ? `<img src="${f.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : name[0].toUpperCase();
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
-          <div class="fr-avatar" style="background:${hashColor(name)}">${name[0].toUpperCase()}</div>
+          <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-primary)"></div>
         </div>
         <div class="fr-info">
@@ -2345,14 +2750,19 @@
     if (res?.auto_accepted) {
       toast(`You and ${displayName} are now friends!`);
       await loadFriendsData();
-      renderFriendsList();
-      await startDM(userId, displayName);
+      if (document.getElementById('friends-panel').style.display === 'flex') {
+        renderFriendsList();
+      } else {
+        await startDM(userId, displayName);
+      }
     } else {
       toast(`Friend request sent to ${displayName}`);
       document.getElementById('add-friend-input').value = '';
       document.getElementById('add-friend-results').innerHTML = '';
       await loadFriendsData();
-      renderFriendsList();
+      if (document.getElementById('friends-panel').style.display === 'flex') {
+        renderFriendsList();
+      }
     }
   }
 
@@ -2362,28 +2772,37 @@
     if (res?.error) return toast(res.error);
     toast(`You and ${fromName} are now friends!`);
     await loadFriendsData();
-    renderFriendsList();
-    if (req?.from_id) await startDM(req.from_id, fromName);
+    if (document.getElementById('friends-panel').style.display === 'flex') {
+      renderFriendsList();
+    } else if (req?.from_id) {
+      await startDM(req.from_id, fromName);
+    }
   }
 
   async function declineFriendRequest(reqId) {
     await api('POST', `/friends/requests/${reqId}/decline`);
     await loadFriendsData();
-    renderFriendsList();
+    if (document.getElementById('friends-panel').style.display === 'flex') {
+      renderFriendsList();
+    }
     toast('Request declined');
   }
 
   async function cancelFriendRequest(reqId) {
     await api('DELETE', `/friends/requests/${reqId}`);
     await loadFriendsData();
-    renderFriendsList();
+    if (document.getElementById('friends-panel').style.display === 'flex') {
+      renderFriendsList();
+    }
     toast('Request cancelled');
   }
 
   async function removeFriend(userId) {
     await api('DELETE', `/friends/${userId}`);
     friends = friends.filter(f => f.id !== userId);
-    renderFriendsList();
+    if (document.getElementById('friends-panel').style.display === 'flex') {
+      renderFriendsList();
+    }
     toast('Friend removed');
   }
 
@@ -2392,7 +2811,6 @@
     await startDM(userId, name);
   }
 
-  // Search for friends (add-friend autocomplete)
   function searchFriendUsers(q) {
     clearTimeout(_friendSearchTimer);
     const results = document.getElementById('add-friend-results');
@@ -2408,9 +2826,10 @@
         const isFriend = friends.some(f => f.id === u.id);
         const hasPendingOut = friendRequests.outgoing.some(r => r.to_id === u.id);
         const hasPendingIn  = friendRequests.incoming.some(r => r.from_id === u.id);
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : name[0].toUpperCase();
         return `<div class="search-result-item" style="justify-content:space-between">
           <div style="display:flex;align-items:center;gap:8px">
-            <div class="mini-avatar" style="background:${hashColor(name)}">${name[0].toUpperCase()}</div>
+            <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             <div>
               <div style="font-size:.85rem;font-weight:600">${escapeHtml(name)}</div>
               <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
@@ -2503,8 +2922,13 @@
     const name   = currentUser.display_name || currentUser.username;
     const letter = name[0].toUpperCase();
     const color  = hashColor(name);
-    document.getElementById('up-avatar').textContent = letter;
-    document.getElementById('up-avatar').style.background = color;
+    const upAvatar = document.getElementById('up-avatar');
+    if (currentUser.avatar) {
+      upAvatar.innerHTML = `<img src="${currentUser.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    } else {
+      upAvatar.textContent = letter;
+      upAvatar.style.background = color;
+    }
     document.getElementById('up-status-pip').className = pipClass(currentUser.status || 'online');
     document.getElementById('up-name').textContent = name;
     document.getElementById('up-tag').textContent  = '@' + currentUser.username;
@@ -2513,7 +2937,6 @@
     await loadDMs();
     await loadFriendsData();
 
-    // Poll for new DMs every 30s
     setInterval(async () => {
       const data = await api('GET', '/rooms');
       if (!data) return;

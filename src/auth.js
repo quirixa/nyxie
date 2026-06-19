@@ -2,28 +2,28 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcrypt');
 const { getUserDb, all, get, run } = require('./userDb');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nyxie-dev-secret-change-in-production';
 const JWT_EXPIRES = '7d';
-
-function hashSeed(seedPhrase) {
-  const normalized = seedPhrase.trim().toLowerCase().replace(/\s+/g, ' ');
-  return crypto.createHash('sha256').update('nyxie:' + normalized).digest('hex');
-}
+const SALT_ROUNDS = 10;
 
 function signToken(userId) {
   return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 router.post('/register', async (req, res) => {
   try {
     const db = await getUserDb();
-    const { username, display_name, seed_phrase } = req.body;
+    const { username, email, password, display_name } = req.body;
 
-    if (!username || !seed_phrase) {
-      return res.status(400).json({ error: 'username and seed_phrase are required' });
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'username, email and password are required' });
     }
 
     const trimmedUsername = username.trim();
@@ -35,26 +35,30 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Username not available' });
     }
 
-    const seedWords = seed_phrase.trim().toLowerCase().replace(/\s+/g, ' ').split(' ');
-    const validLengths = [12, 15, 18, 21, 24];
-    if (!validLengths.includes(seedWords.length)) {
-      return res.status(400).json({ error: `Seed phrase must contain 12,15,18,21 or 24 words (got ${seedWords.length})` });
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(trimmedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
     }
 
-    const seedHash = hashSeed(seed_phrase);
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
     const displayName = display_name?.trim() || trimmedUsername;
 
     const existingUser = get(db, 'SELECT id FROM users WHERE username = ?', [trimmedUsername]);
     if (existingUser) return res.status(409).json({ error: 'Username already taken' });
-    const existingSeed = get(db, 'SELECT id FROM users WHERE seed_hash = ?', [seedHash]);
-    if (existingSeed) return res.status(409).json({ error: 'Seed phrase already registered' });
+    const existingEmail = get(db, 'SELECT id FROM users WHERE email = ?', [trimmedEmail]);
+    if (existingEmail) return res.status(409).json({ error: 'Email already registered' });
 
-    const userId = uuidv4();
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const userId = crypto.randomUUID();
     const now = Date.now();
+
     run(db,
-      `INSERT INTO users (id, username, display_name, seed_hash, status, created_at, last_seen)
-       VALUES (?, ?, ?, ?, 'online', ?, ?)`,
-      [userId, trimmedUsername, displayName, seedHash, now, now]
+      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, bio, status, created_at, last_seen)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, 'online', ?, ?)`,
+      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now]
     );
 
     const defaultServer = get(db, "SELECT id FROM servers WHERE name = 'Nyxie'");
@@ -71,7 +75,7 @@ router.post('/register', async (req, res) => {
     const token = signToken(userId);
     res.status(201).json({
       token,
-      user: { id: userId, username: trimmedUsername, display_name: displayName, status: 'online' }
+      user: { id: userId, username: trimmedUsername, display_name: displayName, avatar: null, bio: null, status: 'online' }
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -82,16 +86,26 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const db = await getUserDb();
-    const { seed_phrase } = req.body;
+    const { username, email, password } = req.body;
 
-    if (!seed_phrase) {
-      return res.status(400).json({ error: 'seed_phrase is required' });
+    if ((!username && !email) || !password) {
+      return res.status(400).json({ error: 'username/email and password are required' });
     }
 
-    const seedHash = hashSeed(seed_phrase);
-    const user = get(db, 'SELECT * FROM users WHERE seed_hash = ?', [seedHash]);
+    let user;
+    if (username) {
+      user = get(db, 'SELECT * FROM users WHERE username = ?', [username.trim()]);
+    } else if (email) {
+      user = get(db, 'SELECT * FROM users WHERE email = ?', [email.trim().toLowerCase()]);
+    }
+
     if (!user) {
-      return res.status(401).json({ error: 'Invalid seed phrase. Not registered?' });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
@@ -103,6 +117,8 @@ router.post('/login', async (req, res) => {
         id: user.id,
         username: user.username,
         display_name: user.display_name,
+        avatar: user.avatar || null,
+        bio: user.bio || null,
         status: user.status || 'online'
       }
     });
@@ -121,7 +137,7 @@ router.get('/me', async (req, res) => {
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name, status, created_at, last_seen FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, display_name, avatar, bio, status, created_at, last_seen FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     res.json({ user });
   } catch (err) {
@@ -138,7 +154,7 @@ router.patch('/status', async (req, res) => {
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, JWT_SECRET);
     const { status } = req.body;
-    const allowed = ['online', 'idle', 'dnd', 'offline'];
+    const allowed = ['online', 'offline'];
     if (!status || !allowed.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
@@ -153,4 +169,3 @@ router.patch('/status', async (req, res) => {
 
 module.exports = router;
 module.exports.JWT_SECRET = JWT_SECRET;
-module.exports.hashSeed = hashSeed;

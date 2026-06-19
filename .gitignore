@@ -17,4 +17,6 @@ npm-debug.log*
 Thumbs.db
 
 # Optional: ignore package-lock.json (remove if you want to commit it)
-# package-lock.json
+package-lock.json
+#avatar files
+avatars/

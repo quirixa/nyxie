@@ -25,12 +25,13 @@ function broadcastToUser(userId, data) {
   }
 }
 
-function broadcastPresence(roomId, userId, status, displayName) {
+function broadcastPresence(roomId, userId, status, displayName, avatar) {
   broadcast(roomId, {
     type: 'presence_update',
     user_id: userId,
     status,
-    display_name: displayName || null
+    display_name: displayName || null,
+    avatar: avatar || null
   });
 }
 
@@ -61,7 +62,7 @@ async function cleanupClient(ws) {
       clients.delete(ws);
       if (clients.size === 0) roomClients.delete(roomId);
     }
-    broadcastPresence(roomId, meta.userId, 'offline');
+    broadcastPresence(roomId, meta.userId, 'offline', meta.display_name, meta.avatar);
   }
 
   const conns = userConnections.get(meta.userId);
@@ -96,7 +97,7 @@ function setupWebSocket(server) {
     }
 
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, display_name, avatar FROM users WHERE id = ?', [payload.sub]);
     if (!user) {
       ws.close(4001);
       return;
@@ -104,17 +105,16 @@ function setupWebSocket(server) {
 
     run(db, 'UPDATE users SET status = ?, last_seen = ? WHERE id = ?', ['online', Date.now(), user.id]);
 
-    clientMeta.set(ws, { userId: user.id, username: user.username, display_name: user.display_name, rooms: new Set() });
+    clientMeta.set(ws, { userId: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, rooms: new Set() });
     if (!userConnections.has(user.id)) userConnections.set(user.id, new Set());
     userConnections.get(user.id).add(ws);
 
-    // Send initial presence to all rooms the user is in
     const userRooms = all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [user.id]);
     for (const row of userRooms) {
-      broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: 'online', display_name: user.display_name });
+      broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: 'online', display_name: user.display_name, avatar: user.avatar });
     }
 
-    ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, display_name: user.display_name } }));
+    ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar } }));
 
     ws.on('message', async (raw) => {
       let msg;
@@ -133,11 +133,10 @@ function setupWebSocket(server) {
             break;
           }
           joinRoom(ws, room_id);
-          broadcastPresence(room_id, meta.userId, 'online', meta.display_name);
+          broadcastPresence(room_id, meta.userId, 'online', meta.display_name, meta.avatar);
 
-          // Send room state: list of members with their statuses
           const members = all(db2, `
-            SELECT u.id, u.username, u.display_name, u.status
+            SELECT u.id, u.username, u.display_name, u.avatar, u.status
             FROM room_members rm
             JOIN users u ON u.id = rm.user_id
             WHERE rm.room_id = ?
@@ -149,6 +148,7 @@ function setupWebSocket(server) {
               id: m.id,
               username: m.username,
               display_name: m.display_name,
+              avatar: m.avatar || null,
               status: m.status || 'offline'
             }))
           }));
@@ -171,6 +171,7 @@ function setupWebSocket(server) {
             user_id: meta.userId,
             username: meta.username,
             display_name: meta.display_name,
+            avatar: meta.avatar,
             room_id
           });
           for (const c of clients) {
@@ -180,12 +181,12 @@ function setupWebSocket(server) {
         }
         case 'set_status': {
           const { status } = msg;
-          const allowed = ['online', 'idle', 'dnd', 'offline'];
+          const allowed = ['online', 'offline'];
           if (!allowed.includes(status)) break;
           const db2 = await getUserDb();
           run(db2, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?', [status, Date.now(), meta.userId]);
           for (const roomId of meta.rooms) {
-            broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status, display_name: meta.display_name });
+            broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status, display_name: meta.display_name, avatar: meta.avatar });
           }
           break;
         }

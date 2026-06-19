@@ -8,558 +8,44 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ---------- RESET & BASE ---------- */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --bg-dark: #0f0f10;
-      --surface-dark: #151515;
-      --surface-card: #0c0c0c;
-      --surface-input: #101010;
-      --border-light: #262626;
-      --border-medium: #2c2c2c;
-      --border-thick: #3a3a3a;
-      --text-primary: #f5f5f5;
-      --text-secondary: #8b8b8b;
-      --text-muted: #777;
-      --text-label: #cfcfcf;
-      --accent-green: #1D9E75;
-      --error-red: #e68a8a;
-      --warning-orange: #c97a5a;
-    }
-
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-primary);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-
-    /* ---------- MAIN WRAPPER (FLEX: INFO TAKES EXTRA SPACE, REGISTER RIGHT-ALIGNED) ---------- */
-    .wrapper {
-      width: 100%;
-      max-width: 1400px;
-      background: var(--surface-dark);
-      border: 1px solid var(--border-light);
-      border-radius: 18px;
-      overflow: hidden;
-      display: flex;
-      align-items: stretch;
-      justify-content: flex-end;
-    }
-
-    /* LEFT PANEL – now takes ALL available space */
-    .info {
-      flex: 1;
-      padding: 60px 48px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      border-right: 1px solid var(--border-light);
-    }
-
-    /* ===== COLORED ASCII ART LOGO ===== */
-    .logo {
-      margin-bottom: 32px;
-      font-size: 0;
-      line-height: 1;
-    }
-
-    .logo pre {
-      font-family: 'Monaco', 'Courier New', 'Lucida Sans Typewriter', monospace;
-      font-size: 0.62rem;
-      font-weight: 400;
-      line-height: 1.25;
-      letter-spacing: normal;
-      background: linear-gradient(135deg, #8bbaff 0%, #c084fc 70%);
-      background-clip: text;
-      -webkit-background-clip: text;
-      color: transparent;
-      text-shadow: 0 0 6px rgba(139, 186, 255, 0.3);
-      margin: 0;
-      padding: 0;
-      white-space: pre;
-      overflow-x: auto;
-      overflow-y: visible;
-    }
-
-    .logo pre::-webkit-scrollbar {
-      height: 4px;
-      background: #2a2a2a;
-      border-radius: 10px;
-    }
-    .logo pre::-webkit-scrollbar-thumb {
-      background: #555;
-      border-radius: 10px;
-    }
-
-    .info h1 {
-      font-size: 3rem;
-      line-height: 1.2;
-      font-weight: 700;
-      margin-bottom: 20px;
-      max-width: 550px;
-    }
-
-    .info p {
-      color: var(--text-secondary);
-      font-size: 1rem;
-      line-height: 1.6;
-      max-width: 500px;
-    }
-
-    /* RIGHT PANEL – REGISTRATION : fixed width */
-    .register {
-      width: 620px;
-      flex-shrink: 0;
-      padding: 50px 0 50px 42px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-
-    .register h2,
-    .register > p,
-    form,
-    .bottom-text {
-      padding-right: 42px;
-    }
-
-    .register h2 {
-      font-size: 1.8rem;
-      margin-bottom: 10px;
-    }
-
-    .register > p {
-      color: var(--text-secondary);
-      font-size: 0.95rem;
-      margin-bottom: 32px;
-    }
-
-    /* FORM STYLES */
-    form {
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    .input-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    label {
-      font-size: 0.9rem;
-      color: var(--text-label);
-    }
-
-    .optional-badge {
-      font-size: 0.7rem;
-      font-weight: 400;
-      color: var(--text-secondary);
-      margin-left: 8px;
-    }
-
-    input {
-      width: 100%;
-      padding: 14px;
-      border: 1px solid var(--border-medium);
-      border-radius: 10px;
-      background: var(--surface-input);
-      color: var(--text-primary);
-      font-size: 0.95rem;
-      outline: none;
-      transition: all 0.2s ease;
-    }
-
-    input::placeholder {
-      color: #555;
-    }
-
-    input:focus {
-      border-color: #4a4a4a;
-      background: #141414;
-      outline: none;
-      box-shadow: 0 0 0 2px rgba(29, 158, 117, 0.2);
-    }
-
-    .register-btn {
-      margin-top: 8px;
-      padding: 14px;
-      border: none;
-      border-radius: 10px;
-      background: var(--text-primary);
-      color: #111;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: 0.2s ease;
-    }
-
-    .register-btn:hover {
-      opacity: 0.9;
-      background: #ffffff;
-    }
-
-    .register-btn:focus-visible {
-      outline: 2px solid var(--accent-green);
-      outline-offset: 2px;
-    }
-
-    .bottom-text {
-      margin-top: 24px;
-      text-align: center;
-      font-size: 0.9rem;
-      color: var(--text-muted);
-    }
-
-    .bottom-text a {
-      color: var(--text-primary);
-      text-decoration: none;
-      font-weight: 600;
-      transition: opacity 0.2s;
-    }
-
-    .bottom-text a:hover {
-      opacity: 0.8;
-      text-decoration: underline;
-    }
-
-    .hint-text {
-      font-size: 0.75rem;
-      color: #6a6a6a;
-      margin-top: 2px;
-    }
-
-    .info-note {
-      font-size: 0.7rem;
-      color: #6a6a6a;
-      margin-top: 6px;
-    }
-
-    .input-error {
-      border-color: #aa4a4a !important;
-    }
-
-    .error-message {
-      font-size: 0.75rem;
-      color: var(--error-red);
-      margin-top: 4px;
-    }
-
-    /* SEED SECTION */
-    .seed-section {
-      margin-top: 24px;
-      margin-bottom: 12px;
-      background: var(--surface-card);
-      border-radius: 14px;
-      border: 1px solid #2a2a2a;
-      overflow: hidden;
-    }
-
-    .seed-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 20px;
-      background: #0a0a0a;
-      border-bottom: 1px solid #2a2a2a;
-      cursor: pointer;
-    }
-
-    .seed-header span {
-      font-size: 0.85rem;
-      font-weight: 500;
-      color: #b8b8b8;
-    }
-
-    /* Badge that also works as a dropdown – looks identical to original badge */
-    .seed-badge-select {
-      background: var(--accent-green);
-      color: #fff;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 0.7rem;
-      font-weight: 500;
-      border: none;
-      font-family: 'Inter', sans-serif;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      outline: none;
-      text-align: center;
-      appearance: none;
-      -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
-      background-repeat: no-repeat;
-      background-position: right 8px center;
-      padding-right: 28px;
-    }
-
-    .seed-badge-select:hover {
-      background: #158a62;
-      opacity: 0.95;
-    }
-
-    .seed-badge-select:focus {
-      box-shadow: 0 0 0 2px rgba(29, 158, 117, 0.4);
-    }
-
-    .seed-content {
-      padding: 20px;
-      display: none;
-    }
-
-    .seed-content.open {
-      display: block;
-    }
-
-    .word-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .word-chip {
-      background: #141414;
-      border: 2px solid var(--border-thick);
-      border-radius: 12px;
-      padding: 10px 8px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.2s;
-    }
-
-    .word-chip:hover {
-      background: #1c1c1c;
-      border-color: #5a5a5a;
-    }
-
-    .word-num {
-      font-size: 12px;
-      font-weight: 600;
-      color: #999;
-      flex-shrink: 0;
-    }
-
-    .word-text {
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 12px;
-      font-weight: 500;
-      color: #f0f0f0;
-      white-space: normal;
-      word-break: break-word;
-      line-height: 1.3;
-      flex: 1;
-      text-transform: lowercase;
-    }
-
-    .seed-actions {
-      display: flex;
-      gap: 12px;
-      margin-top: 16px;
-    }
-
-    .small-btn {
-      background: #1e1e1e;
-      border: 1px solid #333;
-      padding: 10px 16px;
-      border-radius: 10px;
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: #e0e0e0;
-      cursor: pointer;
-      transition: all 0.2s;
-      flex: 1;
-      text-align: center;
-      font-family: 'Inter', sans-serif;
-    }
-
-    .small-btn:hover {
-      background: #2a2a2a;
-      border-color: #4a4a4a;
-      color: #fff;
-    }
-
-    .warning-text {
-      font-size: 0.7rem;
-      color: var(--warning-orange);
-      margin-top: 16px;
-      text-align: center;
-      background: rgba(201, 122, 90, 0.08);
-      padding: 8px 12px;
-      border-radius: 8px;
-    }
-
-    /* TOAST NOTIFICATION */
-    .copied-toast {
-      position: fixed;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--accent-green);
-      color: #fff;
-      padding: 8px 20px;
-      border-radius: 40px;
-      font-size: 0.85rem;
-      font-weight: 500;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-      z-index: 1000;
-    }
-
-    /* RESPONSIVE */
-    @media (max-width: 1200px) {
-      .wrapper {
-        max-width: 1200px;
-      }
-      .info {
-        padding: 50px 40px;
-      }
-      .info h1 {
-        font-size: 2.6rem;
-        max-width: 450px;
-      }
-      .register {
-        width: 540px;
-      }
-      .register h2,
-      .register > p,
-      form,
-      .bottom-text {
-        padding-right: 36px;
-      }
-      .register {
-        padding-left: 36px;
-      }
-    }
-
-    @media (max-width: 1000px) {
-      .wrapper {
-        max-width: 1000px;
-      }
-      .register {
-        width: 520px;
-      }
-      .info {
-        padding: 40px 30px;
-      }
-      .info h1 {
-        font-size: 2.4rem;
-      }
-      .register h2,
-      .register > p,
-      form,
-      .bottom-text {
-        padding-right: 30px;
-      }
-      .register {
-        padding-left: 30px;
-      }
-    }
-
-    @media (max-width: 950px) {
-      .wrapper {
-        flex-direction: column;
-        justify-content: flex-start;
-        max-width: 700px;
-      }
-      .info {
-        border-right: none;
-        border-bottom: 1px solid var(--border-light);
-        flex: none;
-        width: 100%;
-        padding: 48px 40px;
-      }
-      .info h1 {
-        max-width: 100%;
-        font-size: 2.6rem;
-      }
-      .register {
-        width: 100%;
-        padding: 48px 40px;
-        flex-shrink: 1;
-      }
-      .register h2,
-      .register > p,
-      form,
-      .bottom-text {
-        padding-right: 0;
-      }
-      .logo pre {
-        font-size: 0.55rem;
-      }
-    }
-
-    @media (max-width: 700px) {
-      .word-grid {
-        gap: 10px;
-      }
-      .word-chip {
-        padding: 8px 6px;
-        border-width: 1.5px;
-      }
-      .word-num {
-        font-size: 11px;
-      }
-      .word-text {
-        font-size: 11px;
-      }
-      .info {
-        padding: 32px 28px;
-      }
-      .register {
-        padding: 32px 28px;
-      }
-      .info h1 {
-        font-size: 2.2rem;
-      }
-      .logo pre {
-        font-size: 0.5rem;
-      }
-    }
-
-    @media (max-width: 550px) {
-      body {
-        padding: 12px;
-      }
-      .info, .register {
-        padding: 28px 20px;
-      }
-      .word-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
-      }
-      .info h1 {
-        font-size: 1.9rem;
-      }
-      .logo pre {
-        font-size: 0.45rem;
-        line-height: 1.2;
-      }
-      .seed-header {
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-    }
+    *{ margin:0; padding:0; box-sizing:border-box; }
+    :root{ --bg-dark:#0f0f10; --surface-dark:#151515; --surface-card:#0c0c0c; --surface-input:#101010; --border-light:#262626; --border-medium:#2c2c2c; --text-primary:#f5f5f5; --text-secondary:#8b8b8b; --text-muted:#777; --text-label:#cfcfcf; --accent-green:#1D9E75; --error-red:#e68a8a; }
+    body{ font-family:'Inter', sans-serif; background:var(--bg-dark); color:var(--text-primary); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .wrapper{ width:100%; max-width:1400px; background:var(--surface-dark); border:1px solid var(--border-light); border-radius:18px; overflow:hidden; display:flex; align-items:stretch; justify-content:flex-end; }
+    .info{ flex:1; padding:60px 48px; display:flex; flex-direction:column; justify-content:center; border-right:1px solid var(--border-light); }
+    .logo{ margin-bottom:32px; font-size:0; line-height:1; }
+    .logo pre{ font-family:'Monaco','Courier New','Lucida Sans Typewriter',monospace; font-size:0.62rem; font-weight:400; line-height:1.25; letter-spacing:normal; background:linear-gradient(135deg,#8bbaff 0%,#c084fc 70%); background-clip:text; -webkit-background-clip:text; color:transparent; text-shadow:0 0 6px rgba(139,186,255,0.3); margin:0; padding:0; white-space:pre; overflow-x:auto; }
+    .info h1{ font-size:3rem; line-height:1.2; font-weight:700; margin-bottom:20px; max-width:550px; }
+    .info p{ color:var(--text-secondary); font-size:1rem; line-height:1.6; max-width:500px; }
+    .register{ width:620px; flex-shrink:0; padding:50px 0 50px 42px; display:flex; flex-direction:column; justify-content:center; }
+    .register h2, .register>p, form, .bottom-text{ padding-right:42px; }
+    .register h2{ font-size:1.8rem; margin-bottom:10px; }
+    .register>p{ color:var(--text-secondary); font-size:.95rem; margin-bottom:32px; }
+    form{ display:flex; flex-direction:column; gap:20px; }
+    .input-group{ display:flex; flex-direction:column; gap:8px; }
+    label{ font-size:.9rem; color:var(--text-label); }
+    .optional-badge{ font-size:.7rem; font-weight:400; color:var(--text-secondary); margin-left:8px; }
+    input{ width:100%; padding:14px; border:1px solid var(--border-medium); border-radius:10px; background:var(--surface-input); color:var(--text-primary); font-size:.95rem; outline:none; transition:all .2s ease; }
+    input::placeholder{ color:#555; }
+    input:focus{ border-color:#4a4a4a; background:#141414; box-shadow:0 0 0 2px rgba(29,158,117,0.2); }
+    .register-btn{ margin-top:8px; padding:14px; border:none; border-radius:10px; background:var(--text-primary); color:#111; font-size:.95rem; font-weight:600; cursor:pointer; transition:.2s ease; }
+    .register-btn:hover{ opacity:.9; background:#ffffff; }
+    .bottom-text{ margin-top:24px; text-align:center; font-size:.9rem; color:var(--text-muted); }
+    .bottom-text a{ color:var(--text-primary); text-decoration:none; font-weight:600; transition:opacity .2s; }
+    .bottom-text a:hover{ opacity:.8; text-decoration:underline; }
+    .hint-text{ font-size:.75rem; color:#6a6a6a; margin-top:2px; }
+    .input-error{ border-color:#aa4a4a !important; }
+    .error-message{ font-size:.75rem; color:var(--error-red); margin-top:4px; }
+    .toast-msg{ position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#2a2a2a; backdrop-filter:blur(8px); border:1px solid #3a3a3a; border-radius:40px; padding:10px 24px; font-size:.85rem; font-weight:500; color:#e0e0e0; pointer-events:none; opacity:0; transition:opacity .2s; z-index:999; white-space:nowrap; }
+    @media(max-width:1200px){ .info{ padding:50px 40px; } .info h1{ font-size:2.6rem; } .register{ width:540px; } .register h2, .register>p, form, .bottom-text{ padding-right:36px; } .register{ padding-left:36px; } }
+    @media(max-width:1000px){ .register{ width:520px; } .info h1{ font-size:2.4rem; } .register h2, .register>p, form, .bottom-text{ padding-right:30px; } .register{ padding-left:30px; } }
+    @media(max-width:950px){ .wrapper{ flex-direction:column; max-width:700px; } .info{ border-right:none; border-bottom:1px solid var(--border-light); width:100%; padding:48px 40px; } .info h1{ max-width:100%; font-size:2.6rem; } .register{ width:100%; padding:48px 40px; flex-shrink:1; } .register h2, .register>p, form, .bottom-text{ padding-right:0; } .logo pre{ font-size:.55rem; } }
+    @media(max-width:550px){ body{ padding:12px; } .info, .register{ padding:28px 20px; } .info h1{ font-size:1.9rem; } .logo pre{ font-size:.45rem; } }
   </style>
 </head>
 <body>
 
 <div class="wrapper">
-
-  <!-- LEFT: branding -->
   <section class="info">
     <div class="logo">
       <pre>__    __  __      __  __    __  ______  ________ 
@@ -573,53 +59,40 @@
  \##   \##     \##     \##   \## \###### \########</pre>
     </div>
     <h1>Join the private network.</h1>
-    <p>Create an account and start communicating securely. Full privacy, end‑to‑end encrypted messaging, and total control of your data.</p>
+    <p>Create an account with your email and a strong password. Full privacy and control.</p>
   </section>
 
-  <!-- RIGHT: REGISTRATION SECTION -->
   <section class="register">
     <h2>Sign up</h2>
-    <p>Choose a username and secure your account with a recovery seed.</p>
+    <p>Choose a username, provide your email and set a password.</p>
 
     <form id="registerForm" novalidate>
-      <!-- Username (required) -->
       <div class="input-group" id="usernameGroup">
         <label>Username <span style="color:#a5a5a5;">*</span></label>
         <input type="text" id="username" placeholder="e.g., satoshi_nakamoto" autocomplete="username">
         <div class="hint-text">3-30 characters. Letters, numbers, underscore or hyphen.</div>
       </div>
 
-      <!-- Display name (optional) -->
+      <div class="input-group" id="emailGroup">
+        <label>Email <span style="color:#a5a5a5;">*</span></label>
+        <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+      </div>
+
+      <div class="input-group" id="passwordGroup">
+        <label>Password <span style="color:#a5a5a5;">*</span></label>
+        <input type="password" id="password" placeholder="Min 8 characters" autocomplete="new-password">
+        <div class="hint-text">At least 8 characters.</div>
+      </div>
+
+      <div class="input-group" id="confirmGroup">
+        <label>Confirm Password <span style="color:#a5a5a5;">*</span></label>
+        <input type="password" id="confirmPassword" placeholder="Repeat password" autocomplete="new-password">
+      </div>
+
       <div class="input-group" id="displayNameGroup">
         <label>Display name <span class="optional-badge">optional</span></label>
         <input type="text" id="displayName" placeholder="What others see" autocomplete="nickname">
-        <div class="info-note">If empty, your username will be used as display name.</div>
-      </div>
-
-      <!-- Seed phrase section with badge-style dropdown integrated -->
-      <div class="seed-section" id="seedSection">
-        <div class="seed-header" id="seedHeader">
-          <span>Recovery seed phrase</span>
-          <select id="seedLengthSelect" class="seed-badge-select">
-            <option value="12">12 words</option>
-            <option value="15">15 words</option>
-            <option value="18">18 words</option>
-            <option value="21">21 words</option>
-            <option value="24" selected>24 words</option>
-          </select>
-        </div>
-        <div class="seed-content" id="seedContent">
-          <div class="word-grid" id="seedWordGrid">
-            <div style="grid-column:1/-1; text-align:center; padding:20px; color:#666;">Click "Generate seed" below</div>
-          </div>
-          <div class="seed-actions">
-            <button type="button" class="small-btn" id="generateSeedBtn">Generate new seed</button>
-            <button type="button" class="small-btn" id="copySeedBtn">Copy phrase</button>
-          </div>
-          <div class="warning-text">
-            Write this down. Store it safely. You will need it to sign in.
-          </div>
-        </div>
+        <div class="hint-text">If empty, your username will be used.</div>
       </div>
 
       <button type="submit" class="register-btn" id="submitBtn">Create account</button>
@@ -627,110 +100,38 @@
 
     <div class="bottom-text">
       Already have an account?
-      <a href="login.html" id="signinLink">Sign in</a>
+      <a href="login.html">Sign in</a>
     </div>
   </section>
 </div>
 
-<div id="copyToast" class="copied-toast">Seed phrase copied</div>
+<div id="toastMsg" class="toast-msg"></div>
 
 <script>
-  // BIP-39 English wordlist (full 2048 words)
-  const WORDLIST = "abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual adapt add addict address adjust admit adult advance advice aerobic afford afraid again age agent agree ahead aim air airport aisle alarm album alcohol alert alien all alley allow almost alone alpha already also alter always amateur amazing among amount amused analyst anchor ancient anger angle angry animal ankle announce annual another answer antenna antique anxiety any apart apology appear apple approve april arch arctic area arena argue arm armed armor army around arrange arrest arrive arrow art artefact artist artwork ask aspect assault asset assist assume asthma athlete atom attack attend attitude attract auction audit august aunt author auto autumn average avocado avoid awake aware away awesome awful awkward axis baby balance bamboo banana banner bar barely bargain barrel base basic basket battle beach bean beauty because become beef before begin behave behind believe below belt bench benefit best betray better between beyond bicycle bid bike bind biology bird birth bitter black blade blame blanket blast bleak bless blind blood blossom blouse blue blur blush board boat body boil bomb bone book boost border boring borrow boss bottom bounce box boy bracket brain brand brave breeze brick bridge brief bright bring brisk broccoli broken bronze broom brother brown brush bubble buddy budget buffalo build bulb bulk bullet bundle bunker burden burger burst bus business busy butter buyer buzz cabbage cabin cable cactus cage cake call calm camera camp can canal cancel candy cannon canvas canyon capable capital captain car carbon card cargo carpet carry cart case cash casino castle casual cat catalog catch category cattle cause caution cave cereal chair chaos chapter charge chase chat cheap check cheese chef cherry chest chicken chief child chimney choice choose chronic circle citizen city civil claim clap clarify claw clay clean clerk clever click client cliff climb clinic clip clock clog close cloth cloud clown club clump cluster cobalt code coil coin collect color column combine come comfort comic common company concert conduct confirm congress connect consider control convince cook cool copper coral core corn correct cost cotton couch country couple course cousin cover coyote crack cradle craft cram crane crash crater crawl crazy cream credit creek crew cricket crime crisp critic crop cross crouch crowd crucial cruel cruise crumble crunch crush cry crystal cube culture cup cupboard curious current curtain curve cushion custom cute cycle dad damage damp dance danger daring dash daughter dawn day deal debate debris decade december decide decline decorate decrease deer defense define defy degree delay deliver demand demise denial dentist deny depart depend deposit depth deputy derive describe desert design desk despair destroy detail detect develop device devote diagram dial diamond diary dice diesel diet differ digital dignity dilemma dinner dinosaur direct dirt disagree discover disease dish dismiss disorder display distance divert divide divorce dizzy doctor document dog doll dolphin domain donate donkey donor door dose double dove draft dragon drama drastic draw dream dress drift drill drink drip drive drop drum dry duck dumb dune during dust dutch duty dwarf dynamic eager eagle early earn earth easily east easy echo ecology edge edit educate effort egg eight either elbow elder electric elegant element elephant elevator elite else embark embody embrace emerge emotion employ empower empty enable enact endless endorse enemy engage engine enhance enjoy enlist enough enrich enroll ensure enter entire entry envelope episode equal equip erase erode erosion error erupt escape essay essence estate eternal ethics evidence evil evoke evolve exact example excess exchange excite exclude exercise exhaust exhibit exile exist exit exotic expand expire explain expose express extend extra eye fable face faculty faint faith fall false fame family famous fancy fantasy far fashion fat fatal father fatigue fault favorite feature february federal fee feed feel feet fellow felt fence festival fetch fever few fiber fiction field figure file film filter final find fine finger finish fire firm first fiscal fish fit fitness fix flag flame flash flat flavor flee flight flip float flock floor flower fluid flush fly foam focus fog foil follow food force forest forget fork fortune forum forward fossil foster found fox fragile frame frequent fresh friend fringe frog front frost frown frozen fruit fuel fun funny furnace fury future gadget gain galaxy gallery game gap garbage garden garlic garment gasp gate gather gauge gaze general genius genre gentle genuine gesture ghost ginger giraffe girl give glad glance glare glass glide glimpse globe gloom glory glove glow glue goat goddess gold good goose gorilla gospel gossip govern gown grab grace grain grant grape grasp grass gravity great green grid grief grit grocery group grow grunt guard guide guilt guitar gun guy habit hair half hammer hamster hand happy harbor hard harsh harvest hat have hawk hazard head health heart heavy hedgehog height hello helmet help hen hero hidden high hill hint hip hire history hobby hockey hold hole holiday hollow home honey hood hope horn hospital host hour hover hub huge human humble humor hundred hungry hunt hurdle hurry hurt husband hybrid ice icon ignore ill illegal image imitate immense immune impact impose improve impulse inbox income increase index indicate indoor industry infant inflict inform inhale inherit initial inject injury inmate inner innocent input inquiry insane insect inside inspire install intact interest into invest invite involve iron island isolate issue item ivory jacket jaguar jar jazz jealous jeans jelly jewel job join joke journey joy judge juice jump jungle junior junk just kangaroo keen keep ketchup key kick kingdom kiss kit kitchen kite kitten kiwi knee knife knock know lab ladder lamp language laptop large later laugh laundry lava law lawn lawsuit layer lazy leader learn leave lecture left leg legal legend leisure lemon lend length lens leopard lesson letter level liar liberty library license life lift light like limb lion liquid list little live lizard load loan lobster local lock logic lonely long loop lottery loud lounge love loyal lucky luggage lumber lunar lunch luxury lyrics machine mad magic magnet maid main mammal man manage mandate mango mansion manual maple marble march margin marine market marriage mask master match material math matrix matter maximum maze meadow mean medal media melody melt member memory mention menu mercy mesh message metal method middle midnight milk million mimic mind minimum minor minute miracle miss mixed mixture mobile model modify mom monitor monkey monster month moon moral more morning mosquito mother motion mound mouse move movie much muffin mule multiply muscle museum mushroom music must mutual myself mystery naive name napkin narrow nasty natural nature near neck need negative neglect neither nephew nerve network news next nice night noble noise nominee noodle normal north notable note nothing notice novel now nuclear nurse nut oak obey object oblige obscure obtain ocean october odor off offer office often oil old olive olympic omit once onion open opinion oppose option orange orbit orchard order ordinary organ orient original orphan ostrich other outdoor outside oval over own oyster ozone pact paddle page pair palace palm panda panel panic panther paper parade parent park parrot party pass patch path patrol pause pave payment peace peanut peasant pelican pen penalty pencil people pepper perfect permit person pet phone photo phrase physical piano picnic picture piece pig pigeon pill pilot pink pioneer pipe pistol pitch pizza place planet plastic plate play please pledge pluck plug plunge poem poet point polar pole police pond pony popular portion position possible post potato pottery poverty powder power practice praise predict prefer prepare present pretty prevent price pride primary print priority prison private prize problem process produce profit program project promote proof property prosper protect proud provide public pudding pull pulp pulse pumpkin punch pupil puppy purchase purity purpose push put puzzle pyramid quality quantum quarter question quick quit quiz quote rabbit raccoon race rack radar radio rage rail rain raise rally ramp ranch random range rapid rare rate rather raven reach ready real reason rebel rebuild recall receive recipe record recycle reduce reflect reform refuse region regret regular reject relax release relief rely remain remember remind remove render renew rent reopen repair repeat replace report require rescue resemble resist resource response result retire retreat return reunion reveal review reward rhythm ribbon rice rich ride rifle right rigid ring riot ripple risk ritual rival river road roast robot robust rocket romance roof rookie rotate rough round route royal rubber rude rug rule run runway rural sad saddle sadness safe sail salad salmon salon salt salute same sample sand satisfy satoshi sauce sausage save say scale scan scare scatter scene scheme school science scissors scorpion scout scrap screen script scrub sea search season seat second secret section security seek segment select sell seminar senior sense sentence series service session settle setup seven shadow shaft shallow share shed shell sheriff shield shift shine ship shiver shock shoe shoot shop short shoulder shove shrimp shrug shuffle shy sibling siege sight sign silent silk silly silver similar simple since sing siren sister situate six size sketch ski skill skin skirt skull slab slam sleep slender slice slide slight slim slogan slot slow slush small smart smile smoke smooth snack snake snap sniff snow soap soccer social sock solar soldier solid solution solve someone song soon sorry soul sound soup source south space spare spatial spawn speak special speed sphere spice spider spike spin spirit split spoil sponsor spoon spray spread spring spy square squeeze squirrel stable stadium staff stage stairs stamp stand start state stay steak steel stem step stereo stick still sting stock stomach stone stop store story stove strategy street strike strong struggle student stuff stumble style subject submit subway success such sudden suffer sugar suggest suit summer sun sunny sunset super supply supreme sure surface surge surprise sustain swallow swamp swap swear sweet swift swim swing switch sword symbol symptom syrup table tackle tag tail talent tamper tank tape target task tattoo taxi teach team tell ten tenant tennis tent term test text thank that theme then theory there they thing this thought three throw thumb thunder ticket tilt timber time tiny tip tired title toast tobacco today together toilet token tomato tomorrow tone tongue tonight tool tooth top topic topple torch tornado tortoise toss total tourist toward tower town toy track trade traffic tragic train transfer trap trash travel tray treat tree trend trial tribe trick trigger trim trip trophy trouble truck truly trumpet trust truth tube tuition tumble tuna tunnel turkey turn turtle twelve twenty twice twin twist two type typical ugly umbrella unable unaware uncle uncover under undo unfair unfold unhappy uniform unique universe unknown unlock until unusual unveil update upgrade uphold upon upper upset urban usage use used useful useless usual utility vacant vacuum vague valid valley valve van vanish vapor various vast vault vehicle velvet vendor venture venue verb verify version very veteran viable vibrant vicious victory video view village vintage violin virtual virus visa visit visual vital vivid vocal voice void volcano volume vote voyage wage wagon wait walk wall walnut want warfare warm warrior wash wasp waste water wave way wealth weapon wear weasel web wedding weekend weird welcome well west wet whale wheat wheel where whip whisper wide width wife wild will win window wine wing wink winner winter wire wisdom wise wish witness wolf woman wonder wood wool word world worry worth wrap wreck wrestle wrist write wrong yard year yellow you young youth zebra zero zone zoo".split(" ");
-
-  let currentSeedWords = [];
-  let seedGenerated = false;
-  let currentWordCount = 24; // default
-
-  // DOM elements
   const usernameInput = document.getElementById('username');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const confirmInput = document.getElementById('confirmPassword');
   const displayNameInput = document.getElementById('displayName');
   const usernameGroup = document.getElementById('usernameGroup');
+  const emailGroup = document.getElementById('emailGroup');
+  const passwordGroup = document.getElementById('passwordGroup');
+  const confirmGroup = document.getElementById('confirmGroup');
   const displayNameGroup = document.getElementById('displayNameGroup');
-  const seedWordGrid = document.getElementById('seedWordGrid');
-  const generateSeedBtn = document.getElementById('generateSeedBtn');
-  const copySeedBtn = document.getElementById('copySeedBtn');
-  const seedContent = document.getElementById('seedContent');
-  const seedHeader = document.getElementById('seedHeader');
-  const seedLengthSelect = document.getElementById('seedLengthSelect');
-  const copyToast = document.getElementById('copyToast');
   const form = document.getElementById('registerForm');
   const submitBtn = document.getElementById('submitBtn');
+  const toastMsg = document.getElementById('toastMsg');
 
   let toastTimeout = null;
 
-  function showCopyToast(message = 'Seed phrase copied') {
-    copyToast.textContent = message;
-    copyToast.style.opacity = '1';
+  function showToast(message, isError = true) {
     if (toastTimeout) clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => {
-      copyToast.style.opacity = '0';
-    }, 2000);
+    toastMsg.textContent = message;
+    toastMsg.style.opacity = '1';
+    if (isError) { toastMsg.style.background = '#2c1a1a'; toastMsg.style.borderColor = '#aa4a4a'; toastMsg.style.color = '#ffc6c6'; }
+    else { toastMsg.style.background = '#1e2a1e'; toastMsg.style.borderColor = '#4f7a4f'; toastMsg.style.color = '#c6ffc6'; }
+    toastTimeout = setTimeout(() => { toastMsg.style.opacity = '0'; }, 4000);
   }
-
-  // Generate cryptographically secure seed phrase with specified word count (12/15/18/21/24)
-  function generateSeedPhrase(wordCount) {
-    // Entropy required: 12→16 bytes, 15→20, 18→24, 21→28, 24→32
-    const entropyBytesNeeded = { 12: 16, 15: 20, 18: 24, 21: 28, 24: 32 };
-    const bytesNeeded = entropyBytesNeeded[wordCount] || 32;
-    const randomBytes = new Uint8Array(bytesNeeded);
-    crypto.getRandomValues(randomBytes);
-    
-    const indices = [];
-    for (let i = 0; i < wordCount; i++) {
-      const byte1 = randomBytes[i % randomBytes.length];
-      const byte2 = randomBytes[(i + 5) % randomBytes.length];
-      const combined = (byte1 << 8) | byte2;
-      const index = combined % WORDLIST.length;
-      indices.push(index);
-    }
-    return indices.map(idx => WORDLIST[idx]);
-  }
-
-  function renderSeedWords(words) {
-    if (!words || words.length === 0) {
-      seedWordGrid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#666;">Click "Generate seed" below</div>';
-      return;
-    }
-    seedWordGrid.innerHTML = words.map((word, i) => `
-      <div class="word-chip">
-        <span class="word-num">${i+1}</span>
-        <span class="word-text">${word}</span>
-      </div>
-    `).join('');
-  }
-
-  function generateNewSeed() {
-    currentWordCount = parseInt(seedLengthSelect.value, 10);
-    currentSeedWords = generateSeedPhrase(currentWordCount);
-    renderSeedWords(currentSeedWords);
-    seedGenerated = true;
-  }
-
-  function copySeedPhrase() {
-    if (!currentSeedWords.length) {
-      showCopyToast('Generate a seed phrase first');
-      return;
-    }
-    const phrase = currentSeedWords.join(' ');
-    navigator.clipboard.writeText(phrase).then(() => {
-      showCopyToast('Seed phrase copied');
-    }).catch(() => {
-      showCopyToast('Failed to copy');
-    });
-  }
-
-  // Toggle seed section (stop propagation on the select so clicking it doesn't close)
-  let seedOpen = false;
-  seedHeader.addEventListener('click', (e) => {
-    if (e.target === seedLengthSelect) return;
-    seedOpen = !seedOpen;
-    if (seedOpen) {
-      seedContent.classList.add('open');
-    } else {
-      seedContent.classList.remove('open');
-    }
-  });
 
   function clearError(groupElement) {
     if (!groupElement) return;
@@ -752,170 +153,99 @@
     groupElement.appendChild(errorDiv);
   }
 
-  function validateUsername(username) {
-    if (!username || username.trim() === '') {
-      return { valid: false, message: 'Username is required.' };
-    }
-    const trimmed = username.trim();
-    if (trimmed.length < 3) {
-      return { valid: false, message: 'Username must be at least 3 characters.' };
-    }
-    if (trimmed.length > 30) {
-      return { valid: false, message: 'Username must be less than 30 characters.' };
-    }
-    const usernameRegex = /^[a-zA-Z0-9_-]+$/;
-    if (!usernameRegex.test(trimmed)) {
-      return { valid: false, message: 'Username can only contain letters, numbers, underscore (_) and hyphen (-).' };
-    }
-    const reserved = ['admin', 'root', 'system', 'nyxie', 'support'];
-    if (reserved.includes(trimmed.toLowerCase())) {
-      return { valid: false, message: 'This username is not available.' };
-    }
-    return { valid: true, value: trimmed };
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 
-  function validateDisplayName(displayName) {
-    if (!displayName || displayName.trim() === '') {
-      return { valid: true, value: null };
-    }
-    const trimmed = displayName.trim();
-    if (trimmed.length > 64) {
-      return { valid: false, message: 'Display name is too long (max 64 characters).' };
-    }
-    return { valid: true, value: trimmed };
-  }
-
-  function validateSeedGenerated() {
-    if (!seedGenerated || currentSeedWords.length === 0) {
-      return { valid: false, message: 'Please generate a seed phrase before creating your account.' };
-    }
-    return { valid: true };
-  }
-
-  // Regenerate when dropdown changes
-  seedLengthSelect.addEventListener('change', () => {
-    if (seedGenerated) {
-      generateNewSeed();
-    } else {
-      // if not generated yet, still generate a fresh one
-      generateNewSeed();
-    }
-  });
-
-  // Enter key navigation
-  usernameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      displayNameInput.focus();
-    }
-  });
-
-  displayNameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      submitBtn.focus();
-    }
-  });
-
-  // Handle registration with redirect
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
     clearError(usernameGroup);
+    clearError(emailGroup);
+    clearError(passwordGroup);
+    clearError(confirmGroup);
     clearError(displayNameGroup);
-    
-    const usernameVal = usernameInput.value;
-    const displayNameVal = displayNameInput.value;
-    
-    const usernameCheck = validateUsername(usernameVal);
-    if (!usernameCheck.valid) {
-      setError(usernameGroup, usernameCheck.message);
+
+    const username = usernameInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const confirm = confirmInput.value;
+    const displayName = displayNameInput.value.trim();
+
+    // Validate username
+    if (!username || username.length < 3 || username.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(username)) {
+      setError(usernameGroup, 'Username must be 3-30 characters and contain only letters, numbers, underscore or hyphen.');
       usernameInput.focus();
       return;
     }
-    
-    const displayCheck = validateDisplayName(displayNameVal);
-    if (!displayCheck.valid) {
-      setError(displayNameGroup, displayCheck.message);
+    const reserved = ['admin','root','system','nyxie','support'];
+    if (reserved.includes(username.toLowerCase())) {
+      setError(usernameGroup, 'This username is not available.');
+      usernameInput.focus();
+      return;
+    }
+
+    // Validate email
+    if (!isValidEmail(email)) {
+      setError(emailGroup, 'Invalid email address.');
+      emailInput.focus();
+      return;
+    }
+
+    // Validate password
+    if (password.length < 8) {
+      setError(passwordGroup, 'Password must be at least 8 characters.');
+      passwordInput.focus();
+      return;
+    }
+
+    if (password !== confirm) {
+      setError(confirmGroup, 'Passwords do not match.');
+      confirmInput.focus();
+      return;
+    }
+
+    // optional display name – max 64
+    if (displayName && displayName.length > 64) {
+      setError(displayNameGroup, 'Display name too long (max 64 characters).');
       displayNameInput.focus();
       return;
     }
-    
-    const seedCheck = validateSeedGenerated();
-    if (!seedCheck.valid) {
-      if (!seedContent.classList.contains('open')) {
-        seedContent.classList.add('open');
-        seedOpen = true;
-      }
-      const seedSection = document.getElementById('seedSection');
-      let errDiv = seedSection.querySelector('.seed-error');
-      if (!errDiv) {
-        errDiv = document.createElement('div');
-        errDiv.className = 'error-message';
-        errDiv.style.textAlign = 'center';
-        errDiv.style.marginTop = '8px';
-        errDiv.textContent = seedCheck.message;
-        seedSection.appendChild(errDiv);
-      }
-      setTimeout(() => { if (errDiv) errDiv.remove(); }, 3000);
-      return;
-    }
-    
-    const finalDisplayName = (displayCheck.value && displayCheck.value !== '') ? displayCheck.value : usernameCheck.value;
-    
-    // Call real API
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account...';
+
     try {
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating account...';
       const resp = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: usernameCheck.value,
-          display_name: finalDisplayName,
-          seed_phrase: currentSeedWords.join(' ')
+          username,
+          email,
+          password,
+          display_name: displayName || undefined
         })
       });
       const data = await resp.json();
       if (!resp.ok) {
-        showCopyToast('❌ ' + (data.error || 'Registration failed'));
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Create account';
-        return;
+        throw new Error(data.error || 'Registration failed');
       }
-      // Store JWT and redirect to dashboard directly
       localStorage.setItem('nyxie_token', data.token);
       localStorage.setItem('nyxie_user', JSON.stringify(data.user));
-      showCopyToast(`✨ Welcome, ${finalDisplayName}! Redirecting...`);
+      showToast(`Welcome, ${data.user.display_name || data.user.username}!`, false);
       setTimeout(() => { window.location.href = 'dashboard.html'; }, 1000);
     } catch (err) {
-      showCopyToast('❌ Cannot reach server. Is it running?');
+      showToast(err.message, true);
       submitBtn.disabled = false;
       submitBtn.textContent = 'Create account';
     }
   });
 
-  generateSeedBtn.addEventListener('click', () => {
-    generateNewSeed();
-    const seedSection = document.getElementById('seedSection');
-    const errDiv = seedSection.querySelector('.seed-error');
-    if (errDiv) errDiv.remove();
-  });
-  
-  copySeedBtn.addEventListener('click', copySeedPhrase);
-  
+  // Clear errors on input
   usernameInput.addEventListener('input', () => clearError(usernameGroup));
+  emailInput.addEventListener('input', () => clearError(emailGroup));
+  passwordInput.addEventListener('input', () => clearError(passwordGroup));
+  confirmInput.addEventListener('input', () => clearError(confirmGroup));
   displayNameInput.addEventListener('input', () => clearError(displayNameGroup));
-  
-  // Generate a default seed on load
-  generateNewSeed();
-  
-  // Auto-expand seed section for better UX
-  setTimeout(() => {
-    if (!seedOpen) {
-      seedHeader.click();
-    }
-  }, 300);
 </script>
 </body>
 </html>
