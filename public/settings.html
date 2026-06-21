@@ -7,6 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <!-- Theme files -->
+  <link rel="stylesheet" href="theme.css">
+  <script src="theme.js"></script>
+  
   <style>
     * {
       margin: 0;
@@ -38,6 +43,7 @@
       --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
       --radius: 8px;
     }
+
     body {
       font-family: 'Inter', sans-serif;
       background: var(--bg-modal);
@@ -47,13 +53,17 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: background 0.3s ease, color 0.3s ease;
     }
+
     .settings-container {
       display: flex;
       width: 100vw;
       height: 100vh;
       background: var(--bg-modal);
+      transition: background 0.3s ease;
     }
+
     .settings-sidebar {
       width: 240px;
       flex-shrink: 0;
@@ -64,7 +74,9 @@
       display: flex;
       flex-direction: column;
       height: 100%;
+      transition: background 0.3s ease, border-color 0.3s ease;
     }
+
     .settings-sidebar::-webkit-scrollbar {
       width: 2px;
     }
@@ -72,6 +84,7 @@
       background: #3a3a42;
       border-radius: 2px;
     }
+
     .settings-sidebar .nav-section {
       padding: 0 12px 4px;
       font-size: 0.6rem;
@@ -84,6 +97,7 @@
     .settings-sidebar .nav-section:first-child {
       margin-top: 0;
     }
+
     .settings-sidebar .nav-item-settings {
       display: flex;
       align-items: center;
@@ -101,19 +115,30 @@
       background: var(--bg-hover);
       color: var(--text-primary);
     }
+    
+    /* Only active sidebar item gets accent color */
     .settings-sidebar .nav-item-settings.active {
-      background: var(--bg-active);
-      color: var(--text-primary);
+      background: var(--bg-active) !important;
+      color: var(--accent) !important;
     }
+
+    .settings-sidebar .nav-item-settings.active svg {
+      color: var(--accent) !important;
+      stroke: var(--accent) !important;
+      opacity: 1 !important;
+    }
+
+    .settings-sidebar .nav-item-settings.active span {
+      color: var(--accent) !important;
+    }
+    
     .settings-sidebar .nav-item-settings svg {
       width: 18px;
       height: 18px;
       flex-shrink: 0;
       opacity: 0.7;
     }
-    .settings-sidebar .nav-item-settings.active svg {
-      opacity: 1;
-    }
+    
     .settings-sidebar .nav-item-settings .badge-settings {
       margin-left: auto;
       background: #ed4245;
@@ -123,10 +148,12 @@
       padding: 1px 8px;
       border-radius: 10px;
     }
+
     .settings-sidebar-bottom {
       margin-top: auto;
       padding: 16px 16px 0;
       border-top: 1px solid var(--border-color);
+      transition: border-color 0.3s ease;
     }
     .settings-sidebar-bottom .logout-btn {
       display: flex;
@@ -157,11 +184,13 @@
       padding: 8px 12px 4px;
       text-align: center;
     }
+
     .settings-content {
       flex: 1;
       padding: 40px 48px;
       overflow-y: auto;
       background: var(--bg-modal);
+      transition: background 0.3s ease;
     }
     .settings-content::-webkit-scrollbar {
       width: 4px;
@@ -170,12 +199,15 @@
       background: #3a3a42;
       border-radius: 4px;
     }
+
     .settings-content .page-title {
       font-size: 1.4rem;
       font-weight: 700;
       color: var(--text-primary);
       margin-bottom: 24px;
+      transition: color 0.3s ease;
     }
+
     .back-btn {
       display: inline-flex;
       align-items: center;
@@ -198,6 +230,7 @@
       width: 18px;
       height: 18px;
     }
+
     .profile-card {
       display: flex;
       align-items: center;
@@ -207,12 +240,13 @@
       padding: 18px 24px;
       margin-bottom: 28px;
       border: 1px solid var(--border-color);
+      transition: background 0.3s ease, border-color 0.3s ease;
     }
     .profile-card .pc-avatar {
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: #fd6671;
+      background: var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -234,6 +268,7 @@
       font-weight: 600;
       font-size: 1rem;
       color: var(--text-primary);
+      transition: color 0.3s ease;
     }
     .profile-card .pc-info .pc-id {
       font-size: 0.75rem;
@@ -249,12 +284,13 @@
       font-weight: 500;
       font-family: 'Inter', sans-serif;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+      transition: background 0.15s, color 0.15s, border-color 0.3s ease;
     }
     .profile-card .pc-edit-btn:hover {
       background: var(--bg-hover);
       color: var(--text-primary);
     }
+
     .account-field {
       display: flex;
       align-items: center;
@@ -264,6 +300,7 @@
       border-radius: var(--radius);
       border: 1px solid var(--border-color);
       margin-bottom: 8px;
+      transition: background 0.3s ease, border-color 0.3s ease;
     }
     .account-field .af-icon {
       color: var(--text-muted);
@@ -286,6 +323,7 @@
       flex: 1;
       font-size: 0.9rem;
       color: var(--text-primary);
+      transition: color 0.3s ease;
     }
     .account-field .af-action {
       background: none;
@@ -307,6 +345,7 @@
       width: 16px;
       height: 16px;
     }
+
     .settings-section {
       margin-top: 32px;
     }
@@ -315,12 +354,14 @@
       font-weight: 700;
       color: var(--text-primary);
       margin-bottom: 4px;
+      transition: color 0.3s ease;
     }
     .settings-section .section-desc {
       font-size: 0.8rem;
       color: var(--text-muted);
       margin-bottom: 16px;
     }
+
     .twofa-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -360,6 +401,7 @@
       font-size: 0.9rem;
       font-weight: 600;
       color: var(--text-primary);
+      transition: color 0.3s ease;
     }
     .twofa-card .tc-info .tc-desc {
       font-size: 0.75rem;
@@ -372,6 +414,7 @@
       width: 18px;
       height: 18px;
     }
+
     .warning-banner {
       background: rgba(237, 66, 69, 0.08);
       border: 1px solid rgba(237, 66, 69, 0.25);
@@ -389,6 +432,7 @@
       height: 20px;
       flex-shrink: 0;
     }
+
     .account-mgmt-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -431,6 +475,7 @@
       font-size: 0.9rem;
       font-weight: 600;
       color: var(--text-primary);
+      transition: color 0.3s ease;
     }
     .mgmt-card .mc-info .mc-desc {
       font-size: 0.75rem;
@@ -443,6 +488,7 @@
       width: 18px;
       height: 18px;
     }
+
     .settings-footer-notice {
       margin-top: 32px;
       background: var(--bg-modal-card);
@@ -454,6 +500,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      transition: background 0.3s ease, border-color 0.3s ease;
     }
     .settings-footer-notice svg {
       width: 18px;
@@ -461,6 +508,7 @@
       flex-shrink: 0;
       color: var(--text-muted);
     }
+
     /* Modals */
     .overlay {
       position: fixed;
@@ -482,11 +530,14 @@
       border: 1px solid var(--border-color);
       max-height: 90vh;
       overflow-y: auto;
+      transition: background 0.3s ease, border-color 0.3s ease;
     }
     .modal h2 {
       font-size: 1.2rem;
       font-weight: 700;
       margin-bottom: 6px;
+      color: var(--text-primary);
+      transition: color 0.3s ease;
     }
     .modal p {
       font-size: 0.85rem;
@@ -514,6 +565,7 @@
       font-size: 0.9rem;
       outline: none;
       font-family: 'Inter', sans-serif;
+      transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
     }
     .modal input:focus,
     .modal textarea:focus {
@@ -564,6 +616,7 @@
     .btn-danger:hover {
       background: #d93036 !important;
     }
+
     #edit-profile-modal .modal {
       max-width: 480px;
     }
@@ -589,10 +642,12 @@
       font-size: 0.8rem;
       cursor: pointer;
       font-family: 'Inter', sans-serif;
+      transition: background 0.15s;
     }
     .edit-profile-btn:hover {
       background: var(--accent-hover);
     }
+
     #toast {
       position: fixed;
       bottom: 28px;
@@ -607,11 +662,450 @@
       font-weight: 500;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.25s;
+      transition: opacity 0.25s, background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
       z-index: 400;
       box-shadow: var(--shadow);
       white-space: nowrap;
     }
+
+    /* Appearance Styles - Settings only */
+    .theme-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 12px 0 24px;
+    }
+
+    .theme-preview-card {
+      background: var(--bg-modal-card);
+      border: 2px solid var(--border-color);
+      border-radius: var(--radius);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .theme-preview-card:hover {
+      border-color: var(--border-medium);
+      transform: translateY(-2px);
+    }
+    .theme-preview-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(253, 102, 113, 0.2);
+    }
+    .theme-preview-card.active .theme-preview-label {
+      color: var(--accent);
+    }
+
+    .theme-preview {
+      height: 100px;
+      padding: 8px;
+      display: flex;
+      gap: 6px;
+      background: var(--bg-primary);
+      transition: background 0.3s ease;
+    }
+    
+    /* All previews visible, dim non-active ones */
+    .theme-preview-content {
+      display: flex !important;
+      gap: 6px;
+      width: 100%;
+      border-radius: 4px;
+      overflow: hidden;
+      opacity: 1 !important;
+      filter: none !important;
+      transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+
+    .theme-preview-card:not(.active) .theme-preview-content {
+      opacity: 0.5 !important;
+      filter: grayscale(0.5) !important;
+    }
+
+    .theme-preview-card.active .theme-preview-content {
+      opacity: 1 !important;
+      filter: none !important;
+    }
+
+    .theme-preview-card:hover .theme-preview-content {
+      opacity: 0.8 !important;
+      filter: grayscale(0.2) !important;
+    }
+
+    .theme-preview-card.active:hover .theme-preview-content {
+      opacity: 1 !important;
+      filter: none !important;
+    }
+
+    .preview-sidebar {
+      width: 25px;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .preview-sidebar-item {
+      height: 10px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.1);
+    }
+    .preview-sidebar-item.active {
+      background: var(--accent);
+    }
+
+    .preview-main {
+      flex: 1;
+      padding: 4px 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .preview-avatar-small {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+    .preview-header-text {
+      height: 6px;
+      width: 40px;
+      border-radius: 3px;
+      opacity: 0.5;
+    }
+    .preview-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+    }
+    .preview-msg {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .preview-msg-avatar {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #3ba55c;
+      flex-shrink: 0;
+    }
+    .preview-msg-bubble {
+      height: 6px;
+      width: 30px;
+      border-radius: 3px;
+    }
+    .preview-msg.right {
+      justify-content: flex-end;
+    }
+    .preview-msg.right .preview-msg-bubble {
+      background: var(--accent);
+      width: 25px;
+    }
+    .preview-msg.right .preview-msg-avatar {
+      background: var(--accent);
+    }
+    .preview-input {
+      height: 8px;
+      border-radius: 3px;
+    }
+
+    /* ESC Preview */
+    .esc-preview {
+      background: #191919;
+    }
+    .esc-preview .preview-sidebar {
+      background: #232323;
+    }
+    .esc-preview .preview-main {
+      background: #1a1b1e;
+    }
+    .esc-preview .preview-header {
+      background: #1e1f22;
+    }
+    .esc-preview .preview-header-text {
+      background: var(--text-secondary);
+    }
+    .esc-preview .preview-msg-bubble {
+      background: #2b2d31;
+    }
+    .esc-preview .preview-input {
+      background: #2c2c2c;
+    }
+
+    /* Light Preview */
+    .light-preview {
+      background: #ffffff;
+    }
+    .light-preview .preview-sidebar {
+      background: #f0f0f0;
+    }
+    .light-preview .preview-main {
+      background: #f8f9fa;
+    }
+    .light-preview .preview-header {
+      background: #ffffff;
+    }
+    .light-preview .preview-header-text {
+      background: #333333;
+    }
+    .light-preview .preview-msg-bubble {
+      background: #e8e8e8;
+    }
+    .light-preview .preview-input {
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+    }
+
+    /* Dark Preview */
+    .dark-preview {
+      background: #1e1e1e;
+    }
+    .dark-preview .preview-sidebar {
+      background: #2d2d2d;
+    }
+    .dark-preview .preview-main {
+      background: #252525;
+    }
+    .dark-preview .preview-header {
+      background: #1e1e1e;
+    }
+    .dark-preview .preview-header-text {
+      background: var(--text-secondary);
+    }
+    .dark-preview .preview-msg-bubble {
+      background: #2a2a2a;
+    }
+    .dark-preview .preview-input {
+      background: #2d2d2d;
+    }
+
+    .theme-preview-label {
+      padding: 8px 12px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: center;
+      letter-spacing: 0.05em;
+      transition: color 0.3s ease;
+    }
+
+    .discover-themes-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-modal-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 12px 20px;
+      width: 100%;
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      margin-bottom: 24px;
+    }
+    .discover-themes-btn:hover {
+      background: var(--bg-modal-hover);
+      border-color: var(--border-medium);
+    }
+    .discover-themes-btn svg {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .discover-themes-btn span {
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      margin-left: auto;
+    }
+
+    /* FIX: Accent Color Picker - Each swatch keeps its own color */
+    .accent-color-picker {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 8px 0;
+    }
+    .accent-swatch {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 3px solid var(--border-color);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      padding: 0;
+      flex-shrink: 0;
+      /* IMPORTANT: Don't set background here - it comes from inline style */
+    }
+    .accent-swatch:hover {
+      transform: scale(1.1);
+    }
+    .accent-swatch.active {
+      border-color: var(--text-primary);
+      box-shadow: 0 0 0 2px var(--bg-primary);
+    }
+    /* Custom color swatch - uses inline style too */
+    .accent-swatch.custom-color {
+      border-color: var(--border-medium);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      font-weight: 300;
+      color: var(--text-muted);
+    }
+    .accent-swatch.custom-color:hover {
+      background: var(--bg-hover);
+    }
+
+    /* Custom color picker with save button */
+    .custom-color-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .custom-color-row input[type="color"] {
+      width: 40px;
+      height: 40px;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      background: transparent;
+      border-radius: 8px;
+    }
+    .custom-color-row input[type="text"] {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-medium);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+    }
+    .custom-color-row input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+    .custom-color-row .btn-primary {
+      padding: 8px 16px;
+      white-space: nowrap;
+    }
+
+    .appearance-toggle {
+      margin-bottom: 12px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-modal-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      gap: 16px;
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+    .toggle-info {
+      flex: 1;
+    }
+    .toggle-label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      transition: color 0.3s ease;
+    }
+    .toggle-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-input);
+      transition: 0.2s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: var(--text-muted);
+      transition: 0.2s;
+      border-radius: 50%;
+    }
+    .switch input:checked + .slider {
+      background: var(--accent);
+    }
+    .switch input:checked + .slider:before {
+      transform: translateX(20px);
+      background: #ffffff;
+    }
+
+    .font-selector {
+      margin: 8px 0;
+    }
+    .font-selector select {
+      width: 100%;
+      max-width: 300px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      outline: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238c8c8c' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+    }
+    .font-selector select:focus {
+      border-color: var(--accent);
+      outline: 2px solid rgba(253, 102, 113, 0.2);
+    }
+    .font-selector select option {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    /* Responsive */
     @media (max-width: 768px) {
       .settings-sidebar {
         width: 100%;
@@ -632,13 +1126,64 @@
       .profile-card {
         flex-wrap: wrap;
       }
+      .theme-preview-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+      .theme-preview {
+        height: 80px;
+      }
+      .toggle-row {
+        flex-wrap: wrap;
+        padding: 12px;
+      }
+      .switch {
+        width: 40px;
+        height: 22px;
+      }
+      .slider:before {
+        height: 16px;
+        width: 16px;
+      }
+      .switch input:checked + .slider:before {
+        transform: translateX(18px);
+      }
+      .custom-color-row {
+        flex-wrap: wrap;
+      }
     }
+
     @media (max-width: 600px) {
       .settings-content {
         padding: 16px;
       }
       .back-btn span {
         display: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .theme-preview-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .theme-preview {
+        height: 70px;
+      }
+      .accent-color-picker {
+        gap: 6px;
+      }
+      .accent-swatch {
+        width: 30px;
+        height: 30px;
+      }
+      .discover-themes-btn {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .discover-themes-btn span {
+        margin-left: 0;
+        width: 100%;
       }
     }
   </style>
@@ -744,7 +1289,230 @@
     <div class="settings-tab" id="tab-profile" style="display:none;"><div class="page-title">Profile</div><p style="color:var(--text-muted);">Profile settings coming soon.</p></div>
     <div class="settings-tab" id="tab-sessions" style="display:none;"><div class="page-title">Sessions</div><p style="color:var(--text-muted);">Session management coming soon.</p></div>
     <div class="settings-tab" id="tab-voice" style="display:none;"><div class="page-title">Voice Settings</div><p style="color:var(--text-muted);">Voice settings coming soon.</p></div>
-    <div class="settings-tab" id="tab-appearance" style="display:none;"><div class="page-title">Appearance</div><p style="color:var(--text-muted);">Appearance settings coming soon.</p></div>
+
+    <!-- Appearance Tab -->
+    <div class="settings-tab" id="tab-appearance" style="display:none;">
+      <div class="page-title">Appearance</div>
+
+      <div class="settings-section">
+        <div class="section-title">THEME</div>
+        
+        <div class="theme-preview-grid">
+          <div class="theme-preview-card active" data-theme="esc" onclick="setTheme('esc')">
+            <div class="theme-preview">
+              <div class="theme-preview-content esc-preview">
+                <div class="preview-sidebar">
+                  <div class="preview-sidebar-item active"></div>
+                  <div class="preview-sidebar-item"></div>
+                  <div class="preview-sidebar-item"></div>
+                </div>
+                <div class="preview-main">
+                  <div class="preview-header">
+                    <div class="preview-avatar-small"></div>
+                    <div class="preview-header-text"></div>
+                  </div>
+                  <div class="preview-messages">
+                    <div class="preview-msg">
+                      <div class="preview-msg-avatar"></div>
+                      <div class="preview-msg-bubble"></div>
+                    </div>
+                    <div class="preview-msg right">
+                      <div class="preview-msg-bubble"></div>
+                      <div class="preview-msg-avatar"></div>
+                    </div>
+                    <div class="preview-msg">
+                      <div class="preview-msg-avatar"></div>
+                      <div class="preview-msg-bubble"></div>
+                    </div>
+                  </div>
+                  <div class="preview-input"></div>
+                </div>
+              </div>
+            </div>
+            <div class="theme-preview-label">ESC</div>
+          </div>
+
+          <div class="theme-preview-card" data-theme="light" onclick="setTheme('light')">
+            <div class="theme-preview">
+              <div class="theme-preview-content light-preview">
+                <div class="preview-sidebar">
+                  <div class="preview-sidebar-item active"></div>
+                  <div class="preview-sidebar-item"></div>
+                  <div class="preview-sidebar-item"></div>
+                </div>
+                <div class="preview-main">
+                  <div class="preview-header">
+                    <div class="preview-avatar-small"></div>
+                    <div class="preview-header-text"></div>
+                  </div>
+                  <div class="preview-messages">
+                    <div class="preview-msg">
+                      <div class="preview-msg-avatar"></div>
+                      <div class="preview-msg-bubble"></div>
+                    </div>
+                    <div class="preview-msg right">
+                      <div class="preview-msg-bubble"></div>
+                      <div class="preview-msg-avatar"></div>
+                    </div>
+                    <div class="preview-msg">
+                      <div class="preview-msg-avatar"></div>
+                      <div class="preview-msg-bubble"></div>
+                    </div>
+                  </div>
+                  <div class="preview-input"></div>
+                </div>
+              </div>
+            </div>
+            <div class="theme-preview-label">LIGHT</div>
+          </div>
+
+          <div class="theme-preview-card" data-theme="dark" onclick="setTheme('dark')">
+            <div class="theme-preview">
+              <div class="theme-preview-content dark-preview">
+                <div class="preview-sidebar">
+                  <div class="preview-sidebar-item active"></div>
+                  <div class="preview-sidebar-item"></div>
+                  <div class="preview-sidebar-item"></div>
+                </div>
+                <div class="preview-main">
+                  <div class="preview-header">
+                    <div class="preview-avatar-small"></div>
+                    <div class="preview-header-text"></div>
+                  </div>
+                  <div class="preview-messages">
+                    <div class="preview-msg">
+                      <div class="preview-msg-avatar"></div>
+                      <div class="preview-msg-bubble"></div>
+                    </div>
+                    <div class="preview-msg right">
+                      <div class="preview-msg-bubble"></div>
+                      <div class="preview-msg-avatar"></div>
+                    </div>
+                    <div class="preview-msg">
+                      <div class="preview-msg-avatar"></div>
+                      <div class="preview-msg-bubble"></div>
+                    </div>
+                  </div>
+                  <div class="preview-input"></div>
+                </div>
+              </div>
+            </div>
+            <div class="theme-preview-label">DARK</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="discover-themes-btn" onclick="window.open('https://example.com/themes','_blank')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+        Discover Themes
+        <span>Browse themes made by the community</span>
+      </button>
+
+      <div class="settings-section">
+        <div class="section-title">ACCENT COLOR</div>
+        <div class="accent-color-picker">
+          <button class="accent-swatch active" data-color="#fd6671" style="background:#fd6671 !important;" onclick="setAccent('#fd6671')"></button>
+          <button class="accent-swatch" data-color="#eb459e" style="background:#eb459e !important;" onclick="setAccent('#eb459e')"></button>
+          <button class="accent-swatch" data-color="#3ba55c" style="background:#3ba55c !important;" onclick="setAccent('#3ba55c')"></button>
+          <button class="accent-swatch" data-color="#faa61a" style="background:#faa61a !important;" onclick="setAccent('#faa61a')"></button>
+          <button class="accent-swatch" data-color="#1abc9c" style="background:#1abc9c !important;" onclick="setAccent('#1abc9c')"></button>
+          <button class="accent-swatch" data-color="#3498db" style="background:#3498db !important;" onclick="setAccent('#3498db')"></button>
+          <button class="accent-swatch" data-color="#9b59b6" style="background:#9b59b6 !important;" onclick="setAccent('#9b59b6')"></button>
+          <button class="accent-swatch" data-color="#e67e22" style="background:#e67e22 !important;" onclick="setAccent('#e67e22')"></button>
+          <button class="accent-swatch custom-color" style="background:#2c2c2c !important;" onclick="document.getElementById('custom-accent-color').click()">
+            <span>+</span>
+          </button>
+        </div>
+        
+        <!-- Custom color picker with Save button -->
+        <div class="custom-color-row">
+          <input type="color" id="custom-accent-color" value="#fd6671" />
+          <input type="text" id="custom-accent-hex" placeholder="Enter hex color (e.g., #ff0000)" />
+          <button class="btn-primary" onclick="saveCustomAccent()">Save</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">APPEARANCE OPTIONS</div>
+
+        <div class="appearance-toggle">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Always show Send Message button</div>
+              <div class="toggle-desc">If disabled, the Send Message button will only appear on mobile.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-send-btn" checked />
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="appearance-toggle">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Always show account age next to join messages</div>
+              <div class="toggle-desc">If disabled, the account age will only be shown for new users.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-account-age" />
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">THEME OPTIONS</div>
+
+        <div class="appearance-toggle">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Transparency Effects</div>
+              <div class="toggle-desc">Enables transparency effects (like frosted glass) throughout the app.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-transparency" checked />
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="appearance-toggle">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Seasonal Theme</div>
+              <div class="toggle-desc">Displays effects in the home tab during holiday seasons.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-seasonal" />
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">FONT</div>
+        <div class="font-selector">
+          <select id="font-select">
+            <option value="Open Sans">Open Sans</option>
+            <option value="Inter" selected>Inter</option>
+            <option value="Roboto">Roboto</option>
+            <option value="Poppins">Poppins</option>
+            <option value="Nunito">Nunito</option>
+            <option value="Montserrat">Montserrat</option>
+            <option value="Lato">Lato</option>
+            <option value="Raleway">Raleway</option>
+            <option value="Merriweather">Merriweather</option>
+            <option value="Playfair Display">Playfair Display</option>
+            <option value="Fira Code">Fira Code</option>
+            <option value="JetBrains Mono">JetBrains Mono</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="settings-tab" id="tab-notifications" style="display:none;"><div class="page-title">Notifications</div><p style="color:var(--text-muted);">Notification settings coming soon.</p></div>
     <div class="settings-tab" id="tab-language" style="display:none;"><div class="page-title">Language</div><p style="color:var(--text-muted);">Language settings coming soon.</p></div>
     <div class="settings-tab" id="tab-sync" style="display:none;"><div class="page-title">Sync</div><p style="color:var(--text-muted);">Sync settings coming soon.</p></div>
@@ -946,7 +1714,6 @@
     document.getElementById('settings-display-name').textContent = name;
     document.getElementById('settings-user-id').textContent = `User ID: ${currentUser.id}`;
     document.getElementById('settings-username').textContent = '@' + currentUser.username;
-    // Email masked by default
     emailVisible = false;
     document.getElementById('settings-email').textContent = '••••••••';
   }
@@ -1193,6 +1960,118 @@
       toast('Upload error');
     }
   }
+
+  // ---- Appearance Settings ----
+  function updateThemePreviews(theme) {
+    document.querySelectorAll('.theme-preview-card').forEach(c => {
+      c.classList.toggle('active', c.dataset.theme === theme);
+    });
+  }
+
+  function setTheme(theme) {
+    localStorage.setItem('theme', theme);
+    document.body.className = document.body.className
+      .split(' ')
+      .filter(c => !c.startsWith('theme-'))
+      .join(' ');
+    document.body.classList.add('theme-' + theme);
+    updateThemePreviews(theme);
+    toast('Theme changed to: ' + theme.toUpperCase());
+  }
+
+  function setAccent(color) {
+    document.querySelectorAll('.accent-swatch').forEach(s => s.classList.remove('active'));
+    document.querySelector(`.accent-swatch[data-color="${color}"]`)?.classList.add('active');
+    document.documentElement.style.setProperty('--accent', color);
+    localStorage.setItem('accent', color);
+    toast('Accent color updated');
+  }
+
+  // Save custom accent color
+  function saveCustomAccent() {
+    const hexInput = document.getElementById('custom-accent-hex');
+    const colorInput = document.getElementById('custom-accent-color');
+    let color = hexInput.value.trim();
+    
+    // If hex input is empty, use the color picker value
+    if (!color) {
+      color = colorInput.value;
+    }
+    
+    // Validate hex color
+    if (!/^#([0-9A-F]{3}){1,2}$/i.test(color)) {
+      toast('Please enter a valid hex color (e.g., #ff0000)');
+      return;
+    }
+    
+    // Apply the color
+    setAccent(color);
+    
+    // Update the custom swatch
+    const customSwatch = document.querySelector('.accent-swatch.custom-color');
+    if (customSwatch) {
+      customSwatch.style.background = color + ' !important';
+    }
+    
+    // Clear the input
+    hexInput.value = '';
+    
+    toast('Custom accent color saved!');
+  }
+
+  // Auto-update hex input when color picker changes
+  document.addEventListener('DOMContentLoaded', function() {
+    const colorPicker = document.getElementById('custom-accent-color');
+    const hexInput = document.getElementById('custom-accent-hex');
+    
+    if (colorPicker) {
+      colorPicker.addEventListener('input', function() {
+        hexInput.value = this.value;
+      });
+    }
+  });
+
+  // Apply saved settings on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    const savedTheme = localStorage.getItem('theme') || 'esc';
+    setTheme(savedTheme);
+    
+    const savedAccent = localStorage.getItem('accent');
+    if (savedAccent) {
+      document.documentElement.style.setProperty('--accent', savedAccent);
+      document.querySelectorAll('.accent-swatch').forEach(el => {
+        el.classList.toggle('active', el.dataset.color === savedAccent);
+      });
+      
+      // Update custom swatch if it matches
+      const customSwatch = document.querySelector('.accent-swatch.custom-color');
+      if (customSwatch && !document.querySelector(`.accent-swatch[data-color="${savedAccent}"]`)) {
+        customSwatch.style.background = savedAccent + ' !important';
+      }
+    }
+  });
+
+  // Font selector
+  const fontSelect = document.getElementById('font-select');
+  const savedFont = localStorage.getItem('font');
+  if (savedFont) {
+    fontSelect.value = savedFont;
+    document.body.style.fontFamily = savedFont + ', sans-serif';
+  }
+  fontSelect.addEventListener('change', function() {
+    document.body.style.fontFamily = this.value + ', sans-serif';
+    localStorage.setItem('font', this.value);
+    toast('Font: ' + this.value);
+  });
+
+  // Toggle switches
+  document.querySelectorAll('.switch input').forEach(el => {
+    const saved = localStorage.getItem('switch-' + el.id);
+    if (saved !== null) el.checked = saved === 'true';
+    el.addEventListener('change', function() {
+      localStorage.setItem('switch-' + this.id, this.checked);
+    });
+  });
 
   // ---- Init ----
   loadUserData();
