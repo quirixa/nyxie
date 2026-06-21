@@ -7,6 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Theme files -->
+  <link rel="stylesheet" href="theme.css">
+  <script src="theme.js"></script>
+</head>
   <style>
     /* ---------- Reset & Variables ---------- */
     * {
@@ -2201,6 +2205,192 @@
       .ep-grid { grid-template-columns: repeat(6, 1fr); }
       .ep-item { font-size: 1.2rem; min-height: 36px; }
     }
+    /* ---- ACCENT COLOR  ---- */
+    .new-message-btn {
+      background: var(--accent) !important;
+      color: #fff !important;
+      border: none !important;
+      transition: background 0.3s ease !important;
+    }
+
+    .new-message-btn:hover {
+      background: var(--accent-hover) !important;
+    }
+
+    .wv-new-btn {
+      background: var(--accent) !important;
+      color: #fff !important;
+    }
+
+    .wv-new-btn:hover {
+      background: var(--accent-hover) !important;
+    }
+
+    .dm-avatar {
+      background: var(--accent) !important;
+    }
+
+    #up-avatar {
+      background: var(--accent) !important;
+    }
+
+    .ch-avatar {
+      background: var(--accent) !important;
+    }
+
+    .nav-item.active {
+      background: var(--accent) !important;
+      color: #fff !important;
+    }
+
+    .nav-item.active svg {
+      opacity: 1 !important;
+    }
+
+    .dm-item.active {
+      background: var(--accent) !important;
+    }
+
+    .dm-item.active .dm-name {
+      color: #fff !important;
+    }
+
+    .dm-item.active .dm-preview {
+      color: rgba(255,255,255,0.7) !important;
+    }
+
+    .dm-item.active .dm-time {
+      color: rgba(255,255,255,0.6) !important;
+    }
+
+    .ftab.active {
+      background: var(--accent) !important;
+      color: #fff !important;
+    }
+
+    .brand-small {
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+    }
+
+    .msg-row.outgoing .msg-author {
+      color: var(--accent) !important;
+    }
+
+    .add-friend-btn {
+      background: var(--accent) !important;
+    }
+
+    .add-friend-btn:hover {
+      background: var(--accent-hover) !important;
+    }
+
+    .dm-checkbox {
+      border-color: var(--accent) !important;
+    }
+
+    .dm-item.selected .dm-checkbox {
+      background: var(--accent) !important;
+      border-color: var(--accent) !important;
+    }
+
+    .reaction-pill.mine {
+      background: rgba(253, 102, 113, 0.15) !important;
+      border-color: var(--accent) !important;
+    }
+
+    .msg-text mark.search-hit {
+      background: rgba(253, 102, 113, 0.45) !important;
+    }
+
+    .msg-row.search-current {
+      outline: 1px solid var(--accent) !important;
+      background: rgba(253, 102, 113, 0.08) !important;
+    }
+
+    .btn-primary {
+      background: var(--accent) !important;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover) !important;
+    }
+
+    .edit-profile-btn {
+      background: var(--accent) !important;
+    }
+
+    .edit-profile-btn:hover {
+      background: var(--accent-hover) !important;
+    }
+
+    .pp-banner {
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+    }
+
+    .pp-avatar {
+      background: var(--accent) !important;
+    }
+
+    #user-profile-popout .up-avatar-large {
+      background: var(--accent) !important;
+    }
+
+    #up-status-pip {
+      border-color: var(--bg-sidebar) !important;
+    }
+
+    #input-box:focus-within {
+      border-color: var(--accent) !important;
+    }
+
+    #chat-search-input:focus {
+      border-color: var(--accent) !important;
+    }
+
+    .modal input:focus,
+    .modal textarea:focus {
+      border-color: var(--accent) !important;
+      outline: 2px solid var(--accent) !important;
+    }
+
+    .emoji-picker-header input:focus {
+      border: 1px solid var(--accent) !important;
+    }
+
+    .ctx-item:hover {
+      background: var(--accent) !important;
+      color: #fff !important;
+    }
+
+    .switch input:checked + .slider {
+      background: var(--accent) !important;
+    }
+
+    .msb-delete {
+      background: var(--accent) !important;
+    }
+
+    .msb-delete:hover {
+      background: var(--accent-hover) !important;
+    }
+    /* User tag/mention uses accent color */
+.dm-preview .mention,
+.msg-text .mention,
+.user-tag,
+.mention-text,
+[class*="mention"] {
+  color: var(--accent) !important;
+}
+
+/* Also for the @username display */
+.dm-preview .at-user,
+.dm-preview .mention-user,
+.chat-username-tag {
+  color: var(--accent) !important;
+}
   </style>
 </head>
 <body>

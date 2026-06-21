@@ -1,0 +1,528 @@
+/* theme.css - Complete theme system */
+
+/* Theme styles for entire site */
+body.theme-light {
+  --bg-primary: #f0f0f0;
+  --bg-secondary: #ffffff;
+  --bg-sidebar: #f5f5f5;
+  --bg-input: #e8e8e8;
+  --bg-modal: #f8f9fa;
+  --bg-modal-sidebar: #f0f0f0;
+  --bg-modal-card: #ffffff;
+  --bg-modal-hover: #f0f0f0;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6a6a6a;
+  --border-color: #e0e0e0;
+  --border-medium: #cccccc;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+body.theme-dark {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #2d2d2d;
+  --bg-sidebar: #2d2d2d;
+  --bg-input: #3a3a3a;
+  --bg-modal: #252525;
+  --bg-modal-sidebar: #2d2d2d;
+  --bg-modal-card: #333333;
+  --bg-modal-hover: #3a3a3a;
+  --text-primary: #ffffff;
+  --text-secondary: #b8b8b8;
+  --text-muted: #8c8c8c;
+  --border-color: #404040;
+  --border-medium: #505050;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Transitions */
+body {
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* ---- ACCENT COLOR SYSTEM ---- */
+:root {
+  --accent: #fd6671;
+  --accent-hover: #ff7b85;
+  --accent-light: rgba(253, 102, 113, 0.15);
+  --accent-medium: rgba(253, 102, 113, 0.25);
+  --accent-dark: rgba(253, 102, 113, 0.45);
+}
+
+/* 1. BUTTONS - All buttons use accent color */
+button:not(.btn-cancel):not(.logout-btn):not(.ch-action-btn):not(.dm-action-btn):not(.up-btn):not(.nav-item):not(.back-btn):not(.ftab):not(.msb-cancel),
+.btn:not(.btn-cancel),
+.button:not(.btn-cancel),
+[role="button"]:not(.btn-cancel),
+input[type="submit"],
+input[type="button"],
+.wv-new-btn,
+.new-message-btn,
+.add-friend-btn,
+.msb-delete,
+.edit-profile-btn,
+.discover-themes-btn {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  border-color: var(--accent) !important;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+button:not(.btn-cancel):not(.logout-btn):not(.ch-action-btn):not(.dm-action-btn):not(.up-btn):not(.nav-item):not(.back-btn):not(.ftab):not(.msb-cancel):hover,
+.btn:not(.btn-cancel):hover,
+.button:not(.btn-cancel):hover,
+[role="button"]:not(.btn-cancel):hover,
+input[type="submit"]:hover,
+input[type="button"]:hover,
+.wv-new-btn:hover,
+.new-message-btn:hover,
+.add-friend-btn:hover,
+.msb-delete:hover,
+.edit-profile-btn:hover,
+.discover-themes-btn:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  transform: scale(1.02);
+}
+
+/* 2. ACTIVE/ SELECTED STATES - Use accent color */
+.nav-item.active,
+.settings-sidebar .nav-item-settings.active,
+.dm-item.active,
+.ftab.active,
+.sidebar-item.active,
+.channel-item.active,
+.tab-active,
+.selected {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+.nav-item.active svg,
+.settings-sidebar .nav-item-settings.active svg,
+.dm-item.active svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+.nav-item.active .dm-name,
+.nav-item.active .dm-preview,
+.nav-item.active .dm-time,
+.nav-item.active span,
+.dm-item.active .dm-name,
+.dm-item.active .dm-preview,
+.dm-item.active .dm-time {
+  color: #ffffff !important;
+}
+
+/* 3. LINKS - Use accent color */
+a:not(.no-accent),
+.link,
+.text-link {
+  color: var(--accent) !important;
+  transition: color 0.2s ease;
+}
+
+a:not(.no-accent):hover,
+.link:hover,
+.text-link:hover {
+  color: var(--accent-hover) !important;
+  text-decoration: underline;
+}
+
+/* 4. INPUT FOCUS STATES */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent) !important;
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+
+#input-box:focus-within,
+#search-inner:focus-within {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent-light) !important;
+}
+
+/* 5. TOGGLES & SWITCHES */
+.switch input:checked + .slider {
+  background: var(--accent) !important;
+}
+
+.switch input:checked + .slider:before {
+  background: #ffffff !important;
+}
+
+/* 6. CHECKBOXES & RADIOS */
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  accent-color: var(--accent) !important;
+}
+
+.dm-checkbox.selected {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* 7. AVATARS - Use accent as default */
+.dm-avatar,
+.ch-avatar,
+.pc-avatar,
+.fr-avatar,
+#up-avatar,
+.pp-avatar,
+.mini-avatar {
+  background: var(--accent) !important;
+}
+
+/* 8. BADGES & PILLS */
+.badge,
+.pill,
+.tag,
+.badge-settings {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+/* 9. PROGRESS BARS */
+progress::-webkit-progress-value {
+  background: var(--accent) !important;
+}
+
+progress::-moz-progress-bar {
+  background: var(--accent) !important;
+}
+
+/* 10. RANGE SLIDERS */
+input[type="range"]::-webkit-slider-thumb {
+  background: var(--accent) !important;
+}
+
+input[type="range"]::-moz-range-thumb {
+  background: var(--accent) !important;
+}
+
+/* 11. REACTION PILLS */
+.reaction-pill.mine {
+  background: var(--accent-light) !important;
+  border-color: var(--accent) !important;
+}
+
+/* 12. SEARCH HIGHLIGHTS */
+mark,
+.search-hit,
+.msg-text mark {
+  background: var(--accent-dark) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 13. MENTIONS - Fix for @username visibility in all themes */
+.mention,
+.at-user,
+[class*="mention"] {
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+
+/* 14. HOVER EFFECTS */
+.hover-accent:hover,
+.dm-item:hover .dm-actions,
+.nav-item:hover {
+  background: var(--accent-light) !important;
+}
+
+/* 15. BORDER ACCENT */
+.border-accent {
+  border-color: var(--accent) !important;
+}
+
+/* 16. GRADIENTS - Use accent */
+.gradient,
+.brand-small,
+.welcome-logo pre {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.pp-banner {
+  -webkit-text-fill-color: unset !important;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+}
+
+/* 17. SCROLLBAR */
+::-webkit-scrollbar-thumb {
+  background: var(--accent) !important;
+  border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover) !important;
+}
+
+/* 18. SELECTION */
+::selection {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+/* 19. CONTEXT MENU */
+.ctx-item:hover {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+/* 20. TOAST */
+#toast {
+  border-color: var(--accent) !important;
+}
+
+/* 21. MODAL HEADERS */
+.modal h2,
+.modal .modal-title {
+  color: var(--accent) !important;
+}
+
+/* 22. EMPTY STATES */
+.empty-state svg {
+  color: var(--accent) !important;
+  stroke: var(--accent) !important;
+}
+
+/* 23. DROPDOWN SELECTORS */
+select:focus,
+.font-selector select:focus {
+  border-color: var(--accent) !important;
+  outline: 2px solid var(--accent) !important;
+}
+
+/* 24. LOADING SPINNERS */
+.loading,
+.spinner {
+  border-color: var(--accent) !important;
+  border-top-color: transparent !important;
+}
+
+/* Reset for buttons that should NOT use accent */
+.btn-cancel,
+.logout-btn,
+.ch-action-btn,
+.dm-action-btn,
+.up-btn,
+.nav-item,
+.back-btn,
+.ftab,
+.msb-cancel {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border-color: transparent !important;
+}
+
+.btn-cancel:hover,
+.logout-btn:hover,
+.ch-action-btn:hover,
+.dm-action-btn:hover,
+.up-btn:hover,
+.nav-item:hover,
+.back-btn:hover,
+.ftab:hover,
+.msb-cancel:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ---- LIGHT THEME TEXT FIXES - ALL IN ONE PLACE ---- */
+body.theme-light .dm-name,
+body.theme-light .dm-preview,
+body.theme-light .dm-time,
+body.theme-light .fr-name,
+body.theme-light .fr-sub,
+body.theme-light .wv-title,
+body.theme-light .wv-sub,
+body.theme-light .conversation-start .start-header h1,
+body.theme-light .conversation-start .start-header h4,
+body.theme-light .ch-room-name,
+body.theme-light #chat-status-text,
+body.theme-light .msg-author,
+body.theme-light .msg-text,
+body.theme-light .toggle-label,
+body.theme-light .nav-item,
+body.theme-light .sidebar .nav-item span,
+body.theme-light .sidebar .dm-name,
+body.theme-light .sidebar .dm-preview,
+body.theme-light .dm-content .dm-name,
+body.theme-light .dm-content .dm-preview,
+body.theme-light .settings-sidebar .nav-item-settings,
+body.theme-light .settings-sidebar .nav-section {
+  color: var(--text-primary) !important;
+}
+
+/* Welcome text specific */
+body.theme-light .wv-title {
+  color: #1a1a1a !important;
+}
+
+body.theme-light .wv-sub {
+  color: #4a4a4a !important;
+}
+
+/* Empty states */
+body.theme-light .empty-state,
+body.theme-light .conversation-start p,
+body.theme-light .friends-empty {
+  color: var(--text-secondary) !important;
+}
+
+/* Mentions - always accent color */
+body.theme-light .mention,
+body.theme-light .at-user,
+body.theme-light [class*="mention"] {
+  color: var(--accent) !important;
+}
+
+/* Active sidebar items in light theme */
+body.theme-light .settings-sidebar .nav-item-settings.active {
+  color: var(--accent) !important;
+}
+
+body.theme-light .settings-sidebar .nav-item-settings.active span {
+  color: var(--accent) !important;
+}
+
+/* New Message button text - always white */
+body.theme-light .new-message-btn,
+body.theme-light .wv-new-btn {
+  color: #ffffff !important;
+}
+
+/* Conversation preview text */
+body.theme-light .dm-preview {
+  color: var(--text-secondary) !important;
+}
+
+body.theme-light .dm-name {
+  color: var(--text-primary) !important;
+}
+/* ---- LIGHT THEME - FIX WELCOME CARD AND BACKGROUNDS ---- */
+body.theme-light .welcome-card {
+  background: #ffffff !important;
+  border-color: #e0e0e0 !important;
+}
+
+body.theme-light .welcome-card .wv-title {
+  color: #1a1a1a !important;
+}
+
+body.theme-light .welcome-card .wv-sub {
+  color: #4a4a4a !important;
+}
+
+/* Fix the welcome card border and shadow */
+body.theme-light .welcome-card {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Fix "Welcome to nyxie" text visibility */
+body.theme-light .wv-title {
+  color: #1a1a1a !important;
+}
+
+body.theme-light .wv-sub {
+  color: #4a4a4a !important;
+}
+
+/* Fix conversation start view background */
+body.theme-light .conversation-start {
+  background: var(--bg-modal) !important;
+}
+
+body.theme-light .conversation-start .start-header h1 {
+  color: #1a1a1a !important;
+}
+
+body.theme-light .conversation-start .start-header h4 {
+  color: #4a4a4a !important;
+}
+
+/* Fix @sato mention in light theme */
+body.theme-light .mention,
+body.theme-light .at-user,
+body.theme-light .wv-sub .mention {
+  color: var(--accent) !important;
+}
+
+/* Fix the "No conversations yet" text */
+body.theme-light .empty-state,
+body.theme-light .conversation-start p {
+  color: #4a4a4a !important;
+}
+
+/* Fix the "Select a conversation" text */
+body.theme-light .conversation-start .start-header h4 {
+  color: #6a6a6a !important;
+}
+
+/* Fix the "Welcome to nyxie" heading */
+body.theme-light .conversation-start .start-header h1 {
+  color: #1a1a1a !important;
+}
+/* ---- LIGHT THEME - FIX USER PANEL ---- */
+body.theme-light #user-panel {
+  background: #f5f5f5 !important;
+  border-top-color: #e0e0e0 !important;
+}
+
+body.theme-light #up-name {
+  color: #1a1a1a !important;
+}
+
+body.theme-light #up-tag {
+  color: #6a6a6a !important;
+}
+
+body.theme-light .up-btn {
+  color: #4a4a4a !important;
+}
+
+body.theme-light .up-btn:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #1a1a1a !important;
+}
+
+/* Fix the sidebar bottom area */
+body.theme-light .settings-sidebar-bottom {
+  border-top-color: #e0e0e0 !important;
+}
+
+body.theme-light .settings-sidebar-bottom .version-text {
+  color: #6a6a6a !important;
+}
+
+/* Fix any other dark elements */
+body.theme-light #sidebar {
+  background: #f5f5f5 !important;
+}
+
+body.theme-light .settings-sidebar {
+  background: #f0f0f0 !important;
+}
+
+body.theme-light .settings-sidebar .nav-section {
+  color: #6a6a6a !important;
+}
+
+body.theme-light .settings-sidebar .nav-item-settings {
+  color: #4a4a4a !important;
+}
+
+body.theme-light .settings-sidebar .nav-item-settings:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a1a1a !important;
+}
+
+body.theme-light .settings-sidebar .nav-item-settings.active {
+  background: rgba(253, 102, 113, 0.1) !important;
+  color: var(--accent) !important;
+}
