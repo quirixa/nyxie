@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nyxie</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Shared styling: base reset + theme system, SPA shell chrome, then
+     one stylesheet per view (each selector is scoped under that view's
+     root id, e.g. "#view-app ...", so they can all be loaded at once
+     without leaking into one another). -->
+<link rel="stylesheet" href="/css/theme.css">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/landing.css">
+<link rel="stylesheet" href="/css/auth-login.css">
+<link rel="stylesheet" href="/css/auth-register.css">
+<link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/settings.css">
+
+<style>
+    /* ─── Cropper Overlay ──────────────────────────────────── */
+    .cropper-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(0, 0, 0, 0.40);          /* was 0.75 – now much lighter */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Inter, sans-serif;
+    backdrop-filter: blur(2px);              /* reduce blur from 4px to 2px */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+.cropper-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+    .cropper-modal {
+        background: var(--bg-secondary, #1a1a1a);
+        border-radius: 16px;
+        padding: 24px;
+        max-width: 560px;
+        width: 95vw;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+        border: 1px solid var(--border-color, #2c2c2c);
+    }
+    .cropper-modal h3 {
+        color: var(--text-primary, #f5f5f5);
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 4px 0;
+    }
+    .cropper-preview-wrap {
+        position: relative;
+        margin: 12px 0;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        overflow: hidden;
+        background: #0a0a0a;
+        border-radius: 12px;
+    }
+    /* Banner mode will override aspect-ratio via JS or a class later */
+    .cropper-preview {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+        user-select: none;
+    }
+    .cropper-preview canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+    }
+    .cropper-preview canvas:active {
+        cursor: grabbing;
+    }
+    .cropper-mask {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: 50%;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+        transition: border-radius 0.2s;
+    }
+    /* If banner, the mask becomes a rectangle (no mask) */
+    .cropper-mask.banner-mode {
+        border-radius: 0;
+        box-shadow: none;
+        display: none;
+    }
+    .cropper-controls-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 8px 0;
+        color: var(--text-secondary, #aaa);
+    }
+    .cropper-controls-row label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+    .cropper-controls-row input[type="range"] {
+        flex: 1;
+        background: transparent;
+        accent-color: var(--accent, #fd6671);
+    }
+    .cropper-controls-row span {
+        min-width: 40px;
+        text-align: center;
+        font-size: 0.85rem;
+    }
+    .cropper-error {
+        color: #ff6b6b;
+        font-size: 0.8rem;
+        margin-top: 8px;
+        text-align: center;
+        display: none;
+    }
+    .cropper-controls {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color, #2c2c2c);
+    }
+    .cropper-controls .btn-cancel {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        background: var(--bg-tertiary, #262626);
+        color: var(--text-secondary, #ccc);
+        font-weight: 500;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .cropper-controls .btn-cancel:hover {
+        background: var(--bg-hover, #333);
+    }
+    .cropper-controls .btn-primary {
+        padding: 10px 24px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent, #fd6671);
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .cropper-controls .btn-primary:hover {
+        filter: brightness(1.1);
+    }
+    .cropper-controls .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+
+<base target="_self">
+
+<!-- Landing Background Styles -->
+<style>
+#view-landing {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Grid lines */
+.lnd-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    pointer-events: none;
+}
+
+/* Solid-color blobs — no gradients */
+.lnd-blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+}
+.lnd-blob-1 {
+    width: 600px; height: 600px;
+    background: #ed4245;
+    opacity: 0.04;
+    top: -15%; left: -10%;
+    animation: lnd-drift1 22s ease-in-out infinite;
+}
+.lnd-blob-2 {
+    width: 500px; height: 500px;
+    background: #fd6671;
+    opacity: 0.03;
+    bottom: -20%; right: -10%;
+    animation: lnd-drift2 26s ease-in-out infinite;
+}
+.lnd-blob-3 {
+    width: 400px; height: 400px;
+    background: #ed4245;
+    opacity: 0.025;
+    top: 40%; right: 25%;
+    animation: lnd-drift3 20s ease-in-out infinite;
+}
+@keyframes lnd-drift1 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(50px,-40px) scale(1.1); }
+}
+@keyframes lnd-drift2 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(-40px,50px) scale(0.95); }
+}
+@keyframes lnd-drift3 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(30px,30px) scale(1.05); }
+}
+
+/* Diagonal tracer lines */
+.lnd-tracer-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+.lnd-tracer {
+    position: absolute;
+    width: 200%;
+    height: 1px;
+    background: rgba(237,66,69,0.06);
+    transform-origin: left center;
+}
+.lnd-tracer:nth-child(1) {
+    top: 20%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace1 14s linear infinite;
+}
+.lnd-tracer:nth-child(2) {
+    top: 50%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace2 18s linear infinite;
+}
+.lnd-tracer:nth-child(3) {
+    top: 80%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace3 12s linear infinite;
+}
+.lnd-tracer:nth-child(4) {
+    top: 35%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace1 20s linear infinite reverse;
+    background: rgba(253,102,113,0.04);
+}
+@keyframes lnd-trace1 {
+    0% { transform: rotate(-15deg) translateX(-100%); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: rotate(-15deg) translateX(100%); opacity: 0; }
+}
+@keyframes lnd-trace2 {
+    0% { transform: rotate(-15deg) translateX(-100%); opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { transform: rotate(-15deg) translateX(100%); opacity: 0; }
+}
+@keyframes lnd-trace3 {
+    0% { transform: rotate(-15deg) translateX(-100%); opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { transform: rotate(-15deg) translateX(100%); opacity: 0; }
+}
+
+/* Ensure landing content stays above background */
+#view-landing .container {
+    position: relative;
+    z-index: 1;
+}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+<!-- Router outlet -->
+<div id="app-root"></div>
+
+<!-- ─── View templates ───────────────────────────────────── -->
+<template id="tpl-landing">
+    <div id="view-landing">
+        <div class="lnd-grid"></div>
+        <div class="lnd-blob lnd-blob-1"></div>
+        <div class="lnd-blob lnd-blob-2"></div>
+        <div class="lnd-blob lnd-blob-3"></div>
+        <div class="lnd-tracer-wrap">
+            <div class="lnd-tracer"></div>
+            <div class="lnd-tracer"></div>
+            <div class="lnd-tracer"></div>
+            <div class="lnd-tracer"></div>
+        </div>
+        <div class="container">
+            <div class="logo">
+                <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                </pre>
+            </div>
+            <p>A messaging platform for communities, friends and teams.</p>
+            <div class="actions">
+                <a href="/login" data-link class="btn primary">Sign In</a>
+                <a href="/register" data-link class="btn secondary">Create Account</a>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="tpl-login">
+    <div id="view-login">
+        <div class="wrapper">
+            <section class="info">
+                <div class="logo">
+                    <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                    </pre>
+                </div>
+                <h1>Welcome back.</h1>
+                <p>Sign in with your email or username and password.</p>
+            </section>
+            <section class="login">
+                <h2>Sign in</h2>
+                <p>Enter your credentials to access your account.</p>
+                <form id="loginForm">
+                    <div class="input-group" id="loginGroup">
+                        <label>Username or email</label>
+                        <input type="text" id="loginField" placeholder="Username or email" autocomplete="username">
+                    </div>
+                    <div class="input-group" id="passwordGroup">
+                        <label>Password</label>
+                        <input type="password" id="password" placeholder="Your password" autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="login-btn" id="loginBtn">Sign in</button>
+                </form>
+                <div class="bottom-text">No account? <a href="/register" data-link>Create one</a></div>
+            </section>
+        </div>
+        <div id="toastMsg" class="toast-msg"></div>
+    </div>
+</template>
+
+<template id="tpl-register">
+    <div id="view-register">
+        <div class="wrapper">
+            <section class="info">
+                <div class="logo">
+                    <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                    </pre>
+                </div>
+                <h1>Join the private network.</h1>
+                <p>Create an account with your email and a strong password. Full privacy and control.</p>
+            </section>
+            <section class="register">
+                <h2>Sign up</h2>
+                <p>Choose a username, provide your email and set a password.</p>
+                <form id="registerForm" novalidate>
+                    <div class="input-group" id="usernameGroup">
+                        <label>Username <span style="color:#a5a5a5;">*</span></label>
+                        <input type="text" id="username" placeholder="e.g., satoshi_nakamoto" autocomplete="username">
+                        <div class="hint-text">3-30 characters. Letters, numbers, underscore or hyphen.</div>
+                    </div>
+                    <div class="input-group" id="emailGroup">
+                        <label>Email <span style="color:#a5a5a5;">*</span></label>
+                        <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+                    </div>
+                    <div class="input-group" id="passwordGroup">
+                        <label>Password <span style="color:#a5a5a5;">*</span></label>
+                        <input type="password" id="password" placeholder="Min 8 characters" autocomplete="new-password">
+                        <div class="hint-text">At least 8 characters.</div>
+                    </div>
+                    <div class="input-group" id="confirmGroup">
+                        <label>Confirm Password <span style="color:#a5a5a5;">*</span></label>
+                        <input type="password" id="confirmPassword" placeholder="Repeat password" autocomplete="new-password">
+                    </div>
+                    <div class="input-group" id="displayNameGroup">
+                        <label>Display name <span class="optional-badge">optional</span></label>
+                        <input type="text" id="displayName" placeholder="What others see" autocomplete="nickname">
+                        <div class="hint-text">If empty, your username will be used.</div>
+                    </div>
+                    <button type="submit" class="register-btn" id="submitBtn">Create account</button>
+                </form>
+                <div class="bottom-text">Already have an account? <a href="/login" data-link>Sign in</a></div>
+            </section>
+        </div>
+        <div id="toastMsg" class="toast-msg"></div>
+    </div>
+</template>
+
+<template id="tpl-app">
+    <div id="view-app">
+        <div id="app">
+            <!-- Sidebar -->
+            <div id="sidebar">
+                <div id="sidebar-header">
+                    <span class="brand-small">nyxie</span>
+                </div>
+                <div id="sidebar-nav">
+                    <div class="nav-item active" id="nav-home" onclick="navigateTo('home')">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="m21.743 12.331-9-10c-.379-.422-1.107-.422-1.486 0l-9 10a.998.998 0 0 0-.17 1.076c.16.361.518.593.913.593h2v7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4h4v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-7h2a.998.998 0 0 0 .743-1.669z"/></svg>
+                        <span>Home</span>
+                    </div>
+                    <div class="nav-item" id="nav-friends" onclick="navigateTo('friends')">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 11h7v2h-7zm1 4h6v2h-6zm-2-8h8v2h-8zM4 19h10v-1c0-2.757-2.243-5-5-5H7c-2.757 0-5 2.243-5 5v1h2zm4-7c1.995 0 3.5-1.505 3.5-3.5S9.995 5 8 5 4.5 6.505 4.5 8.5 6.005 12 8 12z"/></svg>
+                        <span>Friends</span>
+                        <span class="badge" id="nav-friends-badge" style="display:none;background:#ed4245;color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:auto;"></span>
+                    </div>
+                    <div class="nav-item" id="nav-saved" onclick="navigateTo('saved')">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+                        <span>Saved Notes</span>
+                    </div>
+                </div>
+                <div id="conv-header">
+                    <span>Conversations</span>
+                    <button class="conv-add" onclick="showNewDmModal()" title="New conversation">+</button>
+                </div>
+                <div id="search-wrap">
+                    <div id="search-inner">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="search-input" placeholder="Find a conversation" oninput="filterSidebar(this.value)" />
+                    </div>
+                </div>
+                <div id="multi-select-bar">
+                    <span id="msb-count">0 selected</span>
+                    <button class="msb-btn msb-delete" id="msb-delete-btn" onclick="deleteSelectedChats()" disabled>Delete</button>
+                    <button class="msb-btn msb-cancel" onclick="toggleSelectMode()">Cancel</button>
+                </div>
+                <div id="dm-section">
+                    <div id="dm-list">
+                        <div class="dm-empty">No conversations yet</div>
+                    </div>
+                </div>
+                <div id="user-panel">
+                    <div id="up-avatar-wrap" onclick="toggleProfilePopout()">
+                        <div id="up-avatar">U</div>
+                        <div id="up-status-pip" class="pip-online"></div>
+                    </div>
+                    <div id="up-info" onclick="toggleProfilePopout()">
+                        <div id="up-name">Loading…</div>
+                        <div id="up-tag">@username</div>
+                    </div>
+                    <button class="up-btn" onclick="router.navigate('/settings')" title="Settings">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main -->
+            <div id="main">
+                <!-- Friends Panel -->
+                <div id="friends-panel" style="display:none;">
+                    <div id="friends-header">
+                        <h2>Friends</h2>
+                        <button class="icon-btn" onclick="navigateTo('home')" style="font-size:1.2rem;">✕</button>
+                        <button class="icon-btn" onclick="loadFriendsData().then(renderFriendsList)" title="Refresh">⟳</button>
+                    </div>
+                    <div class="friends-tab-bar">
+                        <button class="ftab active" id="ftab-all" onclick="switchFriendsTab('all')">All</button>
+                        <button class="ftab" id="ftab-online" onclick="switchFriendsTab('online')">Online</button>
+                        <button class="ftab" id="ftab-pending" onclick="switchFriendsTab('pending')">Pending <span id="ftab-pending-count"></span></button>
+                    </div>
+                    <div class="friends-list" id="friends-list"></div>
+                    <div class="add-friend-area">
+                        <label>Add Friend</label>
+                        <div class="add-friend-row">
+                            <input type="text" class="add-friend-input" id="add-friend-input" placeholder="Username or display name…" autocomplete="off" />
+                            <button class="add-friend-btn" onclick="sendFriendRequest()">Send</button>
+                        </div>
+                        <div id="add-friend-results"></div>
+                    </div>
+                </div>
+
+                <!-- Saved Notes -->
+                <div id="saved-notes-panel" style="display:none;">
+                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+                        <span>Saved Notes</span>
+                        <button class="icon-btn" onclick="navigateTo('home')" style="font-size:1.2rem;">✕</button>
+                    </div>
+                    <div class="panel-body">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                        <span>No saved notes yet.</span>
+                    </div>
+                </div>
+
+                <!-- Welcome -->
+                <div id="welcome-view">
+                    <div class="welcome-card">
+                        <div class="welcome-logo">
+                            <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                            </pre>
+                        </div>
+                        <div class="wv-title">Welcome to nyxie</div>
+                        <div class="wv-sub">Select a conversation from the sidebar or start a new one.</div>
+                        <button class="wv-new-btn" onclick="showNewDmModal()">New Message</button>
+                    </div>
+                </div>
+
+                <!-- Chat View -->
+                <div id="chat-view" style="display:none;">
+                    <div id="chat-header">
+                        <button class="ch-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&lt;</button>
+                        <div class="ch-avatar-wrap">
+                            <div class="ch-avatar" id="ch-avatar">U</div>
+                            <div class="ch-status-dot pip-offline" id="ch-status-dot"></div>
+                        </div>
+                        <div class="ch-info">
+                            <div class="ch-room-name">
+                                <span id="chat-room-name-text">@zuko</span>
+                            </div>
+                            <div id="chat-status-text">offline</div>
+                        </div>
+                        <div class="chat-actions">
+                            <button class="ch-action-btn" onclick="startCall()" title="Voice call">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M20 10.999h2C22 5.869 18.127 2 12.99 2v2C17.052 4 20 6.943 20 10.999z"/>
+                                    <path d="M13 8c2.103 0 3 .897 3 3h2c0-3.225-1.775-5-5-5v2zm3.422 5.443a1.001 1.001 0 0 0-1.391.043l-2.393 2.461c-.576-.11-1.734-.471-2.926-1.66-1.192-1.193-1.553-2.354-1.66-2.926l2.459-2.394a1 1 0 0 0 .043-1.391L6.859 3.513a1 1 0 0 0-1.391-.087l-2.17 1.861a1 1 0 0 0-.29.649c-.015.25-.301 6.172 4.291 10.766C11.305 20.707 16.323 21 17.705 21c.202 0 .326-.006.359-.008a.992.992 0 0 0 .648-.291l1.86-2.171a1 1 0 0 0-.086-1.391l-4.064-3.696z"/>
+                                </svg>
+                            </button>
+                            <button class="ch-action-btn" onclick="searchInChat()" title="Search in conversation">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M10 18a7.952 7.952 0 0 0 4.897-1.688l4.396 4.396 1.414-1.414-4.396-4.396A7.952 7.952 0 0 0 18 10c0-4.411-3.589-8-8-8s-8 3.589-8 8 3.589 8 8 8zm0-14c3.309 0 6 2.691 6 6s-2.691 6-6 6-6-2.691-6-6 2.691-6 6-6z"/>
+                                </svg>
+                            </button>
+                            <button class="ch-action-btn danger" onclick="deleteCurrentChat()" title="Delete conversation">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="chat-search-bar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="chat-search-input" placeholder="Search messages…" oninput="filterChatMessages(this.value)" />
+                        <span id="chat-search-count">0 / 0</span>
+                        <button class="cs-nav-btn" id="cs-prev-btn" title="Previous" onclick="chatSearchNav(-1)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button class="cs-nav-btn" id="cs-next-btn" title="Next" onclick="chatSearchNav(1)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <button class="cs-close-btn" title="Close" onclick="closeChatSearch()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+
+                    <div id="messages-container"></div>
+                    <div id="typing-indicator"></div>
+                    <div id="input-area">
+                        <div id="reply-preview-bar">
+                            <svg class="rpb-icon" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                            <div class="rpb-body">
+                                <span class="rpb-author" id="rpb-author"></span>
+                                <span class="rpb-text" id="rpb-text"></span>
+                            </div>
+                            <button class="rpb-close" title="Cancel reply" onclick="cancelReply()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div id="input-box">
+                            <button class="file-upload-btn" onclick="document.getElementById('file-input').click()" title="Attach file">+</button>
+                            <input type="file" id="file-input" multiple onchange="handleFileUpload(this.files)" style="display:none" />
+                            <input type="text" id="msg-input" placeholder="Message @zuko" />
+                            <div class="emoji-btn" id="emoji-btn" onclick="toggleEmojiPicker()">
+                                🙂
+                                <div class="emoji-picker" id="emoji-picker">
+                                    <div class="emoji-picker-header">
+                                        <span class="ep-search-icon">🔍</span>
+                                        <input type="text" id="ep-search" placeholder="Search emoji…" autocomplete="off" />
+                                        <button class="ep-clear-btn" id="ep-clear-btn" onclick="clearEmojiSearch()">✕</button>
+                                    </div>
+                                    <div class="emoji-picker-results" id="ep-results">
+                                        <div class="ep-empty">Loading emojis…</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="shortcode-suggest"></div>
+                            <button id="send-btn" title="Send">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Popout (self) -->
+        <div id="profile-popout">
+            <div class="pp-banner" id="pp-banner"></div>
+            <div class="pp-header-row">
+                <div class="pp-avatar-wrap">
+                    <div class="pp-avatar" id="pp-avatar-letter">U</div>
+                    <div class="pp-avatar-status pip-online" id="pp-avatar-status"></div>
+                </div>
+            </div>
+            <div class="pp-body">
+                <div class="pp-name" id="pp-name"></div>
+                <div class="pp-tag" id="pp-tag"></div>
+                <div class="pp-bio" id="pp-bio"></div>
+                <div class="pp-divider"></div>
+                <div class="pp-menu-item" onclick="openEditProfileModal()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                    </span>
+                    <span>Edit Profile</span>
+                </div>
+                <div class="pp-menu-item" id="pp-status-menu-row" onclick="toggleStatusMenu()">
+                    <span class="pp-menu-icon"><span class="pp-dot" id="pp-cur-dot"></span></span>
+                    <span id="pp-cur-label">Online</span>
+                    <span class="pp-menu-arrow">›</span>
+                </div>
+                <div id="pp-status-submenu" style="display:none">
+                    <button class="pp-sub-btn" data-status="online" onclick="setStatus('online')"><span class="pp-dot pip-online"></span>Online</button>
+                    <button class="pp-sub-btn" data-status="offline" onclick="setStatus('offline')"><span class="pp-dot pip-offline"></span>Invisible</button>
+                </div>
+                <div class="pp-menu-item" onclick="copyUserId()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                    </span>
+                    <span>Copy User ID</span>
+                </div>
+                <div class="pp-divider"></div>
+                <div class="pp-menu-item danger" onclick="logout()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                    </span>
+                    <span>Log Out</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Profile Modal -->
+        <div class="overlay" id="edit-profile-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Edit Profile</h2>
+                <p>Update your information.</p>
+                <form id="editProfileForm" onsubmit="return false;">
+                    <label>Username</label>
+                    <input type="text" id="edit-username" placeholder="Username" />
+                    <label>Display Name</label>
+                    <input type="text" id="edit-displayname" placeholder="Display name" />
+                    <label>Bio</label>
+                    <textarea id="edit-bio" placeholder="Tell something about yourself…" rows="3"></textarea>
+                    <div class="avatar-preview">
+                        <img id="edit-avatar-preview" src="" alt="Avatar" />
+                        <button type="button" class="edit-profile-btn" onclick="document.getElementById('edit-avatar-input').click()">Change Avatar</button>
+                        <input type="file" id="edit-avatar-input" accept="image/*" style="display:none" onchange="openAvatarCropper(this.files[0])" />
+                    </div>
+                    <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">Change Password (optional)</p>
+                        <label>Current Password</label>
+                        <input type="password" id="edit-current-password" placeholder="Current password" autocomplete="off" />
+                        <label>New Password</label>
+                        <input type="password" id="edit-new-password" placeholder="New password (min 8 chars)" autocomplete="off" />
+                        <label>Confirm New Password</label>
+                        <input type="password" id="edit-confirm-password" placeholder="Confirm new password" autocomplete="off" />
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" onclick="closeEditProfileModal()">Cancel</button>
+                        <button type="submit" class="btn-primary" id="edit-profile-save-btn">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Reaction Picker Popup -->
+        <div class="reaction-picker-popup" id="reaction-picker-popup">
+            <button class="rp-emoji-btn" onclick="quickReact('👍')">👍</button>
+            <button class="rp-emoji-btn" onclick="quickReact('❤️')">❤️</button>
+            <button class="rp-emoji-btn" onclick="quickReact('😂')">😂</button>
+            <button class="rp-emoji-btn" onclick="quickReact('😮')">😮</button>
+            <button class="rp-emoji-btn" onclick="quickReact('😢')">😢</button>
+            <button class="rp-emoji-btn" onclick="quickReact('🙏')">🙏</button>
+            <button class="rp-more-btn" title="More emoji" onclick="openFullReactionPicker()">
+                <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="15" y2="9"/></svg>
+            </button>
+        </div>
+
+        <!-- More Menu Popup -->
+        <div class="more-menu-popup" id="more-menu-popup"></div>
+
+        <!-- Generic confirm popover -->
+        <div class="confirm-popup" id="confirm-popup"></div>
+
+        <!-- Full emoji picker for reactions -->
+        <div class="emoji-picker reaction-full-picker" id="reaction-emoji-picker">
+            <div class="emoji-picker-header">
+                <span class="ep-search-icon">🔍</span>
+                <input type="text" id="rep-search" placeholder="Search emoji…" autocomplete="off" oninput="renderReactionEmojiPicker(this.value)" />
+                <button class="ep-clear-btn" id="rep-clear-btn" onclick="clearReactionEmojiSearch()">✕</button>
+            </div>
+            <div class="emoji-picker-results" id="rep-results">
+                <div class="ep-empty">Loading emojis…</div>
+            </div>
+        </div>
+
+        <!-- User Profile Popout (others) -->
+        <div id="user-profile-popout">
+            <div class="up-banner" id="up-banner"></div>
+            <div class="up-header">
+                <div class="up-avatar-large" id="up-avatar-large">?</div>
+                <div>
+                    <div class="up-name" id="up-name-display">Name</div>
+                    <div class="up-username" id="up-username-display">@username</div>
+                </div>
+            </div>
+            <div class="up-bio" id="up-bio-display"></div>
+            <div class="up-status-row">
+                <span class="up-status-pip" id="up-status-pip-display"></span>
+                <span id="up-status-text-display" style="color:var(--text-muted);font-size:0.85rem;">Status</span>
+            </div>
+            <div class="up-actions">
+                <button class="btn-cancel" onclick="closeUserProfilePopout()">Close</button>
+                <button class="btn-primary" onclick="startDMFromProfile()">Message</button>
+            </div>
+        </div>
+
+        <!-- Context Menu -->
+        <div id="ctx-menu">
+            <div class="ctx-item" id="ctx-open" onclick="ctxOpen()">💬 Open</div>
+            <div class="ctx-item danger" id="ctx-delete" onclick="ctxDelete()">🗑️ Delete</div>
+        </div>
+
+        <!-- New DM Modal -->
+        <div class="overlay" id="new-dm-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>New Message</h2>
+                <p>Search for a user to start a conversation.</p>
+                <label>Username or Display Name</label>
+                <input type="text" id="dm-search-input" placeholder="Start typing…" oninput="searchUsers(this.value)" autocomplete="off" />
+                <div id="dm-search-results" style="margin-top:12px;max-height:220px;overflow-y:auto"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('new-dm-modal').style.display='none'">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Chat Modal -->
+        <div class="overlay" id="delete-chat-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Delete Conversation</h2>
+                <p>This removes the conversation from your view. The other participant can still see it.</p>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('delete-chat-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary btn-danger" onclick="confirmDeleteChat()">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast"></div>
+    </div>
+</template>
+
+<template id="tpl-settings">
+    <div id="view-settings">
+        <div class="settings-container">
+            <!-- Sidebar -->
+            <div class="settings-sidebar">
+                <div class="mobile-sidebar-header">
+                    <button class="back-btn" onclick="goBack()" style="margin:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Dashboard</span></button>
+                    <span class="mobile-sidebar-title">Settings</span>
+                </div>
+                <div class="nav-section">User Settings</div>
+                <div class="nav-item-settings active" data-tab="my-account" onclick="switchTab('my-account')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>My Account</span></div>
+                <div class="nav-item-settings" data-tab="profile" onclick="switchTab('profile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Profile</span></div>
+                <div class="nav-item-settings" data-tab="sessions" onclick="switchTab('sessions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Sessions</span></div>
+                <div class="nav-section">Client Settings</div>
+                <div class="nav-item-settings" data-tab="voice" onclick="switchTab('voice')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg><span>Voice Settings</span></div>
+                <div class="nav-item-settings" data-tab="appearance" onclick="switchTab('appearance')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><span>Appearance</span></div>
+                <div class="nav-item-settings" data-tab="notifications" onclick="switchTab('notifications')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Notifications</span><span class="badge-settings">3</span></div>
+                <div class="nav-item-settings" data-tab="language" onclick="switchTab('language')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Language</span></div>
+                <div class="nav-item-settings" data-tab="sync" onclick="switchTab('sync')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14l4 4V4a2 2 0 0 0-2-2z"/><path d="M8 8h8"/><path d="M8 12h6"/></svg><span>Sync</span></div>
+                <div class="nav-item-settings" data-tab="experiments" onclick="switchTab('experiments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="10" y1="14" x2="14" y2="18"/><line x1="14" y1="14" x2="10" y2="18"/></svg><span>Experiments</span></div>
+                <div class="nav-section">Nyxie</div>
+                <div class="nav-item-settings" data-tab="bots" onclick="switchTab('bots')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a8 8 0 0 0-8-8z"/><path d="M8 13l2 2 4-4"/></svg><span>My Bots</span></div>
+                <div class="nav-item-settings" data-tab="feedback" onclick="switchTab('feedback')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Feedback</span></div>
+                <div class="nav-item-settings" data-tab="changelogs" onclick="switchTab('changelogs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Changelogs</span></div>
+                <div class="nav-item-settings" data-tab="source" onclick="switchTab('source')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg><span>Source Code</span></div>
+                <div class="nav-item-settings" data-tab="donate" onclick="switchTab('donate')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>Donate</span></div>
+                <div class="settings-sidebar-bottom">
+                    <button class="logout-btn" onclick="logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log Out</button>
+                    <div class="version-text">nyxie v0.1.0 — 2026</div>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="settings-content">
+                <button class="back-btn mobile-only-back" onclick="showSettingsList()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Settings</span></button>
+                <button class="back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Back to Dashboard</span></button>
+
+                <!-- My Account Tab -->
+                <div class="settings-tab" id="tab-my-account">
+                    <div class="page-title">My Account</div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                        <span class="af-label">Username</span>
+                        <span class="af-value" id="settings-username">@username</span>
+                        <button class="af-action" onclick="openChangeUsername()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+                        <span class="af-label">Email</span>
+                        <span class="af-value" id="settings-email">••••••••</span>
+                        <button class="af-action" onclick="toggleEmailVisibility()" title="Reveal/hide email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                        <button class="af-action" onclick="openChangeEmail()" title="Change email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+                        <span class="af-label">Password</span>
+                        <span class="af-value" style="color:var(--text-muted);">••••••••</span>
+                        <button class="af-action" onclick="openChangePassword()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Two-Factor Authentication</div>
+                        <div class="section-desc">Secure your account with two-factor authentication</div>
+                        <div class="twofa-grid">
+                            <div class="twofa-card" onclick="generateBackupCodes()">
+                                <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+                                <div class="tc-info"><div class="tc-title">Generate Backup Codes</div><div class="tc-desc">Get 10 one-time use backup codes</div></div>
+                                <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                            <div class="twofa-card" onclick="addAuthenticator()">
+                                <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+                                <div class="tc-info"><div class="tc-title">Add Authenticator</div><div class="tc-desc">Use an authenticator app to generate codes</div></div>
+                                <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                        </div>
+                        <div class="warning-banner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>You haven't enabled two-factor authentication!</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Account Management</div>
+                        <div class="section-desc">Manage your account preferences and data</div>
+                        <div class="account-mgmt-grid">
+                            <div class="mgmt-card" onclick="openDisableAccount()">
+                                <div class="mc-icon warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+                                <div class="mc-info"><div class="mc-title">Disable Account</div><div class="mc-desc">Temporarily disable your account</div></div>
+                                <div class="mc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                            <div class="mgmt-card" onclick="openDeleteAccount()">
+                                <div class="mc-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></div>
+                                <div class="mc-info"><div class="mc-title">Delete Account</div><div class="mc-desc">Permanently delete your account and all data</div></div>
+                                <div class="mc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-footer-notice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Looking to customize your public profile? Head over to your profile settings.</span></div>
+                </div>
+
+                <!-- Profile Tab -->
+                <div class="settings-tab" id="tab-profile" style="display:none;">
+                    <div class="page-title">Profile</div>
+                    <div class="profile-edit-container">
+                        <!-- Avatar -->
+                        <div class="profile-edit-section">
+                            <label>Avatar</label>
+                            <div class="avatar-edit-row">
+                                <div class="avatar-preview-large" id="profile-avatar-preview">
+                                    <span id="profile-avatar-letter">U</span>
+                                </div>
+                                <div>
+                                    <button class="edit-profile-btn" onclick="document.getElementById('profile-avatar-input').click()">Change Avatar</button>
+                                    <button class="edit-profile-btn danger" onclick="removeProfileAvatar()" style="margin-left:8px;">Remove</button>
+                                    <input type="file" id="profile-avatar-input" accept="image/*" style="display:none" onchange="openAvatarCropper(this.files[0])" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Banner -->
+                        <div class="profile-edit-section">
+                            <label>Banner</label>
+                            <div class="banner-edit-row">
+                                <div class="banner-preview-large" id="profile-banner-preview"></div>
+                                <div class="banner-controls">
+                                    <div class="banner-color-swatches">
+                                        <div class="banner-swatch active" style="background:#fd6671" data-color="#fd6671" onclick="setProfileBannerColor('#fd6671')"></div>
+                                        <div class="banner-swatch" style="background:#5865f2" data-color="#5865f2" onclick="setProfileBannerColor('#5865f2')"></div>
+                                        <div class="banner-swatch" style="background:#1D9E75" data-color="#1D9E75" onclick="setProfileBannerColor('#1D9E75')"></div>
+                                        <div class="banner-swatch" style="background:#f5a623" data-color="#f5a623" onclick="setProfileBannerColor('#f5a623')"></div>
+                                        <div class="banner-swatch" style="background:#9b59b6" data-color="#9b59b6" onclick="setProfileBannerColor('#9b59b6')"></div>
+                                        <input type="color" class="banner-color-custom" id="profile-banner-color-custom" value="#fd6671" oninput="setProfileBannerColor(this.value)" title="Custom color" />
+                                    </div>
+                                    <button class="edit-profile-btn" onclick="document.getElementById('profile-banner-input').click()">Upload Image/GIF</button>
+                                    <input type="file" id="profile-banner-input" accept="image/*" style="display:none" onchange="openBannerCropper(this.files[0])" />
+                                    <button class="edit-profile-btn danger" onclick="removeProfileBanner()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Display Name -->
+                        <div class="profile-edit-section">
+                            <label>Display Name</label>
+                            <input type="text" id="profile-display-name" maxlength="32" placeholder="Display name" oninput="updateDisplayNameCounter()" />
+                            <div class="character-counter"><span id="display-name-counter">0</span>/32</div>
+                        </div>
+
+                        <!-- Username hint -->
+                        <div class="profile-edit-section">
+                            <div class="username-hint">
+                                <span>Want to change username? <a href="#" onclick="switchTab('my-account')">Go to account settings</a></span>
+                            </div>
+                        </div>
+
+                        <!-- Bio -->
+                        <div class="profile-edit-section">
+                            <label>Profile Bio</label>
+                            <textarea id="profile-bio" rows="4" maxlength="500" placeholder="Something cool about you…" oninput="updateBioCounter()"></textarea>
+                            <div class="character-counter"><span id="bio-counter">0</span>/500</div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="profile-actions">
+                            <button class="btn-cancel" onclick="resetProfileForm()">Reset</button>
+                            <button class="btn-primary" onclick="saveProfileChanges()">Save</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sessions Tab -->
+                <div class="settings-tab" id="tab-sessions" style="display:none;"><div class="page-title">Sessions</div><p style="color:var(--text-muted);">Session management coming soon.</p></div>
+                <div class="settings-tab" id="tab-voice" style="display:none;"><div class="page-title">Voice Settings</div><p style="color:var(--text-muted);">Voice settings coming soon.</p></div>
+
+                <!-- Appearance Tab -->
+                <div class="settings-tab" id="tab-appearance" style="display:none;">
+                    <div class="page-title">Appearance</div>
+                    <div class="settings-section">
+                        <div class="section-title">THEME</div>
+                        <div class="theme-preview-grid">
+                            <div class="theme-preview-card active" data-theme="esc" onclick="setTheme('esc')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content esc-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">ESC</div>
+                            </div>
+                            <div class="theme-preview-card" data-theme="light" onclick="setTheme('light')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content light-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">LIGHT</div>
+                            </div>
+                            <div class="theme-preview-card" data-theme="dark" onclick="setTheme('dark')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content dark-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">DARK</div>
+                            </div>
+                            <div class="theme-preview-card" data-theme="retro" onclick="setTheme('retro')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content retro-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">RETRO</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="discover-themes-btn" onclick="window.open('https://example.com/themes','_blank')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+                        Discover Themes
+                        <span>Browse themes made by the community</span>
+                    </button>
+                    <div class="settings-section">
+                        <div class="section-title">ACCENT COLOR</div>
+                        <div class="accent-color-picker">
+                            <button class="accent-swatch active" data-color="#fd6671" style="background:#fd6671 !important;" onclick="setAccent('#fd6671')"></button>
+                            <button class="accent-swatch" data-color="#eb459e" style="background:#eb459e !important;" onclick="setAccent('#eb459e')"></button>
+                            <button class="accent-swatch" data-color="#3ba55c" style="background:#3ba55c !important;" onclick="setAccent('#3ba55c')"></button>
+                            <button class="accent-swatch" data-color="#faa61a" style="background:#faa61a !important;" onclick="setAccent('#faa61a')"></button>
+                            <button class="accent-swatch" data-color="#1abc9c" style="background:#1abc9c !important;" onclick="setAccent('#1abc9c')"></button>
+                            <button class="accent-swatch" data-color="#3498db" style="background:#3498db !important;" onclick="setAccent('#3498db')"></button>
+                            <button class="accent-swatch" data-color="#9b59b6" style="background:#9b59b6 !important;" onclick="setAccent('#9b59b6')"></button>
+                            <button class="accent-swatch" data-color="#e67e22" style="background:#e67e22 !important;" onclick="setAccent('#e67e22')"></button>
+                            <button class="accent-swatch custom-color" style="background:#2c2c2c !important;" onclick="document.getElementById('custom-accent-color').click()">
+                                <span>+</span>
+                            </button>
+                        </div>
+                        <div class="custom-color-row">
+                            <input type="color" id="custom-accent-color" value="#fd6671" />
+                            <input type="text" id="custom-accent-hex" placeholder="Enter hex color (e.g., #ff0000)" />
+                            <button class="btn-primary" onclick="saveCustomAccent()">Save</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">APPEARANCE OPTIONS</div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Always show Send Message button</div>
+                                    <div class="toggle-desc">If disabled, the Send Message button will only appear on mobile.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-send-btn" checked />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Always show account age next to join messages</div>
+                                    <div class="toggle-desc">If disabled, the account age will only be shown for new users.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-account-age" />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">THEME OPTIONS</div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Transparency Effects</div>
+                                    <div class="toggle-desc">Enables transparency effects (like frosted glass) throughout the app.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-transparency" checked />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Seasonal Theme</div>
+                                    <div class="toggle-desc">Displays effects in the home tab during holiday seasons.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-seasonal" />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">FONT</div>
+                        <div class="font-selector">
+                            <select id="font-select">
+                                <option value="Open Sans">Open Sans</option>
+                                <option value="Inter" selected>Inter</option>
+                                <option value="Roboto">Roboto</option>
+                                <option value="Poppins">Poppins</option>
+                                <option value="Nunito">Nunito</option>
+                                <option value="Montserrat">Montserrat</option>
+                                <option value="Lato">Lato</option>
+                                <option value="Raleway">Raleway</option>
+                                <option value="Merriweather">Merriweather</option>
+                                <option value="Playfair Display">Playfair Display</option>
+                                <option value="Fira Code">Fira Code</option>
+                                <option value="JetBrains Mono">JetBrains Mono</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Other tabs -->
+                <div class="settings-tab" id="tab-notifications" style="display:none;"><div class="page-title">Notifications</div><p style="color:var(--text-muted);">Notification settings coming soon.</p></div>
+                <div class="settings-tab" id="tab-language" style="display:none;"><div class="page-title">Language</div><p style="color:var(--text-muted);">Language settings coming soon.</p></div>
+                <div class="settings-tab" id="tab-sync" style="display:none;"><div class="page-title">Sync</div><p style="color:var(--text-muted);">Sync settings coming soon.</p></div>
+                <div class="settings-tab" id="tab-experiments" style="display:none;"><div class="page-title">Experiments</div><p style="color:var(--text-muted);">Experimental features coming soon.</p></div>
+                <div class="settings-tab" id="tab-bots" style="display:none;"><div class="page-title">My Bots</div><p style="color:var(--text-muted);">Bot management coming soon.</p></div>
+                <div class="settings-tab" id="tab-feedback" style="display:none;"><div class="page-title">Feedback</div><p style="color:var(--text-muted);">Send feedback coming soon.</p></div>
+                <div class="settings-tab" id="tab-changelogs" style="display:none;"><div class="page-title">Changelogs</div><p style="color:var(--text-muted);">Changelogs coming soon.</p></div>
+                <div class="settings-tab" id="tab-source" style="display:none;"><div class="page-title">Source Code</div><p style="color:var(--text-muted);">Source code information coming soon.</p></div>
+                <div class="settings-tab" id="tab-donate" style="display:none;"><div class="page-title">Donate</div><p style="color:var(--text-muted);">Support nyxie development coming soon.</p></div>
+            </div>
+        </div>
+
+        <!-- Modals -->
+        <div class="overlay" id="change-username-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Change Username</h2>
+                <p>Enter a new username. It must be 3‑30 characters, letters, numbers, underscore or hyphen.</p>
+                <label>New Username</label>
+                <input type="text" id="new-username-input" placeholder="New username" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('change-username-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="saveUsername()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="change-email-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Change Email</h2>
+                <p>Enter a new email address and confirm with your current password.</p>
+                <label>New Email</label>
+                <input type="email" id="new-email-input" placeholder="new@example.com" />
+                <label>Current Password</label>
+                <input type="password" id="email-current-password" placeholder="Your current password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('change-email-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="saveEmail()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="change-password-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Change Password</h2>
+                <p>Enter your current password and choose a new one.</p>
+                <label>Current Password</label>
+                <input type="password" id="change-current-password" placeholder="Current password" />
+                <label>New Password</label>
+                <input type="password" id="change-new-password" placeholder="New password (min 8 chars)" />
+                <label>Confirm New Password</label>
+                <input type="password" id="change-confirm-password" placeholder="Confirm new password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('change-password-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="savePassword()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="disable-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Disable Account</h2>
+                <p>Your account will be disabled. You can re‑enable it by logging in later.</p>
+                <label>Password</label>
+                <input type="password" id="disable-password" placeholder="Your current password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('disable-account-modal').style.display='none'">Cancel</button>
+                    <button class="btn-danger" onclick="disableAccount()">Disable</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="delete-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Delete Account</h2>
+                <p>This action is PERMANENT and cannot be undone. All your data will be lost.</p>
+                <label style="display:flex; align-items:center; gap:8px; text-transform:none; font-weight:400; color:var(--text-secondary);">
+                    <input type="checkbox" id="delete-messages-checkbox" style="width:auto; margin:0;">
+                    Also delete all my messages (this cannot be undone)
+                </label>
+                <label>Password</label>
+                <input type="password" id="delete-password" placeholder="Your current password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('delete-account-modal').style.display='none'">Cancel</button>
+                    <button class="btn-danger" onclick="deleteAccount()">Delete Forever</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast"></div>
+    </div>
+</template>
+
+<!-- ─── Global Cropper Overlay ─────────────────────────────── -->
+<div class="cropper-overlay" id="cropper-overlay">
+    <div class="cropper-modal">
+        <h3 id="cropper-title">Crop Image</h3>
+        <div class="cropper-preview-wrap">
+            <div class="cropper-preview">
+                <canvas id="cropper-canvas"></canvas>
+                <div class="cropper-mask" id="cropper-mask"></div>
+            </div>
+        </div>
+        <div class="cropper-controls-row">
+            <label for="cropper-zoom">Zoom</label>
+            <input type="range" id="cropper-zoom" min="0.5" max="2.0" step="0.01" value="1.0" />
+            <span id="cropper-zoom-label">1.0x</span>
+        </div>
+        <div class="cropper-error" id="cropper-error"></div>
+        <div class="cropper-controls">
+            <button class="btn-cancel" id="cropper-cancel">Cancel</button>
+            <button class="btn-primary" id="cropper-confirm">Crop &amp; Upload</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Scripts ────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+
+<script src="/js/utils.js"></script>
+<script src="/js/state.js"></script>
+<script src="/js/theme.js"></script>
+<script src="/js/router.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/dashboard.js"></script>
+<script src="/js/voice.js"></script>
+<script src="/js/settings.js"></script>
+<script src="/js/cropper.js"></script>
+<script src="/js/app.js"></script>
+
+</body>
+</html>

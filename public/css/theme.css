@@ -1,0 +1,789 @@
+/* theme.css - Minimalist Theme System (merged) */
+
+/* ---- Reset & Base ---- */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+a { color: inherit; }
+button, input, textarea, select { font: inherit; }
+
+html { height: 100%; }
+body {
+  transition: background 0.3s ease, color 0.3s ease;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ---- Global Accent (shared across all themes) ---- */
+:root {
+  --accent: #fd6671;
+  --accent-hover: #e85a64;
+  --accent-subtle: rgba(253, 102, 113, 0.08);
+  --accent-muted: rgba(253, 102, 113, 0.15);
+}
+
+/* ---- Theme: Light (from File B, with added vars) ---- */
+body.theme-light {
+  --bg-primary: #f0f0f0;
+  --bg-secondary: #ffffff;
+  --bg-sidebar: #f5f5f5;
+  --bg-input: #e8e8e8;
+  --bg-modal: #f8f9fa;
+  --bg-modal-sidebar: #f0f0f0;
+  --bg-modal-card: #ffffff;
+  --bg-modal-hover: #f0f0f0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 0, 0, 0.08);
+  --msg-hover: rgba(0, 0, 0, 0.02);
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6a6a6a;
+
+  --border-color: #e0e0e0;
+  --border-medium: #cccccc;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  --online: #3ba55c;
+  --offline: #6a6a72;
+  --danger: #ed4245;
+  --warning: #faa61a;
+  --radius: 8px;
+  --emoji-picker-width: 360px;
+  --emoji-item-size: 36px;
+}
+
+/* ---- Theme: Dark (softer, from File B, with added vars) ---- */
+body.theme-dark {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-sidebar: #242424;
+  --bg-input: #2e2e2e;
+  --bg-modal: #1e1e1e;
+  --bg-modal-sidebar: #242424;
+  --bg-modal-card: #2a2a2a;
+  --bg-modal-hover: #303030;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.08);
+  --msg-hover: rgba(255, 255, 255, 0.03);
+
+  --text-primary: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #7a7a7a;
+
+  --border-color: #333333;
+  --border-medium: #444444;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+
+  --online: #3ba55c;
+  --offline: #6a6a72;
+  --danger: #ed4245;
+  --warning: #faa61a;
+  --radius: 8px;
+  --emoji-picker-width: 360px;
+  --emoji-item-size: 36px;
+}
+
+/* ---- Theme: Esc (pure black, red accent, from File A but adjusted) ---- */
+body.theme-esc {
+  --bg-primary: #000000;
+  --bg-secondary: #050505;
+  --bg-sidebar: #000000;
+  --bg-input: #0a0a0a;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.10);
+  --msg-hover: rgba(255, 255, 255, 0.03);
+  --bg-modal: #050505;
+  --bg-modal-sidebar: #080808;
+  --bg-modal-card: #101010;
+  --bg-modal-hover: #151515;
+
+  --text-primary: #ffffff;
+  --text-secondary: #b8b8b8;
+  --text-muted: #8c8c8c;
+
+  --border-color: #151515;
+  --border-medium: #222222;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+  --online: #3ba55c;
+  --offline: #6a6a72;
+  --danger: #ed4245;
+  --warning: #faa61a;
+  --radius: 8px;
+  --emoji-picker-width: 360px;
+  --emoji-item-size: 36px;
+}
+
+/* ---- Fallback (no theme class) = Esc (pure black) ---- */
+body:not(.theme-light):not(.theme-dark):not(.theme-esc):not(.theme-retro) {
+  --bg-primary: #000000;
+  --bg-secondary: #050505;
+  --bg-sidebar: #000000;
+  --bg-input: #0a0a0a;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.10);
+  --msg-hover: rgba(255, 255, 255, 0.03);
+  --bg-modal: #050505;
+  --bg-modal-sidebar: #080808;
+  --bg-modal-card: #101010;
+  --bg-modal-hover: #151515;
+  --text-primary: #ffffff;
+  --text-secondary: #b8b8b8;
+  --text-muted: #8c8c8c;
+  --border-color: #151515;
+  --border-medium: #222222;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --online: #3ba55c;
+  --offline: #6a6a72;
+  --danger: #ed4245;
+  --warning: #faa61a;
+  --radius: 8px;
+  --emoji-picker-width: 360px;
+  --emoji-item-size: 36px;
+}
+
+/* ============================================================
+   COMMON STYLES (use CSS variables, adapt to every theme)
+   ============================================================ */
+
+/* ---- Buttons (Primary) ---- */
+.btn-primary,
+.wv-new-btn,
+.add-friend-btn,
+.msb-delete,
+.edit-profile-btn,
+input[type="submit"] {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  border: none !important;
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover,
+.wv-new-btn:hover,
+.add-friend-btn:hover,
+.msb-delete:hover,
+.edit-profile-btn:hover,
+input[type="submit"]:hover {
+  background: var(--accent-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(253, 102, 113, 0.2);
+}
+
+/* ---- Secondary / Neutral Buttons ---- */
+.btn-secondary,
+.ftab,
+.nav-item {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid transparent !important;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.btn-secondary:hover,
+.ftab:hover,
+.nav-item:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ---- Active States (left border accent) ---- */
+.nav-item.active,
+.settings-sidebar .nav-item-settings.active,
+.dm-item.active,
+.ftab.active {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-left: 3px solid var(--accent) !important;
+  padding-left: calc(16px - 3px) !important;
+}
+.nav-item.active,
+.settings-sidebar .nav-item-settings.active {
+  padding-left: 13px !important;
+}
+.nav-item.active .dm-name,
+.nav-item.active .dm-preview,
+.dm-item.active .dm-name,
+.dm-item.active .dm-preview {
+  color: var(--text-primary) !important;
+}
+
+/* ---- Links ---- */
+a:not(.no-accent) {
+  color: var(--accent) !important;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+a:not(.no-accent):hover {
+  color: var(--accent-hover) !important;
+  text-decoration: underline;
+}
+
+/* ---- Inputs / Focus ---- */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+#input-box:focus-within,
+#search-inner:focus-within {
+  border-color: var(--accent) !important;
+  box-shadow: none !important;
+}
+
+/* ---- Toggles & Switches ---- */
+.switch input:checked + .slider {
+  background: var(--accent) !important;
+}
+.switch input:checked + .slider:before {
+  background: #ffffff !important;
+}
+
+/* ---- Checkboxes / Radio ---- */
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  accent-color: var(--accent) !important;
+}
+.dm-checkbox.selected {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* ---- Avatars ---- */
+.dm-avatar,
+.ch-avatar,
+.pc-avatar,
+#up-avatar,
+.pp-avatar,
+.mini-avatar {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+/* ---- Badges ---- */
+.badge,
+.badge-settings,
+.dm-badge {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 12px;
+}
+
+/* ---- Reaction Pills ---- */
+.reaction-pill.mine {
+  background: var(--accent-subtle) !important;
+  border-color: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+}
+
+/* ---- Search Highlights ---- */
+mark,
+.search-hit,
+.msg-text mark {
+  background: var(--accent-muted) !important;
+  color: var(--text-primary) !important;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ---- Mentions ---- */
+.mention,
+.at-user,
+[class*="mention"] {
+  color: var(--accent) !important;
+  font-weight: 500;
+}
+
+/* ---- Brand (gradient text) ---- */
+.brand-small {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  font-weight: 700;
+}
+.pp-banner {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium) !important;
+  border-radius: 4px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted) !important;
+}
+
+/* ---- Selection ---- */
+::selection {
+  background: var(--accent-muted) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ---- Context Menu ---- */
+.ctx-item:hover {
+  background: var(--accent-subtle) !important;
+  color: var(--accent) !important;
+}
+
+/* ---- Toast ---- */
+#toast {
+  border-left: 3px solid var(--accent) !important;
+}
+
+/* ---- Profile Card ---- */
+.profile-card .pc-edit-btn:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+/* ---- Welcome Card ---- */
+.welcome-card {
+  border-top: 3px solid var(--accent) !important;
+}
+
+/* ---- Conversation Start ---- */
+.conversation-start .start-header h1 {
+  color: var(--text-primary);
+}
+.conversation-start .start-header h4 {
+  color: var(--text-muted);
+}
+
+/* ---- Neutral Button Reset ---- */
+.btn-cancel,
+.logout-btn,
+.ch-action-btn,
+.dm-action-btn,
+.up-btn,
+.back-btn,
+.msb-cancel,
+.ftab {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border: none !important;
+}
+.btn-cancel:hover,
+.logout-btn:hover,
+.ch-action-btn:hover,
+.dm-action-btn:hover,
+.up-btn:hover,
+.back-btn:hover,
+.msb-cancel:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ============================================================
+   THEME-SPECIFIC OVERRIDES (Light, Dark, Esc)
+   ============================================================ */
+
+/* ---- Light ---- */
+body.theme-light .welcome-card {
+  background: #ffffff !important;
+  border-color: #e0e0e0 !important;
+}
+body.theme-light .welcome-card .wv-title {
+  color: #1a1a1a !important;
+}
+body.theme-light .welcome-card .wv-sub {
+  color: #4a4a4a !important;
+}
+body.theme-light .wv-title {
+  color: #1a1a1a !important;
+}
+body.theme-light .wv-sub {
+  color: #4a4a4a !important;
+}
+body.theme-light .conversation-start {
+  background: var(--bg-modal) !important;
+}
+body.theme-light .conversation-start .start-header h1 {
+  color: #1a1a1a !important;
+}
+body.theme-light .conversation-start .start-header h4 {
+  color: #4a4a4a !important;
+}
+body.theme-light .mention,
+body.theme-light .at-user {
+  color: var(--accent) !important;
+}
+body.theme-light .dm-name {
+  color: var(--text-primary) !important;
+}
+body.theme-light .dm-preview {
+  color: var(--text-secondary) !important;
+}
+body.theme-light #user-panel {
+  background: #f5f5f5 !important;
+  border-top-color: #e0e0e0 !important;
+}
+body.theme-light #up-name {
+  color: #1a1a1a !important;
+}
+body.theme-light #up-tag {
+  color: #6a6a6a !important;
+}
+body.theme-light .up-btn {
+  color: #4a4a4a !important;
+}
+body.theme-light .up-btn:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a1a1a !important;
+}
+body.theme-light #sidebar {
+  background: #f5f5f5 !important;
+}
+body.theme-light .settings-sidebar {
+  background: #f0f0f0 !important;
+}
+body.theme-light .settings-sidebar .nav-section {
+  color: #6a6a6a !important;
+}
+body.theme-light .settings-sidebar .nav-item-settings {
+  color: #4a4a4a !important;
+}
+body.theme-light .settings-sidebar .nav-item-settings:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: #1a1a1a !important;
+}
+body.theme-light .settings-sidebar .nav-item-settings.active {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-left: 3px solid var(--accent) !important;
+}
+body.theme-light .settings-sidebar-bottom {
+  border-top-color: #e0e0e0 !important;
+}
+body.theme-light .settings-sidebar-bottom .version-text {
+  color: #6a6a6a !important;
+}
+body.theme-light .empty-state,
+body.theme-light .friends-empty {
+  color: #4a4a4a !important;
+}
+
+/* ---- Dark (softer) ---- */
+body.theme-dark .welcome-card {
+  background: #1a1a1a !important;
+  border-color: #333333 !important;
+}
+body.theme-dark .welcome-card .wv-title {
+  color: #f0f0f0 !important;
+}
+body.theme-dark .welcome-card .wv-sub {
+  color: #b0b0b0 !important;
+}
+body.theme-dark .dm-preview {
+  color: var(--text-secondary) !important;
+}
+body.theme-dark .dm-name {
+  color: var(--text-primary) !important;
+}
+
+/* (Esc uses its own variables; no extra overrides needed) */
+
+/* ============================================================
+   RETRO THEME (Windows 95 / classic)
+   ============================================================ */
+
+body.theme-retro {
+  --bg-primary: #c0c0c0;
+  --bg-secondary: #e0e0e0;
+  --bg-sidebar: #c0c0c0;
+  --bg-input: #ffffff;
+  --bg-hover: #d0d0d0;
+  --bg-active: #b0b0b0;
+  --bg-modal: #c0c0c0;
+  --bg-modal-sidebar: #bdbdbd;
+  --bg-modal-card: #ffffff;
+  --bg-modal-hover: #d4d4d4;
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --text-muted: #666666;
+  --border-color: #808080;
+  --border-medium: #808080;
+  --shadow: none;
+  --bevel-light: #ffffff;
+  --bevel-dark: #808080;
+  --bevel-darker: #000000;
+  font-family: 'Tahoma', 'MS Sans Serif', Geneva, sans-serif !important;
+}
+
+body.theme-retro * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+}
+
+body.theme-retro a:not(.no-accent) {
+  color: #0000EE !important;
+  text-decoration: underline !important;
+}
+body.theme-retro a:not(.no-accent):visited {
+  color: #551A8B !important;
+}
+
+/* ---- Retro Buttons (raised 3D) ---- */
+body.theme-retro .btn-primary,
+body.theme-retro .wv-new-btn,
+body.theme-retro .add-friend-btn,
+body.theme-retro .msb-delete,
+body.theme-retro .edit-profile-btn,
+body.theme-retro input[type="submit"],
+body.theme-retro .btn-secondary,
+body.theme-retro .ftab,
+body.theme-retro .nav-item,
+body.theme-retro .btn-cancel,
+body.theme-retro .logout-btn,
+body.theme-retro .ch-action-btn,
+body.theme-retro .dm-action-btn,
+body.theme-retro .up-btn,
+body.theme-retro .back-btn,
+body.theme-retro .msb-cancel,
+body.theme-retro button,
+body.theme-retro select {
+  background: #c0c0c0 !important;
+  color: #000000 !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-light) var(--bevel-darker) var(--bevel-darker) var(--bevel-light) !important;
+  box-shadow: inset -1px -1px 0 var(--bevel-dark), inset 1px 1px 0 #dfdfdf !important;
+  font-weight: 400 !important;
+  cursor: pointer;
+  padding: 4px 12px;
+}
+body.theme-retro .btn-primary:hover,
+body.theme-retro .wv-new-btn:hover,
+body.theme-retro .add-friend-btn:hover,
+body.theme-retro .msb-delete:hover,
+body.theme-retro .edit-profile-btn:hover,
+body.theme-retro input[type="submit"]:hover,
+body.theme-retro .btn-secondary:hover,
+body.theme-retro .ftab:hover,
+body.theme-retro .nav-item:hover,
+body.theme-retro .btn-cancel:hover,
+body.theme-retro .logout-btn:hover,
+body.theme-retro .ch-action-btn:hover,
+body.theme-retro .dm-action-btn:hover,
+body.theme-retro .up-btn:hover,
+body.theme-retro .back-btn:hover,
+body.theme-retro .msb-cancel:hover {
+  background: #d4d4d4 !important;
+  color: #000000 !important;
+  transform: none !important;
+}
+body.theme-retro .btn-primary:active,
+body.theme-retro .wv-new-btn:active,
+body.theme-retro .add-friend-btn:active,
+body.theme-retro .msb-delete:active,
+body.theme-retro .edit-profile-btn:active,
+body.theme-retro input[type="submit"]:active,
+body.theme-retro .btn-secondary:active,
+body.theme-retro .ftab:active,
+body.theme-retro .nav-item:active,
+body.theme-retro button:active {
+  border-color: var(--bevel-darker) var(--bevel-light) var(--bevel-light) var(--bevel-darker) !important;
+  box-shadow: inset 1px 1px 0 var(--bevel-dark), inset -1px -1px 0 #dfdfdf !important;
+  padding: 5px 11px 3px 13px;
+}
+
+/* ---- Retro Active Nav (inset) ---- */
+body.theme-retro .nav-item.active,
+body.theme-retro .settings-sidebar .nav-item-settings.active,
+body.theme-retro .dm-item.active,
+body.theme-retro .ftab.active {
+  background: #b0b0b0 !important;
+  color: #000000 !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-darker) var(--bevel-light) var(--bevel-light) var(--bevel-darker) !important;
+  box-shadow: inset 1px 1px 0 var(--bevel-dark) !important;
+  padding-left: 14px !important;
+}
+
+/* ---- Retro Inputs / Textareas ---- */
+body.theme-retro input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]),
+body.theme-retro textarea,
+body.theme-retro #input-box,
+body.theme-retro #search-inner {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light) var(--bevel-dark) !important;
+  box-shadow: inset 1px 1px 0 #808080 !important;
+}
+body.theme-retro input:focus,
+body.theme-retro textarea:focus,
+body.theme-retro select:focus,
+body.theme-retro #input-box:focus-within,
+body.theme-retro #search-inner:focus-within {
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light) var(--bevel-dark) !important;
+  outline: 1px dotted #000000 !important;
+  outline-offset: -3px;
+}
+
+/* ---- Retro Checkboxes / Switches ---- */
+body.theme-retro input[type="checkbox"],
+body.theme-retro input[type="radio"] {
+  accent-color: #000080 !important;
+  appearance: auto;
+}
+body.theme-retro .switch .slider {
+  background: #ffffff !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light) var(--bevel-dark) !important;
+}
+body.theme-retro .switch input:checked + .slider {
+  background: #000080 !important;
+}
+body.theme-retro .switch .slider:before {
+  border: 1px solid #000 !important;
+  background: #c0c0c0 !important;
+}
+
+/* ---- Retro Avatars ---- */
+body.theme-retro .dm-avatar,
+body.theme-retro .ch-avatar,
+body.theme-retro .pc-avatar,
+body.theme-retro #up-avatar,
+body.theme-retro .pp-avatar,
+body.theme-retro .mini-avatar {
+  background: #c0c0c0 !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+}
+
+/* ---- Retro Badges ---- */
+body.theme-retro .badge,
+body.theme-retro .badge-settings,
+body.theme-retro .dm-badge {
+  background: #ff0000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+  font-weight: 700;
+  padding: 1px 6px;
+}
+
+/* ---- Retro Cards / Panels ---- */
+body.theme-retro .welcome-card,
+body.theme-retro .settings-section,
+body.theme-retro .theme-preview-card,
+body.theme-retro .profile-card,
+body.theme-retro #toast {
+  background: #c0c0c0 !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-light) var(--bevel-darker) var(--bevel-darker) var(--bevel-light) !important;
+  box-shadow: inset -1px -1px 0 var(--bevel-dark), inset 1px 1px 0 #dfdfdf !important;
+}
+body.theme-retro .welcome-card {
+  border-top: 2px solid !important;
+  border-top-color: var(--bevel-light) !important;
+}
+
+/* ---- Retro Scrollbar (chunky) ---- */
+body.theme-retro ::-webkit-scrollbar {
+  width: 16px !important;
+  height: 16px !important;
+}
+body.theme-retro ::-webkit-scrollbar-track {
+  background: #dfdfdf !important;
+}
+body.theme-retro ::-webkit-scrollbar-thumb {
+  background: #c0c0c0 !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-light) var(--bevel-darker) var(--bevel-darker) var(--bevel-light) !important;
+}
+body.theme-retro ::-webkit-scrollbar-thumb:hover {
+  background: #c0c0c0 !important;
+}
+
+/* ---- Retro Misc Overrides ---- */
+body.theme-retro .dm-avatar {
+  background: #c0c0c0 !important;
+  color: black !important;
+  border: 1px solid black;
+}
+body.theme-retro .btn-primary {
+  background: #c0c0c0 !important;
+  color: #000 !important;
+}
+body.theme-retro .brand-small {
+  background: none !important;
+  -webkit-text-fill-color: #000 !important;
+  color: #000 !important;
+}
+body.theme-retro .pp-banner {
+  background: #c0c0c0 !important;
+}
+body.theme-retro .msg-row.outgoing .msg-author {
+  color: #0000EE !important;
+}
+body.theme-retro .reaction-pill.mine {
+  background: #c0c0c0 !important;
+  border: 1px solid #000 !important;
+}
+body.theme-retro .msg-text mark.search-hit {
+  background: #ffff00 !important;
+  color: #000 !important;
+}
+
+/* ---- Retro Settings Chrome ---- */
+body.theme-retro .settings-container {
+  background: #808080 !important;
+}
+body.theme-retro .settings-sidebar {
+  background: #c0c0c0 !important;
+  border-right: 2px solid !important;
+  border-color: var(--bevel-darker) var(--bevel-light) var(--bevel-light) var(--bevel-darker) !important;
+}
+body.theme-retro .settings-sidebar .nav-section {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+body.theme-retro .settings-sidebar-bottom {
+  border-top: 2px solid !important;
+  border-color: var(--bevel-dark) transparent transparent transparent !important;
+}
+body.theme-retro .settings-content {
+  background: #c0c0c0 !important;
+}
+body.theme-retro .settings-content .page-title {
+  color: #000000 !important;
+}
+body.theme-retro .section-title {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+body.theme-retro .account-field,
+body.theme-retro .twofa-card,
+body.theme-retro .mgmt-card {
+  background: #ffffff !important;
+  border: 2px solid !important;
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light) var(--bevel-dark) !important;
+}
+
+/* ---- Retro Icons (chunky) ---- */
+body.theme-retro svg {
+  min-width: 28px !important;
+  min-height: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  stroke-width: 2.2px !important;
+}

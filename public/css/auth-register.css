@@ -1,0 +1,33 @@
+#view-register *{ margin:0; padding:0; box-sizing:border-box; }
+#view-register{ --bg-dark:#0f0f10; --surface-dark:#151515; --surface-card:#0c0c0c; --surface-input:#101010; --border-light:#262626; --border-medium:#2c2c2c; --text-primary:#f5f5f5; --text-secondary:#8b8b8b; --text-muted:#777; --text-label:#cfcfcf; --accent-green:#1D9E75; --error-red:#e68a8a; }
+#view-register{ font-family:'Inter', sans-serif; background:var(--bg-dark); color:var(--text-primary); min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px; }
+#view-register .wrapper{ width:100%; max-width:1400px; background:var(--surface-dark); border:1px solid var(--border-light); border-radius:18px; overflow:hidden; display:flex; align-items:stretch; justify-content:flex-end; }
+#view-register .info{ flex:1; padding:60px 48px; display:flex; flex-direction:column; justify-content:center; border-right:1px solid var(--border-light); }
+#view-register .logo{ margin-bottom:32px; font-size:0; line-height:1; }
+#view-register .logo pre{ font-family:'Monaco','Courier New','Lucida Sans Typewriter',monospace; font-size:0.62rem; font-weight:400; line-height:1.25; letter-spacing:normal; background:linear-gradient(135deg,#ff0000 0%,#ff0000 70%); background-clip:text; -webkit-background-clip:text; color:transparent; text-shadow:0 0 6px rgba(139,186,255,0.3); margin:0; padding:0; white-space:pre; overflow-x:auto; }
+#view-register .info h1{ font-size:3rem; line-height:1.2; font-weight:700; margin-bottom:20px; max-width:550px; }
+#view-register .info p{ color:var(--text-secondary); font-size:1rem; line-height:1.6; max-width:500px; }
+#view-register .register{ width:620px; flex-shrink:0; padding:50px 0 50px 42px; display:flex; flex-direction:column; justify-content:center; }
+#view-register .register h2, #view-register .register>p, #view-register form, #view-register .bottom-text{ padding-right:42px; }
+#view-register .register h2{ font-size:1.8rem; margin-bottom:10px; }
+#view-register .register>p{ color:var(--text-secondary); font-size:.95rem; margin-bottom:32px; }
+#view-register form{ display:flex; flex-direction:column; gap:20px; }
+#view-register .input-group{ display:flex; flex-direction:column; gap:8px; }
+#view-register label{ font-size:.9rem; color:var(--text-label); }
+#view-register .optional-badge{ font-size:.7rem; font-weight:400; color:var(--text-secondary); margin-left:8px; }
+#view-register input{ width:100%; padding:14px; border:1px solid var(--border-medium); border-radius:10px; background:var(--surface-input); color:var(--text-primary); font-size:16px; outline:none; transition:all .2s ease; }
+#view-register input::placeholder{ color:#555; }
+#view-register input:focus{ border-color:#4a4a4a; background:#141414; box-shadow:0 0 0 2px rgba(29,158,117,0.2); }
+#view-register .register-btn{ margin-top:8px; padding:14px; border:none; border-radius:10px; background:var(--text-primary); color:#111; font-size:.95rem; font-weight:600; cursor:pointer; transition:.2s ease; }
+#view-register .register-btn:hover{ opacity:.9; background:#ffffff; }
+#view-register .bottom-text{ margin-top:24px; text-align:center; font-size:.9rem; color:var(--text-muted); }
+#view-register .bottom-text a{ color:var(--text-primary); text-decoration:none; font-weight:600; transition:opacity .2s; }
+#view-register .bottom-text a:hover{ opacity:.8; text-decoration:underline; }
+#view-register .hint-text{ font-size:.75rem; color:#6a6a6a; margin-top:2px; }
+#view-register .input-error{ border-color:#aa4a4a !important; }
+#view-register .error-message{ font-size:.75rem; color:var(--error-red); margin-top:4px; }
+#view-register .toast-msg{ position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#2a2a2a; backdrop-filter:blur(8px); border:1px solid #3a3a3a; border-radius:40px; padding:10px 24px; font-size:.85rem; font-weight:500; color:#e0e0e0; pointer-events:none; opacity:0; transition:opacity .2s; z-index:999; white-space:nowrap; }
+@media(max-width:1200px){#view-register .info{ padding:50px 40px; }#view-register .info h1{ font-size:2.6rem; }#view-register .register{ width:540px; }#view-register .register h2, #view-register .register>p, #view-register form, #view-register .bottom-text{ padding-right:36px; }#view-register .register{ padding-left:36px; } }
+@media(max-width:1000px){#view-register .register{ width:520px; }#view-register .info h1{ font-size:2.4rem; }#view-register .register h2, #view-register .register>p, #view-register form, #view-register .bottom-text{ padding-right:30px; }#view-register .register{ padding-left:30px; } }
+@media(max-width:950px){#view-register .wrapper{ flex-direction:column; max-width:700px; }#view-register .info{ border-right:none; border-bottom:1px solid var(--border-light); width:100%; padding:48px 40px; }#view-register .info h1{ max-width:100%; font-size:2.6rem; }#view-register .register{ width:100%; padding:48px 40px; flex-shrink:1; }#view-register .register h2, #view-register .register>p, #view-register form, #view-register .bottom-text{ padding-right:0; }#view-register .logo pre{ font-size:.55rem; } }
+@media(max-width:550px){#view-register{ padding:12px; }#view-register .info, #view-register .register{ padding:28px 20px; }#view-register .info h1{ font-size:1.9rem; }#view-register .logo pre{ font-size:.45rem; } }
