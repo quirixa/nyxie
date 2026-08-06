@@ -84,7 +84,7 @@ function initSettingsView() {
   function applyBannerStyle(el, user) {
     if (!el || !user) return;
     if (user.banner) {
-      el.style.background = `url("${user.banner}?t=${Date.now()}") center/cover no-repeat`;
+      el.style.background = `url("${versionedMediaUrl(user.banner)}") center/cover no-repeat`;
     } else if (user.banner_color) {
       el.style.background = user.banner_color;
     } else {
@@ -98,7 +98,7 @@ function initSettingsView() {
     const avatarEl = document.getElementById('profile-avatar-preview');
     const letterEl = document.getElementById('profile-avatar-letter');
     if (currentUser.avatar) {
-      avatarEl.innerHTML = `<img src="${escapeHtml(currentUser.avatar)}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+      avatarEl.innerHTML = `<img src="${escapeHtml(versionedMediaUrl(currentUser.avatar))}" style="width:100%;height:100%;object-fit:cover;" />`;
       letterEl.style.display = 'none';
     } else {
       avatarEl.innerHTML = `<span id="profile-avatar-letter">${name[0].toUpperCase()}</span>`;
@@ -154,6 +154,7 @@ function initSettingsView() {
       const data = await res.json();
       if (data.ok) {
         currentUser.avatar = data.avatar;
+        if (data.avatar) versionedMediaUrl(data.avatar, true); // force fresh fetch, see utils.js
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
         loadProfileForm();
         toast('Avatar updated');
@@ -184,6 +185,7 @@ function initSettingsView() {
         currentUser.banner = data.banner;
         currentUser.banner_color = null;
         _pendingBannerColor = null;
+        if (data.banner) versionedMediaUrl(data.banner, true); // force fresh fetch, see utils.js
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
         document.querySelectorAll('.banner-swatch').forEach(s => s.classList.remove('active'));
         loadProfileForm();

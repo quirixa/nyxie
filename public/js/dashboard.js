@@ -316,6 +316,22 @@ function initDashboardView() {
     router.navigate('/login');
   }
 
+  // router.js calls this (typeof-checked, so it's silently a no-op if
+  // missing — which it was: this function didn't exist at all, so
+  // navigating away from /app never actually tore anything down). That
+  // meant every trip to /app left the previous mount's WebSocket open
+  // (a second, third, Nth socket all still receiving events and all
+  // still holding the poll interval alive), and left voice.js's
+  // MutationObserver running forever instead of being disconnected.
+  // Closing/clearing them here is what actually makes leaving and
+  // re-entering /app behave like a fresh mount instead of stacking state
+  // on top of the previous one.
+  function destroyDashboardView() {
+    if (ws) { try { ws.close(); } catch (e) {} }
+    if (_dashboardPollTimer) clearInterval(_dashboardPollTimer);
+    if (typeof destroyVoiceFeatures === 'function') { try { destroyVoiceFeatures(); } catch (e) {} }
+  }
+
   function escapeHtml(s) {
     if (!s) return '';
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -381,9 +397,22 @@ function initDashboardView() {
     }
   }
 
+  // Bumped on every openRoom() call; each in-flight load captures its own
+  // value and checks it before touching the DOM. Without this, opening a
+  // room while a previous room's message fetch was still resolving (easy
+  // to trigger with a rapid double-tap on mobile, or fast-switching
+  // between two conversations) let both loads' `container.innerHTML = ''`
+  // + `await appendMessage(m)` loops interleave — since each append
+  // awaits E2EE decryption, control yields mid-loop, so a stale loop
+  // could resume *after* a newer one had already cleared and repopulated
+  // the container, re-appending its own messages on top. That's what
+  // produced the doubled/overlapping message text.
+  let _roomLoadToken = 0;
+
   function openRoom(roomId) {
     const room = dms.find(d => d.id === roomId);
     if (!room) return toast('Conversation not found');
+    const loadToken = ++_roomLoadToken;
     currentRoom = room;
     _roomHasMessages = false;
     clearUnread(room.id);
@@ -412,6 +441,7 @@ function initDashboardView() {
 
     if (room._otherId) {
       api('GET', `/users/${room._otherId}`).then(udata => {
+        if (loadToken !== _roomLoadToken) return; // a newer room open superseded this one
         if (udata?.user) {
           const status = udata.user.status || 'offline';
           const dot = document.getElementById('ch-status-dot');
@@ -421,7 +451,7 @@ function initDashboardView() {
           if (text) text.textContent = statusText;
           const chAvatarEl = document.getElementById('ch-avatar');
           if (udata.user.avatar) {
-            chAvatarEl.innerHTML = `<img src="${udata.user.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+            chAvatarEl.innerHTML = `<img src="${versionedMediaUrl(udata.user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           } else {
             chAvatarEl.textContent = name[0].toUpperCase();
             chAvatarEl.style.background = hashColor(name);
@@ -433,6 +463,7 @@ function initDashboardView() {
     const container = document.getElementById('messages-container');
     container.innerHTML = `<div style="color:var(--text-muted);padding:32px;text-align:center">Loading...</div>`;
     api('GET', `/rooms/${room.id}/messages`).then(async data => {   // ✅ async added
+  if (loadToken !== _roomLoadToken) return; // a newer room open superseded this one — don't touch the DOM
   container.innerHTML = '';
   window._lastMsgUserId = null;
   window._lastMsgTime = 0;
@@ -440,6 +471,7 @@ function initDashboardView() {
   if (data?.messages?.length) {
     _roomHasMessages = true;
     for (const m of data.messages) {
+      if (loadToken !== _roomLoadToken) return; // bail mid-loop if superseded
       await appendMessage(m);   // ✅ now works
     }
     scrollToBottom();
@@ -916,7 +948,7 @@ async function loadDMs() {
       const isActive = currentRoom?.id === dm.id;
       let avatarHtml = name[0].toUpperCase();
       if (dm._avatar) {
-        avatarHtml = `<img src="${dm._avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+        avatarHtml = `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       }
       const dmAvatar = `<div class="dm-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>`;
       const chk = `<div class="dm-checkbox" onclick="event.stopPropagation();toggleDMSelect('${dm.id}',this.closest('.dm-item'))"></div>`;
@@ -1687,7 +1719,44 @@ async function loadDMs() {
 
   // ─── INPUT HANDLING ──────────────────────────────────────
   document.getElementById('send-btn').addEventListener('click', sendMessage);
+  // The ":"-triggered emoji shortcode popup (handleShortcodeInput,
+  // showShortcodeSuggest, selectShortcode) was fully implemented above
+  // but never actually hooked up to the input box — nothing called
+  // handleShortcodeInput() as the user typed, so the popup could never
+  // appear. Wiring it to the 'input' event is what makes typing ":fire"
+  // actually open the suggestion list, the way it does in Discord/Telegram.
+  document.getElementById('msg-input').addEventListener('input', e => {
+    handleShortcodeInput(e.target);
+  });
   document.getElementById('msg-input').addEventListener('keydown', e => {
+    // While the shortcode popup is open, arrow keys move the highlighted
+    // suggestion and Enter/Tab confirm it instead of sending the message;
+    // Escape just closes the popup. Only plain Enter (no popup open)
+    // falls through to sendMessage(), same as before.
+    if (scActive && scResults.length) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        scSelectedIndex = (scSelectedIndex + 1) % scResults.length;
+        showShortcodeSuggest(scResults, scQuery, parseInt(document.getElementById('shortcode-suggest').dataset.colonPos, 10), parseInt(document.getElementById('shortcode-suggest').dataset.cursorPos, 10));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        scSelectedIndex = (scSelectedIndex - 1 + scResults.length) % scResults.length;
+        showShortcodeSuggest(scResults, scQuery, parseInt(document.getElementById('shortcode-suggest').dataset.colonPos, 10), parseInt(document.getElementById('shortcode-suggest').dataset.cursorPos, 10));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectShortcode(scSelectedIndex >= 0 ? scSelectedIndex : 0);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeShortcodeSuggest();
+        return;
+      }
+    }
     if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
     if (ws && ws.readyState === WebSocket.OPEN && currentRoom) {
       ws.send(JSON.stringify({ type: 'typing', room_id: currentRoom.id }));
@@ -1739,11 +1808,11 @@ async function loadDMs() {
       document.getElementById('up-username-display').textContent = '@' + user.username;
       document.getElementById('up-bio-display').textContent = user.bio || '';
       const bannerEl = document.getElementById('up-banner');
-      if (user.banner) bannerEl.style.background = `url("${user.banner}?t=${Date.now()}") center/cover no-repeat`;
+      if (user.banner) bannerEl.style.background = `url("${versionedMediaUrl(user.banner)}") center/cover no-repeat`;
       else if (user.banner_color) bannerEl.style.background = user.banner_color;
       else bannerEl.style.background = 'linear-gradient(135deg, var(--accent), var(--accent-hover))';
       if (user.avatar) {
-        avatarEl.innerHTML = `<img src="${user.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+        avatarEl.innerHTML = `<img src="${versionedMediaUrl(user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
         avatarEl.style.background = 'none';
       } else {
         const letter = (user.display_name || user.username)[0].toUpperCase();
@@ -1811,7 +1880,7 @@ async function loadDMs() {
     const avEl = document.getElementById('pp-avatar-letter');
     avEl.textContent = letter;
     avEl.style.background = color;
-    if (currentUser.avatar) avEl.innerHTML = `<img src="${currentUser.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    if (currentUser.avatar) avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
     else { avEl.innerHTML = letter; avEl.style.background = color; }
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent = '@' + currentUser.username;
@@ -1836,7 +1905,7 @@ async function loadDMs() {
     document.getElementById('edit-displayname').value = currentUser.display_name || '';
     document.getElementById('edit-bio').value = currentUser.bio || '';
     const preview = document.getElementById('edit-avatar-preview');
-    if (currentUser.avatar) { preview.src = currentUser.avatar + '?t=' + Date.now(); preview.style.display = 'block'; }
+    if (currentUser.avatar) { preview.src = versionedMediaUrl(currentUser.avatar); preview.style.display = 'block'; }
     else preview.style.display = 'none';
     document.getElementById('edit-current-password').value = '';
     document.getElementById('edit-new-password').value = '';
@@ -1906,7 +1975,7 @@ async function loadDMs() {
       if (data.ok) {
         currentUser.avatar = data.avatar;
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
-        document.getElementById('edit-avatar-preview').src = data.avatar + '?t=' + Date.now();
+        document.getElementById('edit-avatar-preview').src = versionedMediaUrl(data.avatar, true);
         document.getElementById('edit-avatar-preview').style.display = 'block';
         updateAvatarUI(data.avatar);
         toast('Avatar updated');
@@ -1915,10 +1984,10 @@ async function loadDMs() {
   }
   function updateAvatarUI(avatarUrl) {
     const upAv = document.getElementById('up-avatar');
-    if (avatarUrl) upAv.innerHTML = `<img src="${avatarUrl}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    if (avatarUrl) upAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
     else { const name = currentUser.display_name || currentUser.username; upAv.textContent = name[0].toUpperCase(); upAv.style.background = hashColor(name); upAv.innerHTML = name[0].toUpperCase(); }
     const ppAv = document.getElementById('pp-avatar-letter');
-    if (avatarUrl) ppAv.innerHTML = `<img src="${avatarUrl}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+    if (avatarUrl) ppAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
     else { const name = currentUser.display_name || currentUser.username; ppAv.textContent = name[0].toUpperCase(); ppAv.style.background = hashColor(name); }
   }
 
@@ -2021,7 +2090,7 @@ async function loadDMs() {
         out += incoming.map(r => {
           const name = r.from_name || r.from_username;
           let avatarHtml = name[0].toUpperCase();
-          if (r.from_avatar) avatarHtml = `<img src="${r.from_avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+          if (r.from_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.from_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
               <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
@@ -2051,7 +2120,7 @@ async function loadDMs() {
         out += outgoing.map(r => {
           const name = r.to_name || r.to_username;
           let avatarHtml = name[0].toUpperCase();
-          if (r.to_avatar) avatarHtml = `<img src="${r.to_avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+          if (r.to_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.to_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
               <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
@@ -2080,7 +2149,7 @@ async function loadDMs() {
     el.innerHTML = list.map(f => {
       const name = f.display_name || f.username;
       let avatarHtml = name[0].toUpperCase();
-      if (f.avatar) avatarHtml = `<img src="${f.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+      if (f.avatar) avatarHtml = `<img src="${versionedMediaUrl(f.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
           <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
@@ -2230,7 +2299,13 @@ async function loadDMs() {
     });
   }
   function handleFileUpload(files) { /* defined above */ }
-  function startCall() { toast('📞 Voice call feature coming soon!'); }
+  // NOTE: the real startCall() lives in voice.js's initVoiceFeatures()
+  // (window.startCall = async function... — actual WebRTC call logic).
+  // There used to be a placeholder stub here that got wired up via
+  // `window.startCall = startCall` below, which raced against voice.js's
+  // real assignment and could permanently win if initVoiceFeatures() ever
+  // failed to run before this synchronous code executed. Removed so
+  // voice.js is the single source of truth for window.startCall.
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  INIT
@@ -2251,7 +2326,7 @@ async function loadDMs() {
       const letter = name[0].toUpperCase();
       const color = hashColor(name);
       const upAvatar = document.getElementById('up-avatar');
-      if (currentUser.avatar) upAvatar.innerHTML = `<img src="${currentUser.avatar}?t=${Date.now()}" style="width:100%;height:100%;object-fit:cover;" />`;
+      if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       else { upAvatar.textContent = letter; upAvatar.style.background = color; }
       document.getElementById('up-status-pip').className = pipClass(currentUser._status);
       document.getElementById('up-name').textContent = name;
@@ -2370,8 +2445,8 @@ function handleFileUpload(files) {
   window.toggleSelectMode = toggleSelectMode;
   window.filterSidebar = filterSidebar;
   window.handleFileUpload = handleFileUpload;
-  window.startCall = startCall;
   window.logout = logout;
+  window.destroyDashboardView = destroyDashboardView;
   window.navigateTo = navigateTo;
   window.toggleSidebar = toggleSidebar;
 } // <--- Closes initDashboardView()

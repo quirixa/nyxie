@@ -65,3 +65,20 @@ function debounce(fn, wait) {
     t = setTimeout(() => fn.apply(this, args), wait);
   };
 }
+
+// versionedMediaUrl — cache-friendly replacement for the old
+// `url + '?t=' + Date.now()` pattern. Appending a fresh timestamp on
+// *every* render defeated the browser cache entirely, so avatars/banners
+// re-fetched from the network on every navigation (visible flash/reload
+// each time). Instead we memoize one cache-busting token per distinct
+// URL, so repeated renders of the same URL reuse the same token (cache
+// hit), and only actual uploads (which pass bump=true) get a fresh one.
+const _mediaCacheTokens = new Map();
+function versionedMediaUrl(url, bump) {
+  if (!url) return url;
+  if (bump || !_mediaCacheTokens.has(url)) {
+    _mediaCacheTokens.set(url, Date.now());
+  }
+  const sep = url.includes('?') ? '&' : '?';
+  return url + sep + 'v=' + _mediaCacheTokens.get(url);
+}

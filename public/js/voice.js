@@ -148,34 +148,55 @@ function initVoiceFeatures() {
     #call-bar button { background:rgba(255,255,255,.22); border:none; color:#fff; border-radius:6px; padding:4px 12px; cursor:pointer; font-size:.78rem; font-weight:500; }
     #call-bar button:hover { background:rgba(255,255,255,.32); }
   `;
-  document.head.appendChild(style);
+  // Guard against duplicate injection. initVoiceFeatures() is called
+  // every time initDashboardView() runs — i.e. every time the user
+  // navigates to /app, not just on first load. The style tag, call
+  // overlay, and call bar below are appended to document.head/body
+  // directly (not into #app-root, which the router clears on every
+  // navigation), so without this guard they'd pile up: a second visit
+  // to /app would leave two #call-overlay / #call-bar elements in the
+  // DOM with duplicated child ids (#call-name, #call-status,
+  // #call-bar-timer, etc). document.getElementById() always returns the
+  // FIRST match in document order, so any code later in this same file
+  // that looks elements up by id (updateCallUI, the timer tick, etc.)
+  // would keep reading/writing the stale first (oldest) copy while the
+  // visually-on-top, most-recently-appended copy silently never updates
+  // — which is exactly what made calls look broken/frozen after
+  // navigating away and back once.
+  const alreadyInjected = !!document.getElementById('call-overlay');
+  let overlay = document.getElementById('call-overlay');
+  let callBar = document.getElementById('call-bar');
+
+  if (!alreadyInjected) {
+    document.head.appendChild(style);
+
+    overlay = document.createElement('div');
+    overlay.id = 'call-overlay';
+    overlay.innerHTML = `
+      <div id="call-card">
+        <div id="call-avatar">?</div>
+        <div id="call-name">—</div>
+        <div id="call-status">calling…</div>
+        <div class="call-btn-row" id="call-btn-row"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    callBar = document.createElement('div');
+    callBar.id = 'call-bar';
+    callBar.innerHTML = `<span id="call-bar-lock">🔒</span><span id="call-bar-text">On call</span><span id="call-bar-timer">00:00</span><button id="call-bar-mute" type="button">Mute</button><button id="call-bar-hangup" type="button">Hang up</button>`;
+    document.body.appendChild(callBar);
+    callBar.querySelector('#call-bar-hangup').onclick = () => hangUp();
+    callBar.querySelector('#call-bar-mute').onclick = () => {
+      if (!localStream) return;
+      const track = localStream.getAudioTracks()[0];
+      if (!track) return;
+      track.enabled = !track.enabled;
+      callBar.querySelector('#call-bar-mute').textContent = track.enabled ? 'Mute' : 'Unmute';
+    };
+  }
 
   const svgHangup = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.996.996 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .27-.11.52-.29.7l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85a.99.99 0 0 1-.56-.9v-3.1A17.9 17.9 0 0 0 12 9z"/></svg>';
   const svgAccept = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
-
-  const overlay = document.createElement('div');
-  overlay.id = 'call-overlay';
-  overlay.innerHTML = `
-    <div id="call-card">
-      <div id="call-avatar">?</div>
-      <div id="call-name">—</div>
-      <div id="call-status">calling…</div>
-      <div class="call-btn-row" id="call-btn-row"></div>
-    </div>`;
-  document.body.appendChild(overlay);
-
-  const callBar = document.createElement('div');
-  callBar.id = 'call-bar';
-  callBar.innerHTML = `<span id="call-bar-lock">🔒</span><span id="call-bar-text">On call</span><span id="call-bar-timer">00:00</span><button id="call-bar-mute" type="button">Mute</button><button id="call-bar-hangup" type="button">Hang up</button>`;
-  document.body.appendChild(callBar);
-  callBar.querySelector('#call-bar-hangup').onclick = () => hangUp();
-  callBar.querySelector('#call-bar-mute').onclick = () => {
-    if (!localStream) return;
-    const track = localStream.getAudioTracks()[0];
-    if (!track) return;
-    track.enabled = !track.enabled;
-    callBar.querySelector('#call-bar-mute').textContent = track.enabled ? 'Mute' : 'Unmute';
-  };
 
   function makeCallBtn(cls, svg, onClick) {
     const btn = document.createElement('button');

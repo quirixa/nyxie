@@ -105,7 +105,17 @@
         ctx = canvas.getContext('2d');
 
         const container = canvas.parentElement;
-        const size = 400;
+        // The crop box used to be hardcoded to 400x400 regardless of
+        // screen size. .cropper-modal is `width: 95vw` (capped at
+        // 560px) with 24px of padding — on a ~360-390px-wide phone that
+        // leaves well under 400px of actual room, so the fixed 400px box
+        // overflowed the modal (and often the viewport itself), making
+        // the whole cropper unusable/clipped on mobile. Size it from
+        // what's actually available instead, same as desktop just with a
+        // smaller number.
+        const wrap = container.parentElement; // .cropper-preview-wrap
+        const available = (wrap && wrap.clientWidth) || (window.innerWidth - 64);
+        const size = Math.max(220, Math.min(400, Math.floor(available)));
         container.style.width = size + 'px';
         container.style.height = size + 'px';
         canvas.style.width = size + 'px';
@@ -235,6 +245,14 @@
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
       safeToast(`${targetType === 'avatar' ? 'Avatar' : 'Banner'} updated!`);
+      // Force a fresh cache-busting token for this URL now that its
+      // content has actually changed (see versionedMediaUrl in utils.js —
+      // every other render reuses the memoized token so the browser can
+      // cache normally instead of re-fetching on every navigation).
+      if (typeof versionedMediaUrl === 'function') {
+        if (targetType === 'avatar' && data.avatar) versionedMediaUrl(data.avatar, true);
+        else if (targetType === 'banner' && data.banner) versionedMediaUrl(data.banner, true);
+      }
       const user = JSON.parse(localStorage.getItem('nyxie_user') || '{}');
       if (targetType === 'avatar') user.avatar = data.avatar;
       else { user.banner = data.banner; user.banner_color = null; }
@@ -279,6 +297,22 @@
     cancelBtn.addEventListener('click', closeCropper);
     overlay.addEventListener('click', function(e) {
       if (e.target === overlay) closeCropper();
+    });
+    // Recompute the crop box size on rotate/resize instead of leaving a
+    // stale size that could now be too wide (or leave the box smaller
+    // than necessary) for the new viewport.
+    window.addEventListener('resize', function() {
+      if (!overlay.classList.contains('open') || !imageObj) return;
+      const container = canvas.parentElement;
+      const wrap = container.parentElement;
+      const available = (wrap && wrap.clientWidth) || (window.innerWidth - 64);
+      const size = Math.max(220, Math.min(400, Math.floor(available)));
+      container.style.width = size + 'px';
+      container.style.height = size + 'px';
+      canvas.style.width = size + 'px';
+      canvas.style.height = size + 'px';
+      baseScale = computeBaseScale();
+      redraw();
     });
   }
 
