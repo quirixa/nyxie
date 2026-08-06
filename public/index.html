@@ -2,8 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
 <title>Nyxie</title>
+
+<script>
+  /* Keyboard-aware viewport height.
+     100dvh/100vh do NOT shrink for the on-screen keyboard in a lot of
+     mobile/in-app browsers (only some Chromium builds honor
+     interactive-widget=resizes-content above). The Visual Viewport API
+     is the one thing that reliably reports the space actually left
+     after the keyboard opens, in every modern mobile browser, so we
+     mirror it into a CSS var and let app.css/dashboard.css consume it. */
+  (function () {
+    function setAppHeight() {
+      var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', h + 'px');
+    }
+    setAppHeight();
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setAppHeight);
+      window.visualViewport.addEventListener('scroll', setAppHeight);
+    }
+    window.addEventListener('orientationchange', setAppHeight);
+    window.addEventListener('resize', setAppHeight);
+  })();
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

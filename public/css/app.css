@@ -11,6 +11,7 @@ html, body, #app-root {
 #app-root {
   height: 100vh;
   height: 100dvh;
+  height: var(--app-height);
   overflow: hidden;
 }
 
