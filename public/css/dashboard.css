@@ -56,6 +56,11 @@
       pointer-events: none;
       border-right: none;
     }
+/* Mobile bottom tab bar: hidden on desktop, shown + takes over primary
+   nav duties (Friends/Notifications/Settings) at 768px and below. */
+#view-app #mobile-bottom-nav{
+      display: none;
+    }
 #view-app #sidebar-header{
       height: 52px;
       display: flex;
@@ -1466,6 +1471,57 @@
       font-weight: 700;
       flex: 1;
     }
+#view-app .fh-icon-btn{
+      width: 34px;
+      height: 34px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 50%;
+      background: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+#view-app .fh-icon-btn:hover{
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+#view-app .fh-icon-btn svg{
+      width: 18px;
+      height: 18px;
+    }
+#view-app .fh-hamburger{
+      margin-right: 2px;
+    }
+#view-app #friends-search-wrap{
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 16px 0;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border-radius: 8px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+#view-app #friends-search-wrap svg{
+      flex-shrink: 0;
+    }
+#view-app #friends-search-input{
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+      font-family: 'Inter', sans-serif;
+    }
+#view-app #friends-search-input::placeholder{
+      color: var(--text-muted);
+    }
 #view-app .friends-tab-bar{
       display: flex;
       gap: 4px;
@@ -1642,12 +1698,14 @@
       max-height: 160px;
       overflow-y: auto;
     }
-#view-app #saved-notes-panel{
+#view-app #saved-notes-panel,
+#view-app #notifications-panel{
       display: none;
       flex-direction: column;
       height: 100%;
     }
-#view-app #saved-notes-panel .panel-header{
+#view-app #saved-notes-panel .panel-header,
+#view-app #notifications-panel .panel-header{
       height: 52px;
       border-bottom: 1px solid var(--border-color);
       display: flex;
@@ -1657,7 +1715,8 @@
       font-weight: 700;
       flex-shrink: 0;
     }
-#view-app #saved-notes-panel .panel-body{
+#view-app #saved-notes-panel .panel-body,
+#view-app #notifications-panel .panel-body{
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -1667,7 +1726,8 @@
       font-size: 0.9rem;
       gap: 8px;
     }
-#view-app #saved-notes-panel .panel-body svg{
+#view-app #saved-notes-panel .panel-body svg,
+#view-app #notifications-panel .panel-body svg{
       width: 48px;
       height: 48px;
       stroke: var(--text-muted);
@@ -2163,6 +2223,49 @@ single-pane, app-style navigation
       #view-app #msg-input, #view-app .modal input, #view-app .modal textarea, #view-app #search-input, #view-app .add-friend-input, #view-app #chat-search-input{ font-size: 16px; }#view-app .overlay{ padding: 16px; }#view-app .modal{ max-width: 100%; }
       /* Hover-only actions aren't reachable on touch */
       #view-app .dm-actions{ display: flex !important; }#view-app .msg-row:hover{ background: none; }#view-app .msg-row.actions-open .msg-actions{ display: flex; }
+
+      /* Bottom tab bar replaces the in-sidebar Home/Friends/Saved list */
+      #view-app #sidebar-nav{ display: none; }
+      #view-app #sidebar{ padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+      #view-app #main{ bottom: calc(60px + env(safe-area-inset-bottom, 0px)); padding-bottom: 0; }
+      #view-app #mobile-bottom-nav{
+        display: flex;
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        height: 60px;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        background: var(--bg-sidebar);
+        border-top: 1px solid var(--border-color);
+        z-index: 50;
+      }
+      #view-app .mbn-item{
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        border: none;
+        background: none;
+        color: var(--text-muted);
+        font-size: 0.68rem;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        cursor: pointer;
+      }
+      #view-app .mbn-item svg{ width: 22px; height: 22px; }
+
+      /* Friends screen: bigger touch targets, screenshot-style rows */
+      #view-app #friends-header{ height: 56px; }
+      #view-app #friends-header h2{ font-size: 1.15rem; }
+      #view-app .friends-tab-bar{ padding: 10px 14px; gap: 6px; }
+      #view-app .ftab{ padding: 6px 16px; font-size: 0.85rem; }
+      #view-app .friend-row{ padding: 10px 16px; gap: 12px; }
+      #view-app .fr-avatar{ width: 46px; height: 46px; font-size: 1rem; }
+      #view-app .fr-name{ font-size: 0.95rem; }
+      #view-app .fr-sub{ font-size: 0.8rem; }
+      #view-app .fr-actions{ display: flex !important; }
+      #view-app .fr-btn{ width: 34px; height: 34px; }
     }
 @media (max-width: 480px) {#view-app .welcome-logo pre{ font-size: 0.28rem; }#view-app .wv-title{ font-size: 1.4rem; }#view-app .welcome-card{ padding: 30px 20px; }#view-app #profile-popout{ left: 10px; right: 10px; width: auto; bottom: 70px; }#view-app #user-profile-popout{ width: 90vw; max-width: 90vw; }#view-app .msg-row{ max-width: 100%; }#view-app .emoji-picker{ max-height: 40vh; }#view-app .ep-grid{ grid-template-columns: repeat(6, 1fr); }#view-app .ep-item{ font-size: 1.1rem; min-height: 36px; }
     }
@@ -2181,6 +2284,8 @@ single-pane, app-style navigation
 #view-app .dm-item.active .dm-preview{ color: rgba(255,255,255,0.7) !important; }
 #view-app .dm-item.active .dm-time{ color: rgba(255,255,255,0.6) !important; }
 #view-app .ftab.active{ background: var(--accent) !important; color: #fff !important; }
+#view-app .mbn-item.active{ color: var(--accent) !important; }
+#view-app .fh-icon-btn:hover{ color: var(--accent) !important; }
 #view-app .brand-small{ background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important; -webkit-background-clip: text !important; background-clip: text !important; -webkit-text-fill-color: transparent !important; }
 #view-app .add-friend-btn{ background: var(--accent) !important; }
 #view-app .add-friend-btn:hover{ background: var(--accent-hover) !important; }

@@ -522,13 +522,27 @@ __    __  __      __  __    __  ______  ________
                 <!-- Friends Panel -->
                 <div id="friends-panel" style="display:none;">
                     <div id="friends-header">
+                        <button class="fh-icon-btn fh-hamburger" onclick="navigateTo('home')" title="Back to chats">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
                         <h2>Friends</h2>
-                        <button class="icon-btn" onclick="navigateTo('home')" style="font-size:1.2rem;">✕</button>
-                        <button class="icon-btn" onclick="loadFriendsData().then(renderFriendsList)" title="Refresh">⟳</button>
+                        <button class="fh-icon-btn" onclick="toggleFriendsSearch()" title="Search friends">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                        <button class="fh-icon-btn" onclick="focusAddFriend()" title="Add friend">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                        </button>
+                        <button class="fh-icon-btn" onclick="loadFriendsData().then(renderFriendsList)" title="Refresh">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        </button>
+                    </div>
+                    <div id="friends-search-wrap" style="display:none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="friends-search-input" placeholder="Search friends" oninput="filterFriendsList(this.value)" autocomplete="off" />
                     </div>
                     <div class="friends-tab-bar">
-                        <button class="ftab active" id="ftab-all" onclick="switchFriendsTab('all')">All</button>
                         <button class="ftab" id="ftab-online" onclick="switchFriendsTab('online')">Online</button>
+                        <button class="ftab active" id="ftab-all" onclick="switchFriendsTab('all')">All</button>
                         <button class="ftab" id="ftab-pending" onclick="switchFriendsTab('pending')">Pending <span id="ftab-pending-count"></span></button>
                     </div>
                     <div class="friends-list" id="friends-list"></div>
@@ -557,6 +571,23 @@ __    __  __      __  __    __  ______  ________
                             <polyline points="10 9 9 9 8 9"/>
                         </svg>
                         <span>No saved notes yet.</span>
+                    </div>
+                </div>
+
+                <!-- Notifications (mobile bottom-nav tab) -->
+                <div id="notifications-panel" style="display:none;">
+                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+                        <span>Notifications</span>
+                        <button class="fh-icon-btn" onclick="closeNotifications()" title="Back to chats" style="margin:0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="panel-body">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                        <span>No notifications yet.</span>
                     </div>
                 </div>
 
@@ -673,6 +704,25 @@ __    __  __      __  __    __  ______  ________
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Mobile bottom tab bar (replaces sidebar nav-items on small screens) -->
+            <div id="mobile-bottom-nav">
+                <button class="mbn-item" id="mbn-friends" onclick="showMobilePanel('friends')">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 11h7v2h-7zm1 4h6v2h-6zm-2-8h8v2h-8zM4 19h10v-1c0-2.757-2.243-5-5-5H7c-2.757 0-5 2.243-5 5v1h2zm4-7c1.995 0 3.5-1.505 3.5-3.5S9.995 5 8 5 4.5 6.505 4.5 8.5 6.005 12 8 12z"/></svg>
+                    <span>Friends</span>
+                </button>
+                <button class="mbn-item" id="mbn-notifications" onclick="showMobilePanel('notifications')">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6.5v-4.5a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v1.16A7 7 0 0 0 5 11.5V16l-1.71 1.71A1 1 0 0 0 4 19.41V20h16v-.59a1 1 0 0 0-.29-.7z"/></svg>
+                    <span>Notifications</span>
+                </button>
+                <button class="mbn-item" id="mbn-settings" onclick="router.navigate('/settings')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>User Settings</span>
+                </button>
             </div>
         </div>
 
@@ -1377,6 +1427,81 @@ __    __  __      __  __    __  ______  ________
         </div>
     </div>
 </div>
+
+<!-- ─── Mobile bottom-nav + friends search helpers ────────────
+     Self-contained: these only touch the DOM directly so they don't
+     depend on internals of dashboard.js/router.js. navigateTo()/
+     router.navigate() are still used where they already exist (they
+     handle the real Friends/Settings views); notifications-panel is
+     new and has no backend yet, so it's managed entirely here. ──── -->
+<script>
+  function showMobilePanel(name) {
+    var app = document.querySelector('#view-app #app');
+    var notif = document.getElementById('notifications-panel');
+    document.querySelectorAll('#mobile-bottom-nav .mbn-item').forEach(function (b) {
+      b.classList.remove('active');
+    });
+
+    if (name === 'notifications') {
+      ['friends-panel', 'saved-notes-panel', 'welcome-view', 'chat-view'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      if (notif) notif.style.display = 'flex';
+      if (app) app.classList.add('mobile-view-detail');
+      var nbtn = document.getElementById('mbn-notifications');
+      if (nbtn) nbtn.classList.add('active');
+      return;
+    }
+
+    if (notif) notif.style.display = 'none';
+    if (name === 'friends' && typeof navigateTo === 'function') {
+      navigateTo('friends');
+      var fbtn = document.getElementById('mbn-friends');
+      if (fbtn) fbtn.classList.add('active');
+    }
+  }
+
+  function closeNotifications() {
+    var notif = document.getElementById('notifications-panel');
+    if (notif) notif.style.display = 'none';
+    document.querySelectorAll('#mobile-bottom-nav .mbn-item').forEach(function (b) {
+      b.classList.remove('active');
+    });
+    if (typeof navigateTo === 'function') navigateTo('home');
+  }
+
+  function toggleFriendsSearch() {
+    var wrap = document.getElementById('friends-search-wrap');
+    if (!wrap) return;
+    var show = wrap.style.display === 'none' || !wrap.style.display;
+    wrap.style.display = show ? 'flex' : 'none';
+    var inp = document.getElementById('friends-search-input');
+    if (show) {
+      if (inp) { inp.value = ''; inp.focus(); }
+    } else if (inp) {
+      inp.value = '';
+    }
+    filterFriendsList('');
+  }
+
+  function filterFriendsList(q) {
+    q = (q || '').toLowerCase();
+    document.querySelectorAll('#friends-list .friend-row').forEach(function (row) {
+      var name = row.querySelector('.fr-name');
+      var text = name ? name.textContent.toLowerCase() : '';
+      row.style.display = (!q || text.indexOf(q) !== -1) ? '' : 'none';
+    });
+  }
+
+  function focusAddFriend() {
+    var inp = document.getElementById('add-friend-input');
+    if (inp) {
+      inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      inp.focus();
+    }
+  }
+</script>
 
 <!-- ─── Scripts ────────────────────────────────────────────── -->
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
