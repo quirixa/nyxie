@@ -3,16 +3,24 @@ const router = express.Router();
 const crypto = require('crypto');
 const { getUserDb, all, get, run } = require('../database/userDb');
 const { requireAuth } = require('../middleware/auth');
+const { ensureBlocksTable, isBlocked, listBlocked } = require('../services/blocks');
 
 // GET /api/friends — list accepted friends (with avatars)
+// Blocked users are excluded defensively even though blocking already
+// tears down any existing friendship (see POST /block/:id below).
 router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
+  ensureBlocksTable(db);
   const friends = all(db, `
     SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.last_seen
     FROM friends f
     JOIN users u ON u.id = CASE WHEN f.user_a = ? THEN f.user_b ELSE f.user_a END
     WHERE (f.user_a = ? OR f.user_b = ?) AND f.status = 'accepted'
-  `, [req.user.id, req.user.id, req.user.id]);
+      AND NOT EXISTS (
+        SELECT 1 FROM blocks b
+        WHERE (b.blocker_id = ? AND b.blocked_id = u.id) OR (b.blocker_id = u.id AND b.blocked_id = ?)
+      )
+  `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
   res.json({ friends });
 });
 
@@ -38,6 +46,57 @@ router.get('/requests', requireAuth, async (req, res) => {
   res.json({ incoming, outgoing });
 });
 
+// GET /api/friends/blocked — users I've blocked
+router.get('/blocked', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  const blocked = listBlocked(db, req.user.id);
+  res.json({ blocked });
+});
+
+// POST /api/friends/block/:id — block a user.
+// Tears down any existing friendship and cancels pending requests between
+// the two of you (in either direction) so a stale friendship/request can't
+// linger around a block.
+router.post('/block/:id', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  ensureBlocksTable(db);
+  const targetId = req.params.id;
+
+  if (targetId === req.user.id) return res.status(400).json({ error: 'Cannot block yourself' });
+  const target = get(db, 'SELECT id FROM users WHERE id = ?', [targetId]);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  run(db, `
+    DELETE FROM friends
+    WHERE (user_a = ? AND user_b = ?) OR (user_a = ? AND user_b = ?)
+  `, [req.user.id, targetId, targetId, req.user.id]);
+
+  run(db, `
+    UPDATE friend_requests SET status = 'cancelled'
+    WHERE status = 'pending' AND ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))
+  `, [req.user.id, targetId, targetId, req.user.id]);
+
+  const blockId = crypto.randomUUID();
+  run(db, `
+    INSERT OR IGNORE INTO blocks (id, blocker_id, blocked_id, created_at) VALUES (?, ?, ?, ?)
+  `, [blockId, req.user.id, targetId, Date.now()]);
+
+  // Let the other side know the friendship ended, same event the normal
+  // "remove friend" flow sends — this doesn't reveal that they were
+  // specifically blocked, just that they're no longer friends.
+  req.app.locals.broadcastToUser(targetId, { type: 'friend_removed', user_id: req.user.id });
+
+  res.json({ ok: true });
+});
+
+// DELETE /api/friends/block/:id — unblock
+router.delete('/block/:id', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  ensureBlocksTable(db);
+  run(db, 'DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?', [req.user.id, req.params.id]);
+  res.json({ ok: true });
+});
+
 // POST /api/friends/request — send a friend request
 router.post('/request', requireAuth, async (req, res) => {
   const db = await getUserDb();
@@ -47,6 +106,10 @@ router.post('/request', requireAuth, async (req, res) => {
 
   const target = get(db, 'SELECT id, username, display_name, avatar FROM users WHERE id = ?', [to_id]);
   if (!target) return res.status(404).json({ error: 'User not found' });
+
+  if (isBlocked(db, req.user.id, to_id)) {
+    return res.status(403).json({ error: 'Unable to send a friend request to this user' });
+  }
 
   const already = get(db, `
     SELECT 1 FROM friends

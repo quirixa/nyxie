@@ -7,6 +7,7 @@ const bcrypt = require('bcrypt');
 const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
+const { hasBlocked } = require('../services/blocks');
 
 // ─── Paths ──────────────────────────────────────────────────
 const PROJECT_ROOT = path.resolve(__dirname, '../..'); // because this file is in server/routes/
@@ -79,6 +80,9 @@ router.get('/:id', requireAuth, async (req, res) => {
     FROM users WHERE id = ?
   `, [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  // Only reveal that *I* blocked them, never whether they blocked me —
+  // Discord-style, so blocking someone doesn't tip them off.
+  user.is_blocked = hasBlocked(db, req.user.id, req.params.id);
   res.json({ user });
 });
 

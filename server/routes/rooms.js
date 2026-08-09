@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, allMessages, getMessage, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
+const { isBlocked } = require('../services/blocks');
 
 async function getLatestMessages(roomIds) {
   if (!roomIds.length) return {};
@@ -91,6 +92,10 @@ router.post('/dm', requireAuth, async (req, res) => {
   const targetUser = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [target_user_id]);
   if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
+  if (isBlocked(db, req.user.id, target_user_id)) {
+    return res.status(403).json({ error: 'Unable to start a conversation with this user' });
+  }
+
   const existing = get(db, `
     SELECT r.id FROM rooms r
     JOIN room_members rm1 ON rm1.room_id = r.id AND rm1.user_id = ?
@@ -156,6 +161,18 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   const userDb = await getUserDb();
   const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
   if (!isMember) return res.status(403).json({ error: 'Not a member' });
+
+  // Blocking only applies to 1:1 DMs — group rooms/channels aren't gated
+  // by a two-person block relationship. If the block happened after this
+  // DM was created, this is what actually stops new messages going
+  // through (creation-time checks in POST /dm only cover new DMs).
+  const room = get(userDb, 'SELECT is_dm FROM rooms WHERE id = ?', [req.params.id]);
+  if (room && room.is_dm) {
+    const other = get(userDb, 'SELECT user_id FROM room_members WHERE room_id = ? AND user_id != ?', [req.params.id, req.user.id]);
+    if (other && isBlocked(userDb, req.user.id, other.user_id)) {
+      return res.status(403).json({ error: 'You cannot message this user' });
+    }
+  }
 
   const { content, ciphertext, nonce, type, duration, attachments } = req.body;
   const msgType = type === 'voice' ? 'voice' : 'text';

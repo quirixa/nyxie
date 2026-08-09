@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const { verifyToken } = require('../services/jwt');
 const { getUserDb, get, run, all } = require('../database/userDb');
+const { isBlocked } = require('../services/blocks');
 
 const roomClients = new Map();
 const clientMeta = new Map();
@@ -244,6 +245,10 @@ function setupWebSocket(server) {
           `, [room_id, meta.userId, target_user_id]);
           if (!sharedRoom) {
             ws.send(JSON.stringify({ type: 'call_error', message: 'Not in a shared conversation with that user' }));
+            break;
+          }
+          if (isBlocked(db2, meta.userId, target_user_id)) {
+            ws.send(JSON.stringify({ type: 'call_error', message: 'Unable to call this user' }));
             break;
           }
           if (userActiveCall.has(target_user_id)) {
