@@ -1,14 +1,16 @@
 {
   "name": "nyxie",
   "version": "1.0.0",
-  "description": "Nyxie — a messaging platform for communities, friends and teams.",
+  "description": "Nyxie — Discord-style chat app with an integrated NX wallet.",
+  "private": true,
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "node --watch server/server.js"
+    "dev": "node --watch server/server.js",
+    "seed": "node scripts/seedDevUsers.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

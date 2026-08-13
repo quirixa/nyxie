@@ -162,9 +162,33 @@ function get(db, sql, params = []) {
   return rows[0] || null;
 }
 
+// Tracks whether we're inside a BEGIN/COMMIT block so `run()` below can
+// skip persisting mid-transaction. This matters because sql.js's
+// `Database.export()` — which persist() calls — quietly invalidates any
+// in-progress transaction (calling it between BEGIN and COMMIT makes the
+// subsequent COMMIT fail with "cannot commit - no transaction is
+// active"). walletService.js's writeTransaction() relies on
+// BEGIN/COMMIT for atomicity (see its header comment), so persisting on
+// every single statement — as this function used to do unconditionally
+// — silently broke every multi-statement transaction, including the
+// double-spend protection in transfer(). Persisting once, after COMMIT/
+// ROLLBACK, preserves that guarantee while still writing to disk after
+// every statement outside of a transaction, same as before.
+let inTransaction = false;
+
 function run(db, sql, params = []) {
+  const kind = sql.trim().slice(0, 12).toUpperCase();
   db.run(sql, params);
-  persist();
+  if (kind.startsWith('BEGIN')) {
+    inTransaction = true;
+    return;
+  }
+  if (kind.startsWith('COMMIT') || kind.startsWith('ROLLBACK')) {
+    inTransaction = false;
+    persist();
+    return;
+  }
+  if (!inTransaction) persist();
 }
 
 module.exports = { getUserDb, all, get, run };

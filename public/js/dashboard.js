@@ -382,6 +382,7 @@ function initDashboardView() {
     document.getElementById('welcome-view').style.display = 'none';
     document.getElementById('friends-panel').style.display = 'none';
     document.getElementById('saved-notes-panel').style.display = 'none';
+    document.getElementById('wallet-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'none';
     if (section === 'home') {
       document.getElementById('welcome-view').style.display = 'flex';
@@ -393,6 +394,10 @@ function initDashboardView() {
       showMobileDetail();
     } else if (section === 'saved') {
       document.getElementById('saved-notes-panel').style.display = 'flex';
+      showMobileDetail();
+    } else if (section === 'wallet') {
+      document.getElementById('wallet-panel').style.display = 'flex';
+      if (typeof initWalletPanel === 'function') initWalletPanel();
       showMobileDetail();
     }
   }

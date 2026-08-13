@@ -15,6 +15,7 @@ const userRoutes = require('./routes/users');
 const roomRoutes = require('./routes/rooms');
 const serverRoutes = require('./routes/servers');
 const friendRoutes = require('./routes/friends');
+const walletRoutes = require('./routes/wallet');
 const { getUserDb } = require('./database/userDb');
 
 const app = express();
@@ -89,6 +90,12 @@ app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/wallet', walletRoutes);
+
+// ── Dev-only test funding (spec section 17) — never mounted in prod ─
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/dev', require('./routes/dev'));
+}
 
 // ── Health check ───────────────────────────────────────────────────
 app.get('/health', (req, res) => {
