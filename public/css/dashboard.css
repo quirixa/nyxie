@@ -1998,11 +1998,22 @@ body.select-mode #view-app .dm-checkbox {
    ───────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  #view-app #sidebar {
-    width: 100%;
+  /* #app is a row flexbox on desktop (sidebar | main). On mobile,
+     #mobile-bottom-nav is a third sibling in that same row (it comes
+     after #main in the markup) — left as a row it gets squeezed in
+     as a narrow third column instead of sitting under the content.
+     Stack #app vertically instead, with sidebar/main sharing the
+     available height and the nav pinned as a fixed-height row at
+     the end. */
+  #view-app #app {
+    flex-direction: column;
   }
+  #view-app #sidebar,
   #view-app #main {
     width: 100%;
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
   }
   #view-app #app:not(.mobile-view-detail) #main {
     display: none;
@@ -2010,11 +2021,9 @@ body.select-mode #view-app .dm-checkbox {
   #view-app #app.mobile-view-detail #sidebar {
     display: none;
   }
-  #view-app .ch-toggle {
-    display: none;
-  }
   #view-app #mobile-bottom-nav {
     display: flex;
+    flex: 0 0 auto;
   }
   #view-app .fh-hamburger {
     display: flex;
