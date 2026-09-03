@@ -58,6 +58,11 @@ async function getMessageDb() {
   try { db.run("ALTER TABLE messages ADD COLUMN duration INTEGER"); } catch (e) {}
   // attachments: JSON-encoded array of {name, url, type} for uploaded files.
   try { db.run("ALTER TABLE messages ADD COLUMN attachments TEXT"); } catch (e) {}
+  // mentions: JSON-encoded array of user IDs pinged by this message
+  // (resolved client-side from @username, since the server can't parse
+  // E2EE message content). Used to highlight the mention and to notify
+  // the mentioned users over the websocket.
+  try { db.run("ALTER TABLE messages ADD COLUMN mentions TEXT"); } catch (e) {}
 
   persist();
   setInterval(persist, 5000);
@@ -73,6 +78,7 @@ function allMessages(db, sql, params = []) {
     stmt.free();
     return rows;
   } catch (e) {
+    console.error('messageDb query failed:', sql, e.message);
     return [];
   }
 }

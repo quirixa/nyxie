@@ -273,6 +273,106 @@ function initDashboardView() {
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  MENTION SUGGEST (@username) — mirrors the :shortcode: logic above,
+  //  but resolves against currentRoomMembers instead of the emoji DB.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  let mnActive = false, mnResults = [], mnSelectedIndex = -1;
+
+  function handleMentionInput(input) {
+    const val = input.value, pos = input.selectionStart || 0;
+    let atPos = -1;
+    for (let i = pos - 1; i >= 0; i--) {
+      if (val[i] === '@') { atPos = i; break; }
+      if (val[i] === ' ' || val[i] === '\n') break;
+    }
+    if (atPos === -1) { closeMentionSuggest(); return; }
+    if (atPos > 0) {
+      const before = val[atPos - 1];
+      if (before && before !== ' ' && before !== '\n') { closeMentionSuggest(); return; }
+    }
+    const query = val.slice(atPos + 1, pos);
+    if (query.includes(' ') || query.length > 32) { closeMentionSuggest(); return; }
+    const qLower = query.toLowerCase();
+    const results = currentRoomMembers
+      .filter(m => m.id !== currentUser.id)
+      .filter(m => m.username.toLowerCase().includes(qLower) || (m.display_name || '').toLowerCase().includes(qLower))
+      .slice(0, 8);
+    mnResults = results;
+    mnSelectedIndex = -1;
+    if (!results.length) { closeMentionSuggest(); return; }
+    showMentionSuggest(results, query, atPos, pos);
+  }
+
+  function showMentionSuggest(results, query, atPos, cursorPos) {
+    const suggest = document.getElementById('mention-suggest');
+    let html = '';
+    for (let i = 0; i < results.length; i++) {
+      const m = results[i];
+      const name = m.display_name || m.username;
+      const letter = (name[0] || '?').toUpperCase();
+      const avatarHtml = m.avatar
+        ? `<img src="${escapeHtml(versionedMediaUrl(m.avatar))}" alt="" />`
+        : letter;
+      const active = i === mnSelectedIndex ? 'active' : '';
+      html += `<div class="sc-item mn-item ${active}" data-index="${i}" onclick="selectMention(${i})">
+        <span class="mn-avatar" style="${m.avatar ? '' : 'background:' + hashColor(name) + ';'}">${avatarHtml}</span>
+        <span class="mn-name">${escapeHtml(name)}</span>
+        <span class="mn-username">@${escapeHtml(m.username)}</span>
+      </div>`;
+    }
+    suggest.innerHTML = html;
+    suggest.classList.add('open');
+    suggest.dataset.atPos = atPos;
+    suggest.dataset.cursorPos = cursorPos;
+    mnActive = true;
+  }
+
+  function closeMentionSuggest() {
+    document.getElementById('mention-suggest').classList.remove('open');
+    mnActive = false;
+    mnResults = [];
+    mnSelectedIndex = -1;
+  }
+
+  function selectMention(index) {
+    const results = mnResults;
+    if (!results || index < 0 || index >= results.length) return;
+    const m = results[index];
+    const suggest = document.getElementById('mention-suggest');
+    const atPos = parseInt(suggest.dataset.atPos, 10);
+    const cursorPos = parseInt(suggest.dataset.cursorPos, 10);
+    const input = document.getElementById('msg-input');
+    const val = input.value;
+    const before = val.slice(0, atPos);
+    const after = val.slice(cursorPos);
+    const inserted = '@' + m.username + ' ';
+    input.value = before + inserted + after;
+    const newPos = atPos + inserted.length;
+    input.selectionStart = input.selectionEnd = newPos;
+    input.focus();
+    input.dispatchEvent(new Event('input'));
+    closeMentionSuggest();
+  }
+
+  // Resolves the plaintext compose text against currentRoomMembers to a
+  // list of mentioned user IDs. Run at send time on the plaintext (not
+  // the ciphertext) — the server never sees message content for E2EE
+  // rooms, so it can't detect mentions itself; this is why `mentions` is
+  // sent as its own explicit field in the payload alongside content/
+  // ciphertext, same pattern as reply_to_id.
+  function resolveMentions(plaintext) {
+    if (!plaintext || !currentRoomMembers.length) return [];
+    const found = new Set();
+    for (const m of currentRoomMembers) {
+      if (m.id === currentUser.id) continue;
+      const re = new RegExp(`(^|[^\\w@])@${escapeRegExp(m.username)}(?!\\w)`);
+      if (re.test(plaintext)) found.add(m.id);
+    }
+    return [...found];
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  DASHBOARD CORE
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -292,6 +392,23 @@ function initDashboardView() {
   let _profileUserId = null, _roomHasMessages = false, currentNav = 'home';
   let _dashboardPollTimer = null;
   let pendingFiles = []; // ─── attachments
+  // Members of whichever room is currently open, from the 'room_state'
+  // websocket event — [{id, username, display_name}]. Powers the
+  // @mention autocomplete and, via mnActive, tells the compose box which
+  // usernames are real users worth resolving into a mention on send.
+  let currentRoomMembers = [];
+  // Dedupes the notification sound when the same message reaches us
+  // through both the room broadcast ('new_message') and the dedicated
+  // ('mention') ping — see both handlers below. Capped and trimmed so it
+  // can't grow unbounded over a long session.
+  const notifiedMsgIds = new Set();
+  function markNotified(id) {
+    notifiedMsgIds.add(id);
+    if (notifiedMsgIds.size > 200) {
+      const first = notifiedMsgIds.values().next().value;
+      notifiedMsgIds.delete(first);
+    }
+  }
 
   if (!token || !currentUser) { router.navigate('/login'); return; }
 
@@ -299,6 +416,35 @@ function initDashboardView() {
     const container = document.getElementById('messages-container');
     if (container) container.scrollTop = container.scrollHeight;
   }
+
+  function isNearBottom(container, threshold = 150) {
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  }
+
+  // Attachment images have no known width/height until they actually
+  // load, so the browser can't reserve space for them up front — they
+  // pop in late and grow their row. Without this, that either yanks
+  // whoever's reading the chat right now around, or (since
+  // scrollToBottom() upstream measured scrollHeight *before* the image
+  // had loaded) leaves the view sitting above the real bottom of the
+  // conversation once it does. If the user was already pinned to the
+  // bottom, keep them pinned as each image resolves; if they'd scrolled
+  // up to read history, leave their position alone. Assigned without a
+  // declaration keyword (matching appendMessage below) so the inline
+  // onload/onerror handlers in buildAttachmentsHtml — which run in
+  // global scope — can reach it.
+  handleMsgImageSettled = function (img) {
+    const container = document.getElementById('messages-container');
+    if (container && isNearBottom(container)) scrollToBottom();
+  };
+  handleMsgImageError = function (img) {
+    const container = document.getElementById('messages-container');
+    const fallback = document.createElement('span');
+    fallback.textContent = '🖼️ Image failed to load';
+    fallback.style.cssText = 'color:var(--text-muted);font-size:.85rem;';
+    img.replaceWith(fallback);
+    if (container && isNearBottom(container)) scrollToBottom();
+  };
 
   function toast(msg) {
     const el = document.getElementById('toast');
@@ -334,7 +480,7 @@ function initDashboardView() {
 
   function escapeHtml(s) {
     if (!s) return '';
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function escapeJs(s) {
     if (!s) return '';
@@ -400,6 +546,23 @@ function initDashboardView() {
       if (typeof initWalletPanel === 'function') initWalletPanel();
       showMobileDetail();
     }
+    // Keep the address bar in sync with the wallet section specifically
+    // (it's the one section with its own real route — see '/wallets' in
+    // router.js) so refreshing while it's open lands back on it instead
+    // of resetting to home. This is a plain history update, not a
+    // router.navigate() call — it must NOT re-run the SPA router (that
+    // would tear down and rebuild the whole dashboard just to switch
+    // panels). Same idea for leaving an open conversation (its own
+    // '/app/rooms/:id' route — see openRoom()) for a different section:
+    // drop back to a plain URL without pushing a new history entry.
+    const path = window.location.pathname;
+    const onWalletUrl = path === '/wallets';
+    const onRoomUrl = path.startsWith('/app/rooms/');
+    if (section === 'wallet' && !onWalletUrl) {
+      window.history.replaceState({}, '', '/wallets');
+    } else if (section !== 'wallet' && (onWalletUrl || onRoomUrl)) {
+      window.history.replaceState({}, '', '/app');
+    }
   }
 
   // Bumped on every openRoom() call; each in-flight load captures its own
@@ -414,12 +577,25 @@ function initDashboardView() {
   // produced the doubled/overlapping message text.
   let _roomLoadToken = 0;
 
-  function openRoom(roomId) {
+  // `fromRoute: true` means we're here because router.js already matched
+  // '/app/rooms/:roomId' and mounted the dashboard for it (page load,
+  // refresh, or browser back/forward) — the address bar is already
+  // correct, so skip pushing a new history entry. Every other caller
+  // (clicking a DM, opening from search, etc.) is a real navigation and
+  // should push, so the room gets its own back/forward-able, shareable
+  // URL — the whole point of giving each chat its own route.
+  function openRoom(roomId, { fromRoute = false } = {}) {
     const room = dms.find(d => d.id === roomId);
     if (!room) return toast('Conversation not found');
     const loadToken = ++_roomLoadToken;
     currentRoom = room;
+    const targetPath = `/app/rooms/${room.id}`;
+    if (!fromRoute && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
     _roomHasMessages = false;
+    currentRoomMembers = []; // stale until the fresh 'room_state' event for this room arrives
+    closeMentionSuggest();
     clearUnread(room.id);
     document.querySelectorAll('.dm-item').forEach(el => el.classList.remove('active'));
     const el = document.querySelector(`[data-room-id="${room.id}"]`);
@@ -529,7 +705,7 @@ function initDashboardView() {
       pendingJoins = [];
     };
 
-   ws.onmessage = (e) => {
+   ws.onmessage = async (e) => {
   let msg;
   try { msg = JSON.parse(e.data); } catch { return; }
 
@@ -538,12 +714,25 @@ function initDashboardView() {
       const m = msg.message;
       if (sentMsgIds.has(m.id)) { sentMsgIds.delete(m.id); break; }
 
+      // Sound for anything from someone else, unless we're actively
+      // looking at that exact room right now (a focused, open
+      // conversation doesn't need an audio nudge on top of the message
+      // just appearing). Rooms we're already joined to over the socket
+      // (every DM, on connect) get this broadcast directly; a mention in
+      // one of those would otherwise also trigger the dedicated 'mention'
+      // event below for the same message, so notifiedMsgIds dedupes
+      // that down to a single sound.
+      if (m.user_id !== currentUser.id && !notifiedMsgIds.has(m.id)) {
+        const roomOpenAndFocused = currentRoom?.id === m.room_id && document.hasFocus();
+        if (!roomOpenAndFocused) { playNotificationSound(); markNotified(m.id); }
+      }
+
       if (currentRoom?.id === m.room_id) {
         if (!_roomHasMessages) {
           document.getElementById('messages-container').innerHTML = '';
           _roomHasMessages = true;
         }
-        appendMessage(m);
+        await appendMessage(m);
         scrollToBottom();
       } else {
         markUnread(m.room_id);
@@ -597,12 +786,29 @@ function initDashboardView() {
 
     case 'room_state': {
       if (msg.room_id === currentRoom?.id) {
+        currentRoomMembers = msg.members.map(m => ({ id: m.id, username: m.username, display_name: m.display_name, avatar: m.avatar }));
         msg.members.forEach(m => {
           if (m.id !== currentUser.id) {
             updatePresence(m.id, m.status);
             updateFriendStatus(m.id, m.status);
           }
         });
+      }
+      break;
+    }
+
+    case 'mention': {
+      // Targeted ping from the server for a message that mentions us —
+      // fires even if we don't have that room open/joined right now
+      // (e.g. a group room we haven't opened this session). No message
+      // content is ever included (the server can't see it for E2EE
+      // rooms anyway) — just enough to notify. notifiedMsgIds dedupes
+      // against the room broadcast above when both reach us for the
+      // same message (always true for DMs, which we're joined to on
+      // connect).
+      if (msg.from?.id !== currentUser.id) {
+        if (!notifiedMsgIds.has(msg.message_id)) { playNotificationSound(); markNotified(msg.message_id); }
+        toast(`💬 ${msg.from?.display_name || msg.from?.username || 'Someone'} mentioned you`);
       }
       break;
     }
@@ -1184,6 +1390,14 @@ async function loadDMs() {
   }
   if (uploadedFiles.length) payload.attachments = uploadedFiles;
 
+  // Resolved from the plaintext we just encrypted (or the plain content,
+  // in an unencrypted room) — sent as its own field since the server
+  // can't parse @mentions out of ciphertext itself. See resolveMentions().
+  if (plaintext) {
+    const mentionIds = resolveMentions(plaintext);
+    if (mentionIds.length) payload.mentions = mentionIds;
+  }
+
   if (replyingTo) {
     payload.reply_to_id = replyingTo.id;
     payload.reply_to_author = replyingTo.display_name || replyingTo.username;
@@ -1204,7 +1418,7 @@ async function loadDMs() {
     _roomHasMessages = true;
   }
   cancelReply();
-  appendMessage(res.message);
+  await appendMessage(res.message);
   scrollToBottom();
   const dmObj = dms.find(d => d.id === currentRoom.id);
   if (dmObj) {
@@ -1215,6 +1429,7 @@ async function loadDMs() {
     document.querySelector(`[data-room-id="${currentRoom.id}"]`)?.classList.add('active');
   }
   closeShortcodeSuggest();
+  closeMentionSuggest();
 }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1256,7 +1471,12 @@ async function loadDMs() {
     let html = '<div class="msg-attachments" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">';
     for (const a of msg.attachments) {
       if (a.type && a.type.startsWith('image/')) {
-        html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" style="max-width:320px;max-height:240px;border-radius:8px;object-fit:cover;" />`;
+        // min-height gives the bubble *some* footprint before the image
+        // has actually loaded (its real size is unknown until then), so
+        // the pop-in is smaller; handleMsgImageSettled/handleMsgImageError
+        // (defined next to scrollToBottom) keep the view pinned to the
+        // bottom through that pop-in for anyone who was already there.
+        html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="window.open(this.src,'_blank')" />`;
       } else {
         html += `<a href="${escapeHtml(a.url)}" target="_blank" style="color:var(--accent);font-size:.85rem;">📎 ${escapeHtml(a.name)}</a>`;
       }
@@ -1333,7 +1553,18 @@ async function loadDMs() {
     window._lastMsgUserId = msg.user_id;
     window._lastMsgTime = now;
     const displayName = msg.display_name || msg.username || 'Unknown';
-    const textHtml = msg.deleted ? 'Message deleted' : `${escapeHtml(msg.content)}${msg.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}`;
+    // Highlight @mentions in the (already decrypted, if applicable) text.
+    // msg.mentions is a list of user IDs from the server; resolve those
+    // against the room's member list (which we already have from
+    // 'room_state') to get displayable usernames — highlightMentions only
+    // ever wraps text that matches a real member's username, and
+    // re-escapes it, so this can't introduce anything from raw content.
+    const mentionedMembers = msg.mentions && msg.mentions.length
+      ? currentRoomMembers.filter(m => msg.mentions.includes(m.id))
+      : null;
+    const escapedContent = escapeHtml(msg.content);
+    const highlightedContent = mentionedMembers ? highlightMentions(escapedContent, mentionedMembers, currentUser.id) : escapedContent;
+    const textHtml = msg.deleted ? 'Message deleted' : `${highlightedContent}${msg.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}`;
     const replyHtml = buildReplyQuoteHtml(msg);
     const reactionsHtml = buildReactionsHtml(msg);
     const attachmentsHtml = buildAttachmentsHtml(msg);
@@ -1372,27 +1603,50 @@ async function loadDMs() {
 
   // ─── APPEND MESSAGE E2EE WRAPPER ──────────────────────────
   const originalAppendMessage = appendMessage;
-  appendMessage = async function(msg, retry = false) {
-    let displayContent = msg.content;
-    if (msg.nonce) {
-      const sharedKey = await getSharedKeyForRoom(msg.room_id);
-      if (sharedKey) {
-        const decrypted = decryptMessage(msg.content, msg.nonce, sharedKey);
-        if (decrypted !== null) displayContent = decrypted;
-        else if (!retry) {
-          await new Promise(r => setTimeout(r, 300));
-          const sharedKey2 = await getSharedKeyForRoom(msg.room_id);
-          if (sharedKey2) {
-            const decrypted2 = decryptMessage(msg.content, msg.nonce, sharedKey2);
-            displayContent = decrypted2 !== null ? decrypted2 : '🔒 Failed to decrypt';
-          } else displayContent = '🔒 Shared key unavailable';
-        } else displayContent = '🔒 Failed to decrypt';
-      } else displayContent = '🔒 Shared key unavailable';
-    }
-    const origContent = msg.content;
-    msg.content = displayContent;
-    originalAppendMessage.call(this, msg);
-    msg.content = origContent;
+  // originalAppendMessage reads/writes window._lastMsgUserId & _lastMsgTime
+  // to decide grouping (same-author "compact" row, near-zero top margin,
+  // vs. a fresh group with 17px of breathing room) — and it does that
+  // *inside* this now-async function, right before the row is inserted.
+  // Every message has to clear an E2EE decrypt here first, and decrypt
+  // time isn't constant: a message with no text (e.g. an image sent with
+  // no caption) has no `nonce` at all and resolves almost immediately,
+  // while a text message right after it does have a nonce and can hit the
+  // 300ms decrypt-retry path below. Without serializing, two concurrent
+  // calls can finish in the *opposite* order they were made in — so the
+  // text message's grouping check can run against stale state, get
+  // misclassified as "same group" as an unrelated image, and render with
+  // no gap above it. Chaining every call through one shared queue forces
+  // them to run — and update that shared state — strictly in call order,
+  // no matter how long any individual decrypt takes. (This backs up
+  // _sendQueue and the room-load loop above, which assumed this was
+  // already true.)
+  let _appendMsgQueue = Promise.resolve();
+  appendMessage = function(msg, retry = false) {
+    const run = async () => {
+      let displayContent = msg.content;
+      if (msg.nonce) {
+        const sharedKey = await getSharedKeyForRoom(msg.room_id);
+        if (sharedKey) {
+          const decrypted = decryptMessage(msg.content, msg.nonce, sharedKey);
+          if (decrypted !== null) displayContent = decrypted;
+          else if (!retry) {
+            await new Promise(r => setTimeout(r, 300));
+            const sharedKey2 = await getSharedKeyForRoom(msg.room_id);
+            if (sharedKey2) {
+              const decrypted2 = decryptMessage(msg.content, msg.nonce, sharedKey2);
+              displayContent = decrypted2 !== null ? decrypted2 : '🔒 Failed to decrypt';
+            } else displayContent = '🔒 Shared key unavailable';
+          } else displayContent = '🔒 Failed to decrypt';
+        } else displayContent = '🔒 Shared key unavailable';
+      }
+      const origContent = msg.content;
+      msg.content = displayContent;
+      originalAppendMessage.call(this, msg);
+      msg.content = origContent;
+    };
+    // .then(run, run) so one failed append doesn't wedge every append after it.
+    _appendMsgQueue = _appendMsgQueue.then(run, run);
+    return _appendMsgQueue;
   };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1732,8 +1986,42 @@ async function loadDMs() {
   // actually open the suggestion list, the way it does in Discord/Telegram.
   document.getElementById('msg-input').addEventListener('input', e => {
     handleShortcodeInput(e.target);
+    // Only one popup at a time — an "@" mention query takes priority
+    // over a stale ":" shortcode popup left open from earlier in the
+    // same line.
+    handleMentionInput(e.target);
+    if (mnActive) closeShortcodeSuggest();
   });
   document.getElementById('msg-input').addEventListener('keydown', e => {
+    // While the mention popup is open, arrow keys move the highlighted
+    // suggestion and Enter/Tab confirm it instead of sending the message;
+    // Escape just closes the popup. Checked before the shortcode popup
+    // since input's listener above already closes shortcode whenever
+    // mention is active, but keydown can fire on the same tick.
+    if (mnActive && mnResults.length) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        mnSelectedIndex = (mnSelectedIndex + 1) % mnResults.length;
+        showMentionSuggest(mnResults, '', parseInt(document.getElementById('mention-suggest').dataset.atPos, 10), parseInt(document.getElementById('mention-suggest').dataset.cursorPos, 10));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        mnSelectedIndex = (mnSelectedIndex - 1 + mnResults.length) % mnResults.length;
+        showMentionSuggest(mnResults, '', parseInt(document.getElementById('mention-suggest').dataset.atPos, 10), parseInt(document.getElementById('mention-suggest').dataset.cursorPos, 10));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectMention(mnSelectedIndex >= 0 ? mnSelectedIndex : 0);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMentionSuggest();
+        return;
+      }
+    }
     // While the shortcode popup is open, arrow keys move the highlighted
     // suggestion and Enter/Tab confirm it instead of sending the message;
     // Escape just closes the popup. Only plain Enter (no popup open)
@@ -2341,7 +2629,27 @@ async function loadDMs() {
       if (typeof initVoiceFeatures === 'function') { try { initVoiceFeatures(); } catch (e) { console.error('Voice feature init failed:', e); } }
       await loadDMs();
       await loadFriendsData();
-      navigateTo('home');
+      // Set by router.js's '/wallets' or '/app/rooms/:roomId' route
+      // before calling initDashboardView() — lets a direct navigation,
+      // page refresh, or browser back/forward land on that specific
+      // section or conversation instead of always resetting to 'home'.
+      if (window._initialRoomId) {
+        const roomId = window._initialRoomId;
+        window._initialRoomId = null;
+        if (dms.find(d => d.id === roomId)) {
+          openRoom(roomId, { fromRoute: true });
+        } else {
+          // Deep link to a conversation we don't actually have (bad
+          // link, or it was left/deleted elsewhere) — fall back to home
+          // rather than getting stuck on a broken room URL.
+          toast('Conversation not found');
+          window.history.replaceState({}, '', '/app');
+          navigateTo('home');
+        }
+      } else {
+        navigateTo(window._initialSection || 'home');
+        window._initialSection = null;
+      }
       _dashboardPollTimer = setInterval(async () => {
         const data = await api('GET', '/rooms');
         if (!data) return;
@@ -2393,6 +2701,7 @@ function handleFileUpload(files) {
 
   window.selectEmoji = selectEmoji;
   window.selectShortcode = selectShortcode;
+  window.selectMention = selectMention;
   window.toggleEmojiPicker = toggleEmojiPicker;
   window.clearEmojiSearch = clearEmojiSearch;
   window.renderEmojiPicker = renderEmojiPicker;

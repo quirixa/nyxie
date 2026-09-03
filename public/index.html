@@ -765,6 +765,7 @@ __    __  __      __  __    __  ______  ________
                                 </div>
                             </div>
                             <div id="shortcode-suggest"></div>
+                            <div id="mention-suggest"></div>
                             <button id="send-btn" title="Send">
                                 <svg viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -1500,7 +1501,23 @@ __    __  __      __  __    __  ______  ________
                 </div>
 
                 <!-- Other tabs -->
-                <div class="settings-tab" id="tab-notifications" style="display:none;"><div class="page-title">Notifications</div><p style="color:var(--text-muted);">Notification settings coming soon.</p></div>
+                <div class="settings-tab" id="tab-notifications" style="display:none;">
+                    <div class="page-title">Notifications</div>
+                    <div class="settings-section">
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Notification sound</div>
+                                    <div class="toggle-desc">Play a sound for new messages, mentions, and incoming/outgoing calls.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-notif-sound" checked />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-tab" id="tab-language" style="display:none;"><div class="page-title">Language</div><p style="color:var(--text-muted);">Language settings coming soon.</p></div>
                 <div class="settings-tab" id="tab-sync" style="display:none;"><div class="page-title">Sync</div><p style="color:var(--text-muted);">Sync settings coming soon.</p></div>
                 <div class="settings-tab" id="tab-experiments" style="display:none;"><div class="page-title">Experiments</div><p style="color:var(--text-muted);">Experimental features coming soon.</p></div>
@@ -1704,6 +1721,7 @@ __    __  __      __  __    __  ______  ________
 <script src="/js/theme.js"></script>
 <script src="/js/router.js"></script>
 <script src="/js/auth.js"></script>
+<script src="/js/notifications.js"></script>
 <script src="/js/dashboard.js"></script>
 <script src="/js/wallet.js"></script>
 <script src="/js/voice.js"></script>

@@ -75,7 +75,10 @@ app.use(express.static(PUBLIC_DIR));
 // ─── Serve uploaded media (avatars / banners / uploads) ──────────
 app.use('/avatars', express.static(path.join(DATA_DIR, 'avatars')));
 app.use('/banners', express.static(path.join(DATA_DIR, 'banners')));
-app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads'))); // <-- NEW
+// Custom route (not express.static) — decides Content-Type/Disposition
+// per file instead of letting the browser sniff/render whatever an
+// uploaded file's extension claims. See routes/uploadServe.js.
+app.use('/uploads', require('./routes/uploadServe'));
 
 // ── Upload route ────────────────────────────────────────────────────
 app.use('/api/upload', require('./routes/uploads'));

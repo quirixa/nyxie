@@ -132,7 +132,7 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
 
   const messages = allMessages(msgDb, `
-    SELECT id, room_id, user_id, content, nonce, msg_type, duration, attachments, created_at, edited_at, deleted
+    SELECT id, room_id, user_id, content, nonce, msg_type, duration, attachments, mentions, created_at, edited_at, deleted
     FROM messages
     WHERE room_id = ? AND created_at < ?
     ORDER BY created_at DESC
@@ -150,6 +150,7 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const enriched = messages.map(m => ({
     ...m,
     attachments: m.attachments ? JSON.parse(m.attachments) : null,
+    mentions: m.mentions ? JSON.parse(m.mentions) : null,
     username: userMap[m.user_id]?.username || 'unknown',
     display_name: userMap[m.user_id]?.display_name || userMap[m.user_id]?.username || 'Unknown'
   }));
@@ -191,6 +192,26 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
       type: String(a?.type || '').slice(0, 100)
     })).filter(a => a.url.startsWith('/uploads/'));
     if (!cleanAttachments.length) cleanAttachments = null;
+  }
+
+  // Mentions come from the client as a list of user IDs (resolved from
+  // @username against the room's member list — the client has that,
+  // the server doesn't when the message is E2EE ciphertext). Re-check
+  // membership here rather than trusting the client list outright, and
+  // cap it so a message can't be used to spam-notify unrelated users.
+  let cleanMentions = null;
+  const { mentions } = req.body;
+  if (mentions) {
+    if (!Array.isArray(mentions) || mentions.length > 20) {
+      return res.status(400).json({ error: 'Invalid mentions' });
+    }
+    const candidateIds = [...new Set(mentions.map(id => String(id)))];
+    if (candidateIds.length) {
+      const placeholders = candidateIds.map(() => '?').join(',');
+      const memberRows = all(userDb, `SELECT user_id FROM room_members WHERE room_id = ? AND user_id IN (${placeholders})`, [req.params.id, ...candidateIds]);
+      cleanMentions = memberRows.map(r => r.user_id);
+    }
+    if (!cleanMentions || !cleanMentions.length) cleanMentions = null;
   }
 
   if (msgType === 'voice') {
@@ -244,8 +265,8 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   const msgId = crypto.randomUUID();
   const now = Date.now();
   const msgDb = await getMessageDb();
-  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, now]);
+  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, mentions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, cleanMentions ? JSON.stringify(cleanMentions) : null, now]);
 
   const message = {
     id: msgId,
@@ -254,6 +275,7 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
     nonce: msgNonce,
     msg_type: 'text',
     attachments: cleanAttachments,
+    mentions: cleanMentions,
     created_at: now,
     user_id: req.user.id,
     username: req.user.username,
@@ -261,6 +283,22 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   };
 
   req.app.locals.broadcast(req.params.id, { type: 'new_message', message });
+
+  // Ping mentioned users directly (not just via the room broadcast above)
+  // so the notification/sound fires even if they don't currently have
+  // this room open/joined over the websocket.
+  if (cleanMentions) {
+    for (const uid of cleanMentions) {
+      if (uid === req.user.id) continue;
+      req.app.locals.broadcastToUser(uid, {
+        type: 'mention',
+        room_id: req.params.id,
+        message_id: msgId,
+        from: { id: req.user.id, username: req.user.username, display_name: req.user.display_name }
+      });
+    }
+  }
+
   res.status(201).json({ message });
 });
 

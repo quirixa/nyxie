@@ -461,6 +461,24 @@
       flex-direction: column;
       min-width: 0;
       background: var(--bg-primary);
+      position: relative;
+      overflow: hidden;
+    }
+/* Every toggleable panel inside #main is stacked full-bleed on top of
+   #main instead of being a normal flex sibling. This means if two panels
+   ever end up "visible" at the same time (a JS state bug), they overlap
+   instead of splitting #main's height in half — the one later in the
+   DOM (chat-view is last) simply paints over the other rather than the
+   layout collapsing into a top/bottom split. */
+#view-app #welcome-view,
+#view-app #chat-view,
+#view-app #friends-panel,
+#view-app #saved-notes-panel,
+#view-app #notifications-panel{
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      background: var(--bg-primary);
     }
 #view-app #welcome-view{
       width: 100%;
@@ -730,6 +748,65 @@
       color: var(--text-muted);
       font-style: italic;
     }
+/* Any image/video/file attachment rendered inside a message — regardless
+   of the exact wrapper markup the JS produces — must never be allowed to
+   size itself past the available column width. Previously nothing
+   constrained these, so a full-resolution image rendered at its natural
+   pixel width and blew the row out to the right. */
+#view-app .msg-content-col img,
+#view-app .msg-content-col video,
+#view-app .msg-text img,
+#view-app .msg-text video{
+      display: block;
+      max-width: min(320px, 100%);
+      max-height: 320px;
+      width: auto;
+      height: auto;
+      border-radius: 8px;
+      margin-top: 4px;
+      object-fit: cover;
+      cursor: pointer;
+    }
+#view-app .msg-content-col a{
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+/* Real attachment structure (confirmed from live markup):
+   .msg-content-col > .msg-attachments > a.  In a "compact" grouped row,
+   .msg-content-col becomes a flex ROW with .msg-text set to flex:1 — and
+   flex:1 makes it expand to fill all space even when it's an EMPTY span
+   (a text-less, attachment-only message), which shoves .msg-attachments
+   all the way to the far right edge. Forcing attachments onto their own
+   full-width line fixes it regardless of whether msg-text has content. */
+#view-app .msg-row.compact .msg-content-col{
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+#view-app .msg-row.compact .msg-content-col .msg-attachments{
+      flex: 1 1 100%;
+      order: 3;
+    }
+#view-app .msg-attachments{
+      max-width: 100%;
+    }
+#view-app .msg-attachments a{
+      display: inline-block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: normal;
+    }
+@media (max-width: 768px){
+  #view-app .msg-content-col img,
+  #view-app .msg-content-col video,
+  #view-app .msg-text img,
+  #view-app .msg-text video{
+        max-width: min(220px, 70vw);
+        max-height: 220px;
+      }
+}
 #view-app .msg-edit-box{
       display: flex;
       flex-direction: column;
@@ -837,11 +914,6 @@
     }
 #view-app .msg-row.compact:hover .msg-timestamp-inline{
       display: inline;
-    }
-#view-app .msg-row.compact .msg-content-col{
-      display: flex;
-      align-items: baseline;
-      gap: 6px;
     }
 #view-app .msg-row.compact .msg-content-col .msg-text{
       flex: 1;
@@ -1451,6 +1523,64 @@
       font-size: 0.7rem;
       color: var(--text-muted);
       font-family: 'Monaco', 'Courier New', monospace;
+    }
+#view-app #mention-suggest{
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 6px 0;
+      display: none;
+      box-shadow: var(--shadow);
+      z-index: 25;
+      max-height: 280px;
+      overflow-y: auto;
+      backdrop-filter: blur(8px);
+      background: rgba(35, 35, 35, 0.96);
+    }
+#view-app #mention-suggest.open{
+      display: block;
+    }
+#view-app .mn-item .mn-avatar{
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--accent);
+      overflow: hidden;
+    }
+#view-app .mn-item .mn-avatar img{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+#view-app .mn-item .mn-name{
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+#view-app .mn-item .mn-username{
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+#view-app .msg-text .mention{
+      background: color-mix(in srgb, var(--accent) 22%, transparent);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0 3px;
+      font-weight: 600;
+    }
+#view-app .msg-text .mention.mention-me{
+      background: color-mix(in srgb, var(--accent) 45%, transparent);
     }
 
 /* ===========================

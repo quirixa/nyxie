@@ -12,6 +12,35 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// highlightMentions — wraps @username occurrences in already-escaped
+// message HTML with a styled span. Takes ESCAPED content (i.e. run
+// escapeHtml() first) so this never introduces raw HTML from the
+// message text itself — it only wraps text that literally matches one
+// of the given members' usernames, and the username itself is
+// re-escaped before being placed in the output.
+//
+// `members` is [{id, username}] — the room's member list (or however
+// many of them are known), used only to know which @tokens are real
+// users worth highlighting, not to render anything unescaped.
+function highlightMentions(escapedContent, members, selfId) {
+  if (!members || !members.length) return escapedContent;
+  let html = escapedContent;
+  const sorted = [...members]
+    .filter(m => m && m.username)
+    .sort((a, b) => b.username.length - a.username.length);
+  for (const m of sorted) {
+    const uname = escapeHtml(m.username);
+    const re = new RegExp(`(^|[^\\w@])@${escapeRegExp(uname)}(?!\\w)`, 'g');
+    html = html.replace(re, (match, pre) =>
+      `${pre}<span class="mention${m.id === selfId ? ' mention-me' : ''}" data-user-id="${m.id}">@${uname}</span>`);
+  }
+  return html;
+}
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }

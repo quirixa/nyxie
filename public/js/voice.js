@@ -629,6 +629,7 @@ function initVoiceFeatures() {
   }
 
   function teardownCall() {
+    if (typeof Ringtone !== 'undefined') Ringtone.stop();
     if (pc) { pc.getSenders().forEach(s => s.track && s.track.stop()); pc.close(); pc = null; }
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     const remoteAudio = document.getElementById('call-remote-audio');
@@ -655,13 +656,16 @@ function initVoiceFeatures() {
       statusEl.textContent = 'Calling…';
       btnRow.innerHTML = '';
       btnRow.appendChild(makeCallBtn('decline', svgHangup, () => hangUp()));
+      if (typeof Ringtone !== 'undefined') Ringtone.play('outgoing');
     } else if (state === 'incoming') {
       overlay.classList.add('open');
       statusEl.textContent = 'Incoming voice call';
       btnRow.innerHTML = '';
       btnRow.appendChild(makeCallBtn('decline', svgHangup, () => rejectCall()));
       btnRow.appendChild(makeCallBtn('accept', svgAccept, () => acceptCall()));
+      if (typeof Ringtone !== 'undefined') Ringtone.play('incoming');
     } else if (state === 'active') {
+      if (typeof Ringtone !== 'undefined') Ringtone.stop();
       overlay.classList.remove('open');
       callBar.classList.add('open');
       document.getElementById('call-bar-lock').textContent = insertableStreamsSupported ? '🔒' : '🔓';

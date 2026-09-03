@@ -68,6 +68,15 @@ async function getUserDb() {
   try { db.run("ALTER TABLE users ADD COLUMN encrypted_private_key TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN key_salt TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN key_nonce TEXT"); } catch (e) {}
+  // banner/banner_color were added to the CREATE TABLE above after some
+  // DBs already existed on disk — CREATE TABLE IF NOT EXISTS is a no-op
+  // against an existing table, so those DBs never actually got the new
+  // columns without a migration here (same reason the four above exist).
+  try { db.run("ALTER TABLE users ADD COLUMN banner TEXT"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN banner_color TEXT"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN bio TEXT"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN status_updated_at INTEGER"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0"); } catch (e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS servers (
@@ -153,6 +162,7 @@ function all(db, sql, params = []) {
     stmt.free();
     return rows;
   } catch (e) {
+    console.error('userDb query failed:', sql, e.message);
     return [];
   }
 }
