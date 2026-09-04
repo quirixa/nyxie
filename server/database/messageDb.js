@@ -63,6 +63,13 @@ async function getMessageDb() {
   // E2EE message content). Used to highlight the mention and to notify
   // the mentioned users over the websocket.
   try { db.run("ALTER TABLE messages ADD COLUMN mentions TEXT"); } catch (e) {}
+  // reply_to_id: id of the message this one is replying to (or NULL).
+  // Only the id is stored — the referenced message's author/content are
+  // resolved at read time (see GET /:id/messages) so a reply always
+  // reflects that message's *current* content (respecting edits/deletes)
+  // instead of a stale copy, and so an E2EE reply doesn't require a
+  // plaintext snippet to ever touch the database.
+  try { db.run("ALTER TABLE messages ADD COLUMN reply_to_id TEXT"); } catch (e) {}
 
   persist();
   setInterval(persist, 5000);

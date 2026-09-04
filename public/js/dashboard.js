@@ -1400,21 +1400,20 @@ function initDashboardView() {
       if (mentionIds.length) payload.mentions = mentionIds;
     }
 
+    // Only the id goes over the wire — the server resolves the author and
+    // content itself (and stores just the id), so a reply never requires
+    // shipping a plaintext snippet of an otherwise end-to-end-encrypted
+    // message.
     if (replyingTo) {
       payload.reply_to_id = replyingTo.id;
-      payload.reply_to_author = replyingTo.display_name || replyingTo.username;
-      payload.reply_to_snippet = replyingTo.deleted ? 'Message deleted' : replyingTo.content;
     }
 
     console.log('[Send] Payload:', payload);
     const res = await api('POST', `/rooms/${currentRoom.id}/messages`, payload);
     if (res?.error) { toast(res.error); return; }
     if (res.message?.id) sentMsgIds.add(res.message.id);
-    if (replyingTo && res.message) {
-      res.message.reply_to_id = res.message.reply_to_id || replyingTo.id;
-      res.message.reply_to_author = res.message.reply_to_author || payload.reply_to_author;
-      res.message.reply_to_snippet = res.message.reply_to_snippet || payload.reply_to_snippet;
-    }
+    // res.message already carries the server-resolved reply_to_id/reply_to
+    // (see POST /rooms/:id/messages) — no client-side patching needed.
     if (!_roomHasMessages) {
       document.getElementById('messages-container').innerHTML = '';
       _roomHasMessages = true;
@@ -1442,9 +1441,15 @@ function initDashboardView() {
 
   function buildReplyQuoteHtml(msg) {
     if (!msg.reply_to_id) return '';
-    const original = window._messagesById.get(msg.reply_to_id);
-    const author = original ? (original.display_name || original.username || 'Unknown') : (msg.reply_to_author || 'Unknown');
-    const snippet = original ? (original.deleted ? 'Message deleted' : original.content) : (msg.reply_to_snippet || 'Original message');
+    // Prefer the live cached copy — it reflects anything that's happened
+    // to that message since (edits, deletes) — and fall back to the
+    // server-resolved snapshot that came down attached to this message
+    // (msg.reply_to) for when the original isn't otherwise loaded. Both
+    // are already decrypted by this point (see the appendMessage
+    // wrapper), so this never touches raw ciphertext.
+    const original = window._messagesById.get(msg.reply_to_id) || msg.reply_to;
+    const author = original ? (original.display_name || original.username || 'Unknown') : 'Unknown';
+    const snippet = original ? (original.deleted ? 'Message deleted' : (original.content || 'Original message')) : 'Original message';
     const trimmed = snippet.length > 80 ? snippet.slice(0, 80) + '…' : snippet;
     return `<div class="msg-reply-quote" onclick="jumpToMessage('${msg.reply_to_id}')">
       <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
@@ -1647,6 +1652,18 @@ function initDashboardView() {
       // that looks it up later — reply quotes, the reply-preview bar,
       // editing — all read msg.content expecting plaintext.
       msg.content = displayContent;
+
+      // msg.reply_to (server-resolved, see POST/GET /rooms/:id/messages)
+      // carries the *original* message's own content+nonce — decrypt it
+      // the same way, in place, so buildReplyQuoteHtml can just read
+      // msg.reply_to.content like any other decrypted message, whether or
+      // not the original happens to already be in window._messagesById.
+      if (msg.reply_to && msg.reply_to.nonce) {
+        const replyKey = await getSharedKeyForRoom(msg.room_id);
+        const replyDecrypted = replyKey ? decryptMessage(msg.reply_to.content, msg.reply_to.nonce, replyKey) : null;
+        msg.reply_to.content = replyDecrypted !== null ? replyDecrypted : '🔒 Failed to decrypt';
+      }
+
       originalAppendMessage.call(this, msg);
     };
     // .then(run, run) so one failed append doesn't wedge every append after it.

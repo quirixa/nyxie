@@ -6,6 +6,28 @@ const { getMessageDb, allMessages, getMessage, runMessage } = require('../databa
 const { requireAuth } = require('../middleware/auth');
 const { isBlocked } = require('../services/blocks');
 
+// Resolves a reply_to_id into the shape the client needs to render a
+// reply quote (author + content/nonce, so it decrypts exactly like any
+// other message) without the client having to already have the
+// original message loaded. Returns null if the id is missing, not in
+// this room, or was itself deleted along the way.
+function resolveReplyTo(msgDb, userDb, roomId, replyToId) {
+  if (!replyToId) return null;
+  const original = getMessage(msgDb, 'SELECT id, room_id, user_id, content, nonce, msg_type, deleted FROM messages WHERE id = ? AND room_id = ?', [replyToId, roomId]);
+  if (!original) return null;
+  const author = get(userDb, 'SELECT username, display_name FROM users WHERE id = ?', [original.user_id]);
+  return {
+    id: original.id,
+    user_id: original.user_id,
+    username: author?.username || 'unknown',
+    display_name: author?.display_name || author?.username || 'Unknown',
+    content: original.deleted ? null : original.content,
+    nonce: original.deleted ? null : original.nonce,
+    msg_type: original.msg_type,
+    deleted: !!original.deleted
+  };
+}
+
 async function getLatestMessages(roomIds) {
   if (!roomIds.length) return {};
   const msgDb = await getMessageDb();
@@ -132,7 +154,7 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
 
   const messages = allMessages(msgDb, `
-    SELECT id, room_id, user_id, content, nonce, msg_type, duration, attachments, mentions, created_at, edited_at, deleted
+    SELECT id, room_id, user_id, content, nonce, msg_type, duration, attachments, mentions, reply_to_id, created_at, edited_at, deleted
     FROM messages
     WHERE room_id = ? AND created_at < ?
     ORDER BY created_at DESC
@@ -152,7 +174,8 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
     attachments: m.attachments ? JSON.parse(m.attachments) : null,
     mentions: m.mentions ? JSON.parse(m.mentions) : null,
     username: userMap[m.user_id]?.username || 'unknown',
-    display_name: userMap[m.user_id]?.display_name || userMap[m.user_id]?.username || 'Unknown'
+    display_name: userMap[m.user_id]?.display_name || userMap[m.user_id]?.username || 'Unknown',
+    reply_to: resolveReplyTo(msgDb, userDb, req.params.id, m.reply_to_id)
   }));
 
   res.json({ messages: enriched.reverse() });
@@ -175,8 +198,16 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
     }
   }
 
-  const { content, ciphertext, nonce, type, duration, attachments } = req.body;
+  const { content, ciphertext, nonce, type, duration, attachments, reply_to_id } = req.body;
   const msgType = type === 'voice' ? 'voice' : 'text';
+  const msgDb = await getMessageDb();
+
+  // Only accept a reply_to_id that actually points at a message in this
+  // room — otherwise silently drop it rather than trusting the client's
+  // reply_to_author/reply_to_snippet (which used to be taken as-is and
+  // never actually persisted).
+  const replyTarget = reply_to_id ? getMessage(msgDb, 'SELECT id FROM messages WHERE id = ? AND room_id = ?', [reply_to_id, req.params.id]) : null;
+  const cleanReplyToId = replyTarget ? replyTarget.id : null;
 
   // Attachments come from POST /api/upload as [{ name, url, type }, ...].
   // Validate shape defensively since this is client-controlled JSON that
@@ -232,9 +263,8 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
 
     const msgId = crypto.randomUUID();
     const now = Date.now();
-    const msgDb = await getMessageDb();
-    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, now]);
+    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, cleanReplyToId, now]);
 
     const message = {
       id: msgId,
@@ -246,7 +276,9 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
       created_at: now,
       user_id: req.user.id,
       username: req.user.username,
-      display_name: req.user.display_name
+      display_name: req.user.display_name,
+      reply_to_id: cleanReplyToId,
+      reply_to: resolveReplyTo(msgDb, userDb, req.params.id, cleanReplyToId)
     };
 
     req.app.locals.broadcast(req.params.id, { type: 'new_message', message });
@@ -264,9 +296,8 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
 
   const msgId = crypto.randomUUID();
   const now = Date.now();
-  const msgDb = await getMessageDb();
-  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, mentions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, cleanMentions ? JSON.stringify(cleanMentions) : null, now]);
+  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, mentions, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, cleanMentions ? JSON.stringify(cleanMentions) : null, cleanReplyToId, now]);
 
   const message = {
     id: msgId,
@@ -279,7 +310,9 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
     created_at: now,
     user_id: req.user.id,
     username: req.user.username,
-    display_name: req.user.display_name
+    display_name: req.user.display_name,
+    reply_to_id: cleanReplyToId,
+    reply_to: resolveReplyTo(msgDb, userDb, req.params.id, cleanReplyToId)
   };
 
   req.app.locals.broadcast(req.params.id, { type: 'new_message', message });
