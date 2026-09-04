@@ -2059,9 +2059,22 @@ body.select-mode #view-app .dm-checkbox {
   }
   /* Reserve the 60px the fixed nav now occupies so panel content
      (inside #main, all position:absolute) and the sidebar's
-     user-panel aren't rendered underneath it. */
+     user-panel aren't rendered underneath it.
+     NOTE: the base (non-mobile) rule for #main > div sets BOTH
+     `inset: 0` (top/right/bottom/left: 0) AND an explicit
+     `height: 100%`. With top, bottom, and height all specified at
+     once, the box is over-constrained — per spec the browser resolves
+     that by ignoring `bottom` and sizing purely from `height`. So
+     just overriding `bottom: 60px` here did nothing on its own: the
+     panel still rendered at full viewport height, pushing its last
+     child (the composer / #input-box, in #chat-view specifically)
+     down behind the fixed bottom nav's opaque background — invisible,
+     even though it was still there in the DOM. Explicitly clearing
+     `height` here removes that over-constraint so `top: 0` +
+     `bottom: 60px` are what determine the box's height instead. */
   #view-app #main > div {
     bottom: 60px;
+    height: auto;
   }
   #view-app #sidebar {
     padding-bottom: 60px;
