@@ -604,6 +604,10 @@ function initDashboardView() {
     document.getElementById('welcome-view').style.display = 'none';
     document.getElementById('friends-panel').style.display = 'none';
     document.getElementById('saved-notes-panel').style.display = 'none';
+    document.getElementById('wallet-panel').style.display = 'none';
+    // Added as requested: ensure wallet-panel and notifications-panel are hidden
+    document.getElementById('wallet-panel').style.display = 'none';
+    document.getElementById('notifications-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'flex';
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     showMobileDetail();
@@ -643,33 +647,32 @@ function initDashboardView() {
 
     const container = document.getElementById('messages-container');
     container.innerHTML = `<div style="color:var(--text-muted);padding:32px;text-align:center">Loading...</div>`;
-    api('GET', `/rooms/${room.id}/messages`).then(async data => {   // ✅ async added
-  if (loadToken !== _roomLoadToken) return; // a newer room open superseded this one — don't touch the DOM
-  container.innerHTML = '';
-  window._lastMsgUserId = null;
-  window._lastMsgTime = 0;
-  window._lastMsgDate = null;
-  if (data?.messages?.length) {
-    _roomHasMessages = true;
-    for (const m of data.messages) {
-      if (loadToken !== _roomLoadToken) return; // bail mid-loop if superseded
-      await appendMessage(m);   // ✅ now works
-    }
-    scrollToBottom();
-  } else {
-    const otherName = room.display_name || room.name || 'Unknown';
-    container.innerHTML = `
-      <div class="conversation-start">
-        <div class="start-header">
-          <h3>This is the start of your legendary conversation with</h3>
-          <h1>@${escapeHtml(otherName)}.</h1>
-        </div>
-      </div>
-    `;
-    _roomHasMessages = false;
-  }
-});
-
+    api('GET', `/rooms/${room.id}/messages`).then(async data => {
+      if (loadToken !== _roomLoadToken) return; // a newer room open superseded this one — don't touch the DOM
+      container.innerHTML = '';
+      window._lastMsgUserId = null;
+      window._lastMsgTime = 0;
+      window._lastMsgDate = null;
+      if (data?.messages?.length) {
+        _roomHasMessages = true;
+        for (const m of data.messages) {
+          if (loadToken !== _roomLoadToken) return; // bail mid-loop if superseded
+          await appendMessage(m);
+        }
+        scrollToBottom();
+      } else {
+        const otherName = room.display_name || room.name || 'Unknown';
+        container.innerHTML = `
+          <div class="conversation-start">
+            <div class="start-header">
+              <h3>This is the start of your legendary conversation with</h3>
+              <h1>@${escapeHtml(otherName)}.</h1>
+            </div>
+          </div>
+        `;
+        _roomHasMessages = false;
+      }
+    });
   }
 
   async function api(method, path, body) {
@@ -705,192 +708,191 @@ function initDashboardView() {
       pendingJoins = [];
     };
 
-   ws.onmessage = async (e) => {
-  let msg;
-  try { msg = JSON.parse(e.data); } catch { return; }
+    ws.onmessage = async (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
 
-  switch (msg.type) {
-    case 'new_message': {
-      const m = msg.message;
-      if (sentMsgIds.has(m.id)) { sentMsgIds.delete(m.id); break; }
+      switch (msg.type) {
+        case 'new_message': {
+          const m = msg.message;
+          if (sentMsgIds.has(m.id)) { sentMsgIds.delete(m.id); break; }
 
-      // Sound for anything from someone else, unless we're actively
-      // looking at that exact room right now (a focused, open
-      // conversation doesn't need an audio nudge on top of the message
-      // just appearing). Rooms we're already joined to over the socket
-      // (every DM, on connect) get this broadcast directly; a mention in
-      // one of those would otherwise also trigger the dedicated 'mention'
-      // event below for the same message, so notifiedMsgIds dedupes
-      // that down to a single sound.
-      if (m.user_id !== currentUser.id && !notifiedMsgIds.has(m.id)) {
-        const roomOpenAndFocused = currentRoom?.id === m.room_id && document.hasFocus();
-        if (!roomOpenAndFocused) { playNotificationSound(); markNotified(m.id); }
-      }
-
-      if (currentRoom?.id === m.room_id) {
-        if (!_roomHasMessages) {
-          document.getElementById('messages-container').innerHTML = '';
-          _roomHasMessages = true;
-        }
-        await appendMessage(m);
-        scrollToBottom();
-      } else {
-        markUnread(m.room_id);
-        const dm = dms.find(d => d.id === m.room_id);
-        if (dm) {
-          (async () => {
-            let preview = m.msg_type === 'voice'
-              ? '🎤 Voice message'
-              : await decryptDmPreview(m.content, m.nonce, dm._otherId);
-            if (!preview && m.attachments && m.attachments.length) {
-              preview = '📎 Attachment';
-            }
-            dm.last_message = preview || '📎 Attachment';
-            dm.last_message_at = m.created_at;
-            dms = [dm, ...dms.filter(d => d.id !== dm.id)];
-            renderDMList();
-          })();
-        } else {
-          loadDMs();
-        }
-      }
-      break;
-    }
-
-    case 'message_edited': {
-      const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
-      if (el) el.innerHTML = escapeHtml(msg.content) + '<span class="edited-tag">(edited)</span>';
-      break;
-    }
-
-    case 'message_deleted': {
-      const textEl = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
-      if (textEl) { textEl.innerHTML = 'Message deleted'; textEl.classList.add('deleted'); }
-      const acts = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-actions`);
-      if (acts) acts.remove();
-      break;
-    }
-
-    case 'typing':
-      if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id) {
-        showTyping(msg.display_name || msg.username);
-      }
-      break;
-
-    case 'presence_update': {
-      console.log(`[Presence] Received update for user ${msg.user_id} status ${msg.status}`);
-      updatePresence(msg.user_id, msg.status);
-      updateFriendStatus(msg.user_id, msg.status);
-      break;
-    }
-
-    case 'room_state': {
-      if (msg.room_id === currentRoom?.id) {
-        currentRoomMembers = msg.members.map(m => ({ id: m.id, username: m.username, display_name: m.display_name, avatar: m.avatar }));
-        msg.members.forEach(m => {
-          if (m.id !== currentUser.id) {
-            updatePresence(m.id, m.status);
-            updateFriendStatus(m.id, m.status);
+          // Sound for anything from someone else, unless we're actively
+          // looking at that exact room right now (a focused, open
+          // conversation doesn't need an audio nudge on top of the message
+          // just appearing). Rooms we're already joined to over the socket
+          // (every DM, on connect) get this broadcast directly; a mention in
+          // one of those would otherwise also trigger the dedicated 'mention'
+          // event below for the same message, so notifiedMsgIds dedupes
+          // that down to a single sound.
+          if (m.user_id !== currentUser.id && !notifiedMsgIds.has(m.id)) {
+            const roomOpenAndFocused = currentRoom?.id === m.room_id && document.hasFocus();
+            if (!roomOpenAndFocused) { playNotificationSound(); markNotified(m.id); }
           }
-        });
+
+          if (currentRoom?.id === m.room_id) {
+            if (!_roomHasMessages) {
+              document.getElementById('messages-container').innerHTML = '';
+              _roomHasMessages = true;
+            }
+            await appendMessage(m);
+            scrollToBottom();
+          } else {
+            markUnread(m.room_id);
+            const dm = dms.find(d => d.id === m.room_id);
+            if (dm) {
+              (async () => {
+                let preview = m.msg_type === 'voice'
+                  ? '🎤 Voice message'
+                  : await decryptDmPreview(m.content, m.nonce, dm._otherId);
+                if (!preview && m.attachments && m.attachments.length) {
+                  preview = '📎 Attachment';
+                }
+                dm.last_message = preview || '📎 Attachment';
+                dm.last_message_at = m.created_at;
+                dms = [dm, ...dms.filter(d => d.id !== dm.id)];
+                renderDMList();
+              })();
+            } else {
+              loadDMs();
+            }
+          }
+          break;
+        }
+
+        case 'message_edited': {
+          const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
+          if (el) el.innerHTML = escapeHtml(msg.content) + '<span class="edited-tag">(edited)</span>';
+          break;
+        }
+
+        case 'message_deleted': {
+          const textEl = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
+          if (textEl) { textEl.innerHTML = 'Message deleted'; textEl.classList.add('deleted'); }
+          const acts = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-actions`);
+          if (acts) acts.remove();
+          break;
+        }
+
+        case 'typing':
+          if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id) {
+            showTyping(msg.display_name || msg.username);
+          }
+          break;
+
+        case 'presence_update': {
+          console.log(`[Presence] Received update for user ${msg.user_id} status ${msg.status}`);
+          updatePresence(msg.user_id, msg.status);
+          updateFriendStatus(msg.user_id, msg.status);
+          break;
+        }
+
+        case 'room_state': {
+          if (msg.room_id === currentRoom?.id) {
+            currentRoomMembers = msg.members.map(m => ({ id: m.id, username: m.username, display_name: m.display_name, avatar: m.avatar }));
+            msg.members.forEach(m => {
+              if (m.id !== currentUser.id) {
+                updatePresence(m.id, m.status);
+                updateFriendStatus(m.id, m.status);
+              }
+            });
+          }
+          break;
+        }
+
+        case 'mention': {
+          // Targeted ping from the server for a message that mentions us —
+          // fires even if we don't have that room open/joined right now
+          // (e.g. a group room we haven't opened this session). No message
+          // content is ever included (the server can't see it for E2EE
+          // rooms anyway) — just enough to notify. notifiedMsgIds dedupes
+          // against the room broadcast above when both reach us for the
+          // same message (always true for DMs, which we're joined to on
+          // connect).
+          if (msg.from?.id !== currentUser.id) {
+            if (!notifiedMsgIds.has(msg.message_id)) { playNotificationSound(); markNotified(msg.message_id); }
+            toast(`💬 ${msg.from?.display_name || msg.from?.username || 'Someone'} mentioned you`);
+          }
+          break;
+        }
+
+        case 'dm_created': {
+          if (!dms.find(d => d.id === msg.room_id)) {
+            const other = msg.with_user;
+            const newDm = {
+              id: msg.room_id,
+              is_dm: 1,
+              display_name: other.display_name || other.username,
+              _otherId: other.id,
+              _status: 'offline',
+              _avatar: other.avatar || null,
+              last_message: null,
+              last_message_at: null
+            };
+            dms = [newDm, ...dms];
+            renderDMList();
+            wsJoin(msg.room_id);
+            api('GET', `/users/${other.id}`).then(u => {
+              newDm._status = u?.user?.status || 'offline';
+              newDm._avatar = u?.user?.avatar || null;
+              renderDMList();
+            });
+          }
+          break;
+        }
+
+        case 'friend_request': {
+          const r = msg.request;
+          if (!friendRequests.incoming.find(x => x.id === r.id)) {
+            friendRequests.incoming = [r, ...friendRequests.incoming];
+            updateFriendsBadge();
+            if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
+            toast(`👋 ${r.from_name || r.from_username} sent you a friend request`);
+          }
+          break;
+        }
+
+        case 'friend_accepted': {
+          const f = msg.friend;
+          friendRequests.incoming = friendRequests.incoming.filter(r => r.id !== msg.request_id);
+          friendRequests.outgoing = friendRequests.outgoing.filter(r => r.id !== msg.request_id);
+          if (f && !friends.find(x => x.id === f.id)) friends = [...friends, f];
+          updateFriendsBadge();
+          if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
+          if (f) toast(`✅ ${f.display_name || f.username} accepted your friend request`);
+          break;
+        }
+
+        case 'friend_request_declined': {
+          friendRequests.outgoing = friendRequests.outgoing.filter(r => r.id !== msg.request_id);
+          updateFriendsBadge();
+          if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
+          break;
+        }
+
+        case 'friend_request_cancelled': {
+          friendRequests.incoming = friendRequests.incoming.filter(r => r.id !== msg.request_id);
+          updateFriendsBadge();
+          if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
+          break;
+        }
+
+        case 'friend_removed': {
+          friends = friends.filter(f => f.id !== msg.user_id);
+          if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
+          break;
+        }
+
+        case 'connected':
+          break;
       }
-      break;
-    }
+    };
 
-    case 'mention': {
-      // Targeted ping from the server for a message that mentions us —
-      // fires even if we don't have that room open/joined right now
-      // (e.g. a group room we haven't opened this session). No message
-      // content is ever included (the server can't see it for E2EE
-      // rooms anyway) — just enough to notify. notifiedMsgIds dedupes
-      // against the room broadcast above when both reach us for the
-      // same message (always true for DMs, which we're joined to on
-      // connect).
-      if (msg.from?.id !== currentUser.id) {
-        if (!notifiedMsgIds.has(msg.message_id)) { playNotificationSound(); markNotified(msg.message_id); }
-        toast(`💬 ${msg.from?.display_name || msg.from?.username || 'Someone'} mentioned you`);
-      }
-      break;
-    }
-
-    case 'dm_created': {
-      if (!dms.find(d => d.id === msg.room_id)) {
-        const other = msg.with_user;
-        const newDm = {
-          id: msg.room_id,
-          is_dm: 1,
-          display_name: other.display_name || other.username,
-          _otherId: other.id,
-          _status: 'offline',
-          _avatar: other.avatar || null,
-          last_message: null,
-          last_message_at: null
-        };
-        dms = [newDm, ...dms];
-        renderDMList();
-        wsJoin(msg.room_id);
-        api('GET', `/users/${other.id}`).then(u => {
-          newDm._status = u?.user?.status || 'offline';
-          newDm._avatar = u?.user?.avatar || null;
-          renderDMList();
-        });
-      }
-      break;
-    }
-
-    case 'friend_request': {
-      const r = msg.request;
-      if (!friendRequests.incoming.find(x => x.id === r.id)) {
-        friendRequests.incoming = [r, ...friendRequests.incoming];
-        updateFriendsBadge();
-        if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
-        toast(`👋 ${r.from_name || r.from_username} sent you a friend request`);
-      }
-      break;
-    }
-
-    case 'friend_accepted': {
-      const f = msg.friend;
-      friendRequests.incoming = friendRequests.incoming.filter(r => r.id !== msg.request_id);
-      friendRequests.outgoing = friendRequests.outgoing.filter(r => r.id !== msg.request_id);
-      if (f && !friends.find(x => x.id === f.id)) friends = [...friends, f];
-      updateFriendsBadge();
-      if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
-      if (f) toast(`✅ ${f.display_name || f.username} accepted your friend request`);
-      break;
-    }
-
-    case 'friend_request_declined': {
-      friendRequests.outgoing = friendRequests.outgoing.filter(r => r.id !== msg.request_id);
-      updateFriendsBadge();
-      if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
-      break;
-    }
-
-    case 'friend_request_cancelled': {
-      friendRequests.incoming = friendRequests.incoming.filter(r => r.id !== msg.request_id);
-      updateFriendsBadge();
-      if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
-      break;
-    }
-
-    case 'friend_removed': {
-      friends = friends.filter(f => f.id !== msg.user_id);
-      if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
-      break;
-    }
-
-    case 'connected':
-      break;
-  }
-};
-
-ws.onclose = () => {
-  wsReady = false;
-  setTimeout(connectWS, 2000);
-};
-
-} // <-- FIX: close connectWS function
+    ws.onclose = () => {
+      wsReady = false;
+      setTimeout(connectWS, 2000);
+    };
+  };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  E2EE HELPERS
@@ -1118,31 +1120,31 @@ ws.onclose = () => {
     return decrypted !== null ? decrypted : '🔒 Encrypted message';
   }
 
-async function loadDMs() {
-  const data = await api('GET', '/rooms');
-  if (!data) return;
-  const fresh = (data.rooms || []).filter(r => r.is_dm || r.is_dm === 1);
-  await Promise.all(fresh.map(async dm => {
-    let otherPublicKey = null;
-    if (dm._otherId) {
-      const udata = await api('GET', `/users/${dm._otherId}`);
-      dm._status = udata?.user?.status || 'offline';
-      dm._avatar = udata?.user?.avatar || null;
-      otherPublicKey = udata?.user?.public_key || null;
-    }
-    if (dm.last_message_nonce) {
-      let preview = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey);
-      if (!preview) preview = '📎 Attachment';
-      dm.last_message = preview;
-    } else if (dm.last_message_at) {
-      // There was a last message but it has no content (e.g. attachment-only)
-      dm.last_message = dm.last_message || '📎 Attachment';
-    }
-  }));
-  dms = fresh;
-  renderDMList();
-  dms.forEach(d => wsJoin(d.id));
-}
+  async function loadDMs() {
+    const data = await api('GET', '/rooms');
+    if (!data) return;
+    const fresh = (data.rooms || []).filter(r => r.is_dm || r.is_dm === 1);
+    await Promise.all(fresh.map(async dm => {
+      let otherPublicKey = null;
+      if (dm._otherId) {
+        const udata = await api('GET', `/users/${dm._otherId}`);
+        dm._status = udata?.user?.status || 'offline';
+        dm._avatar = udata?.user?.avatar || null;
+        otherPublicKey = udata?.user?.public_key || null;
+      }
+      if (dm.last_message_nonce) {
+        let preview = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey);
+        if (!preview) preview = '📎 Attachment';
+        dm.last_message = preview;
+      } else if (dm.last_message_at) {
+        // There was a last message but it has no content (e.g. attachment-only)
+        dm.last_message = dm.last_message || '📎 Attachment';
+      }
+    }));
+    dms = fresh;
+    renderDMList();
+    dms.forEach(d => wsJoin(d.id));
+  }
 
   function renderDMList() {
     const list = document.getElementById('dm-list');
@@ -1341,96 +1343,96 @@ async function loadDMs() {
   }
 
   async function sendMessageInner() {
-  const input = document.getElementById('msg-input');
-  const plaintext = input.value.trim();
+    const input = document.getElementById('msg-input');
+    const plaintext = input.value.trim();
 
-  // Allow send if there's text OR pending files
-  if ((!plaintext && !pendingFiles.length) || !currentRoom) return;
+    // Allow send if there's text OR pending files
+    if ((!plaintext && !pendingFiles.length) || !currentRoom) return;
 
-  input.value = '';
+    input.value = '';
 
-  // ─── Upload pending files ──────────────────────────────────
-  const uploadedFiles = [];
-  console.log('[Upload] Starting upload of', pendingFiles.length, 'files');
-  for (const file of pendingFiles) {
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      console.log('[Upload] Uploading:', file.name);
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token },
-        body: formData
-      });
-      const data = await res.json();
-      console.log('[Upload] Response:', data);
-      if (data.url) {
-        uploadedFiles.push({ name: file.name, url: data.url, type: file.type });
-      } else {
-        toast('Upload failed for ' + file.name);
+    // ─── Upload pending files ──────────────────────────────────
+    const uploadedFiles = [];
+    console.log('[Upload] Starting upload of', pendingFiles.length, 'files');
+    for (const file of pendingFiles) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        console.log('[Upload] Uploading:', file.name);
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token },
+          body: formData
+        });
+        const data = await res.json();
+        console.log('[Upload] Response:', data);
+        if (data.url) {
+          uploadedFiles.push({ name: file.name, url: data.url, type: file.type });
+        } else {
+          toast('Upload failed for ' + file.name);
+        }
+      } catch (e) {
+        console.error('[Upload] Error:', e);
+        toast('Upload error for ' + file.name);
       }
-    } catch (e) {
-      console.error('[Upload] Error:', e);
-      toast('Upload error for ' + file.name);
     }
-  }
-  pendingFiles = [];
-  renderAttachmentPreviews();
+    pendingFiles = [];
+    renderAttachmentPreviews();
 
-  // ─── Build message payload ──────────────────────────────────
-  let payload = {};
-  const sharedKey = await getSharedKeyForRoom(currentRoom.id);
-  if (plaintext) {
-    if (sharedKey) {
-      const { ciphertext, nonce } = encryptMessage(plaintext, sharedKey);
-      payload = { ciphertext, nonce };
-    } else {
-      payload = { content: plaintext };
+    // ─── Build message payload ──────────────────────────────────
+    let payload = {};
+    const sharedKey = await getSharedKeyForRoom(currentRoom.id);
+    if (plaintext) {
+      if (sharedKey) {
+        const { ciphertext, nonce } = encryptMessage(plaintext, sharedKey);
+        payload = { ciphertext, nonce };
+      } else {
+        payload = { content: plaintext };
+      }
     }
-  }
-  if (uploadedFiles.length) payload.attachments = uploadedFiles;
+    if (uploadedFiles.length) payload.attachments = uploadedFiles;
 
-  // Resolved from the plaintext we just encrypted (or the plain content,
-  // in an unencrypted room) — sent as its own field since the server
-  // can't parse @mentions out of ciphertext itself. See resolveMentions().
-  if (plaintext) {
-    const mentionIds = resolveMentions(plaintext);
-    if (mentionIds.length) payload.mentions = mentionIds;
-  }
+    // Resolved from the plaintext we just encrypted (or the plain content,
+    // in an unencrypted room) — sent as its own field since the server
+    // can't parse @mentions out of ciphertext itself. See resolveMentions().
+    if (plaintext) {
+      const mentionIds = resolveMentions(plaintext);
+      if (mentionIds.length) payload.mentions = mentionIds;
+    }
 
-  if (replyingTo) {
-    payload.reply_to_id = replyingTo.id;
-    payload.reply_to_author = replyingTo.display_name || replyingTo.username;
-    payload.reply_to_snippet = replyingTo.deleted ? 'Message deleted' : replyingTo.content;
-  }
+    if (replyingTo) {
+      payload.reply_to_id = replyingTo.id;
+      payload.reply_to_author = replyingTo.display_name || replyingTo.username;
+      payload.reply_to_snippet = replyingTo.deleted ? 'Message deleted' : replyingTo.content;
+    }
 
-  console.log('[Send] Payload:', payload);
-  const res = await api('POST', `/rooms/${currentRoom.id}/messages`, payload);
-  if (res?.error) { toast(res.error); return; }
-  if (res.message?.id) sentMsgIds.add(res.message.id);
-  if (replyingTo && res.message) {
-    res.message.reply_to_id = res.message.reply_to_id || replyingTo.id;
-    res.message.reply_to_author = res.message.reply_to_author || payload.reply_to_author;
-    res.message.reply_to_snippet = res.message.reply_to_snippet || payload.reply_to_snippet;
+    console.log('[Send] Payload:', payload);
+    const res = await api('POST', `/rooms/${currentRoom.id}/messages`, payload);
+    if (res?.error) { toast(res.error); return; }
+    if (res.message?.id) sentMsgIds.add(res.message.id);
+    if (replyingTo && res.message) {
+      res.message.reply_to_id = res.message.reply_to_id || replyingTo.id;
+      res.message.reply_to_author = res.message.reply_to_author || payload.reply_to_author;
+      res.message.reply_to_snippet = res.message.reply_to_snippet || payload.reply_to_snippet;
+    }
+    if (!_roomHasMessages) {
+      document.getElementById('messages-container').innerHTML = '';
+      _roomHasMessages = true;
+    }
+    cancelReply();
+    await appendMessage(res.message);
+    scrollToBottom();
+    const dmObj = dms.find(d => d.id === currentRoom.id);
+    if (dmObj) {
+      dmObj.last_message = plaintext || '📎 Attachment';
+      dmObj.last_message_at = Date.now();
+      dms = [dmObj, ...dms.filter(d => d.id !== dmObj.id)];
+      renderDMList();
+      document.querySelector(`[data-room-id="${currentRoom.id}"]`)?.classList.add('active');
+    }
+    closeShortcodeSuggest();
+    closeMentionSuggest();
   }
-  if (!_roomHasMessages) {
-    document.getElementById('messages-container').innerHTML = '';
-    _roomHasMessages = true;
-  }
-  cancelReply();
-  await appendMessage(res.message);
-  scrollToBottom();
-  const dmObj = dms.find(d => d.id === currentRoom.id);
-  if (dmObj) {
-    dmObj.last_message = plaintext || '📎 Attachment';
-    dmObj.last_message_at = Date.now();
-    dms = [dmObj, ...dms.filter(d => d.id !== dmObj.id)];
-    renderDMList();
-    document.querySelector(`[data-room-id="${currentRoom.id}"]`)?.classList.add('active');
-  }
-  closeShortcodeSuggest();
-  closeMentionSuggest();
-}
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  MESSAGE RENDER (includes attachments)
@@ -2675,27 +2677,27 @@ async function loadDMs() {
   })();
 
   // ─── TOGGLE SELECT MODE ──────────────────────────────────
-function toggleSelectMode() {
-  selectModeActive = !selectModeActive;
-  window.selectModeActive = selectModeActive;
-  selectedRoomIds.clear();
-  document.body.classList.toggle('select-mode', selectModeActive);
-  updateMSBar();
-  renderDMList();
-}
-
-// ─── HANDLE FILE UPLOAD ──────────────────────────────────
-function handleFileUpload(files) {
-  if (!files || files.length === 0) return;
-  for (const f of files) {
-    pendingFiles.push(f);
+  function toggleSelectMode() {
+    selectModeActive = !selectModeActive;
+    window.selectModeActive = selectModeActive;
+    selectedRoomIds.clear();
+    document.body.classList.toggle('select-mode', selectModeActive);
+    updateMSBar();
+    renderDMList();
   }
-  renderAttachmentPreviews();
-  document.getElementById('file-input').value = '';
-  toast(`${files.length} file(s) ready to send`);
-}
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ─── HANDLE FILE UPLOAD ──────────────────────────────────
+  function handleFileUpload(files) {
+    if (!files || files.length === 0) return;
+    for (const f of files) {
+      pendingFiles.push(f);
+    }
+    renderAttachmentPreviews();
+    document.getElementById('file-input').value = '';
+    toast(`${files.length} file(s) ready to send`);
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  GLOBAL EXPOSURE
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -383,6 +383,18 @@ body.select-mode #view-app .dm-checkbox {
   inset: 0;
   flex-direction: column;
   height: 100%;
+  z-index: 1;
+}
+/* Safety net: openRoom() (dashboard.js) hides welcome-view, friends-panel
+   and saved-notes-panel when a chat is opened, but doesn't hide
+   wallet-panel/notifications-panel — so if either was left open, both
+   end up display:flex at once. Force chat-view above every other panel
+   so it's always what's actually visible/clickable regardless of that.
+   (The real fix is adding
+   document.getElementById('wallet-panel').style.display = 'none';
+   and the same for notifications-panel inside openRoom().) */
+#view-app #chat-view {
+  z-index: 2;
 }
 
 #view-app .panel-header {
@@ -1998,22 +2010,9 @@ body.select-mode #view-app .dm-checkbox {
    ───────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  /* #app is a row flexbox on desktop (sidebar | main). On mobile,
-     #mobile-bottom-nav is a third sibling in that same row (it comes
-     after #main in the markup) — left as a row it gets squeezed in
-     as a narrow third column instead of sitting under the content.
-     Stack #app vertically instead, with sidebar/main sharing the
-     available height and the nav pinned as a fixed-height row at
-     the end. */
-  #view-app #app {
-    flex-direction: column;
-  }
   #view-app #sidebar,
   #view-app #main {
     width: 100%;
-    height: auto;
-    flex: 1 1 auto;
-    min-height: 0;
   }
   #view-app #app:not(.mobile-view-detail) #main {
     display: none;
@@ -2021,10 +2020,33 @@ body.select-mode #view-app .dm-checkbox {
   #view-app #app.mobile-view-detail #sidebar {
     display: none;
   }
+
+  /* #mobile-bottom-nav is a sibling of #sidebar/#main inside #app's
+     row flexbox, so leaving it in that flow puts it in the row
+     alongside whichever of the two is visible (a cramped third
+     column) instead of under it. Pull it out of the flex flow
+     entirely and pin it to the bottom of #view-app, whose height
+     already tracks --app-height (real visible viewport, browser
+     chrome excluded) rather than raw 100vh. */
   #view-app #mobile-bottom-nav {
     display: flex;
-    flex: 0 0 auto;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 120;
   }
+  /* Reserve the 60px the fixed nav now occupies so panel content
+     (inside #main, all position:absolute) and the sidebar's
+     user-panel aren't rendered underneath it. */
+  #view-app #main > div {
+    bottom: 60px;
+  }
+  #view-app #sidebar {
+    padding-bottom: 60px;
+    box-sizing: border-box;
+  }
+
   #view-app .fh-hamburger {
     display: flex;
   }
