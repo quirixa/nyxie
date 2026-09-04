@@ -2077,6 +2077,27 @@ function initDashboardView() {
       ws.send(JSON.stringify({ type: 'typing', room_id: currentRoom.id }));
     }
   });
+  // Ctrl/Cmd+V with an image on the clipboard (e.g. a screenshot) never
+  // had a handler — the browser has nowhere to put image data inside a
+  // text <input>, so it silently did nothing. Route any pasted image(s)
+  // through the same pendingFiles/handleFileUpload path as the file-input
+  // and drag-and-drop attachments use, so they show up as an attachment
+  // chip ready to send. Pasted text is left completely alone.
+  document.getElementById('msg-input').addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles = [];
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length) {
+      e.preventDefault();
+      handleFileUpload(imageFiles);
+    }
+  });
 
   const typingUsers = new Map();
   function showTyping(name) {
@@ -2807,4 +2828,9 @@ function initDashboardView() {
   window.destroyDashboardView = destroyDashboardView;
   window.navigateTo = navigateTo;
   window.toggleSidebar = toggleSidebar;
+  // Exposed so settings.js — the /settings page's own separate "edit
+  // profile" form, a different module entirely from this file's
+  // edit-profile-modal — can also refresh already-rendered messages when
+  // it's the one that changes your display name.
+  window.refreshOwnDisplayNameEverywhere = refreshOwnDisplayNameEverywhere;
 } // <--- Closes initDashboardView()
