@@ -1641,10 +1641,13 @@ function initDashboardView() {
           } else displayContent = '🔒 Failed to decrypt';
         } else displayContent = '🔒 Shared key unavailable';
       }
-      const origContent = msg.content;
+      // Leave msg.content set to the decrypted plaintext (don't revert to
+      // ciphertext) — the message object is stored by reference in
+      // window._messagesById (see originalAppendMessage), and other code
+      // that looks it up later — reply quotes, the reply-preview bar,
+      // editing — all read msg.content expecting plaintext.
       msg.content = displayContent;
       originalAppendMessage.call(this, msg);
-      msg.content = origContent;
     };
     // .then(run, run) so one failed append doesn't wedge every append after it.
     _appendMsgQueue = _appendMsgQueue.then(run, run);
@@ -2209,6 +2212,27 @@ function initDashboardView() {
   function closeEditProfileModal() {
     document.getElementById('edit-profile-modal').style.display = 'none';
   }
+  // Renaming yourself only updates currentUser + the profile popout by
+  // default — every message you've already sent this session keeps the
+  // display_name it was rendered with, both in the DOM and in the stored
+  // msg objects in window._messagesById (which reply quotes and the
+  // reply-preview bar read from). Patch both so old messages pick up the
+  // new name immediately instead of waiting for a reload (which re-fetches
+  // messages, so the server-side display_name comes back fresh).
+  function refreshOwnDisplayNameEverywhere() {
+    const name = currentUser.display_name || currentUser.username;
+    if (!window._messagesById) return;
+    for (const msg of window._messagesById.values()) {
+      if (msg.user_id === currentUser.id) msg.display_name = currentUser.display_name;
+    }
+    document.querySelectorAll('#messages-container [data-msg-id]').forEach(row => {
+      const msg = window._messagesById.get(row.dataset.msgId);
+      if (!msg || msg.user_id !== currentUser.id) return;
+      const authorEl = row.querySelector('.msg-author');
+      if (authorEl) authorEl.textContent = name;
+    });
+  }
+
   document.getElementById('editProfileForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const username = document.getElementById('edit-username').value.trim();
@@ -2246,6 +2270,7 @@ function initDashboardView() {
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
         document.getElementById('up-name').textContent = currentUser.display_name || currentUser.username;
         document.getElementById('up-tag').textContent = '@' + currentUser.username;
+        refreshOwnDisplayNameEverywhere();
         toast('Profile updated');
         closeEditProfileModal();
         renderDMList();
