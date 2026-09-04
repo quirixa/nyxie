@@ -1320,12 +1320,67 @@ function initDashboardView() {
     if (bar) bar.classList.remove('open');
   }
 
-  function jumpToMessage(msgId) {
-    const el = document.querySelector(`[data-msg-id="${msgId}"]`);
-    if (!el) { toast('Original message not loaded'); return; }
+  function highlightJumpTarget(el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el.classList.add('search-current');
     setTimeout(() => el.classList.remove('search-current'), 1200);
+  }
+
+  // Jumping to a reply's original message. The happy path (original is
+  // already rendered — it's recent, or arrived live over the websocket
+  // since) is synchronous. When it isn't in the DOM — it's older than the
+  // page of messages the room loaded with — we page backwards from the
+  // original's own timestamp (carried on every reply preview, see
+  // resolveReplyTo server-side) until it's loaded, then jump. No reload
+  // needed either way.
+  let _jumpToken = 0;
+  async function jumpToMessage(msgId) {
+    const existing = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (existing) { highlightJumpTarget(existing); return; }
+
+    const anchor = window._messagesById.get(msgId);
+    if (!currentRoom || !anchor || !anchor.created_at) {
+      toast('Original message not loaded');
+      return;
+    }
+
+    if (_loadingOlder) { toast('Already jumping to a message…'); return; }
+    const token = ++_jumpToken;
+    toast('Jumping to message…');
+    const found = await loadOlderMessagesUntil(msgId, anchor.created_at);
+    if (token !== _jumpToken) return; // superseded by a newer jump/room switch
+
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (el) highlightJumpTarget(el);
+    else toast(found === null ? 'Could not load original message' : 'Original message not loaded');
+  }
+
+  // Pages backwards (server's `before` cursor, see GET /rooms/:id/messages)
+  // from just after the target's timestamp, prepending each batch above
+  // whatever's currently loaded, until the target message shows up or
+  // there's nothing older left. Returns true if found, false if the room
+  // ran out of history, or null on a request failure.
+  let _loadingOlder = false;
+  async function loadOlderMessagesUntil(targetId, targetCreatedAt) {
+    if (_loadingOlder) return false;
+    _loadingOlder = true;
+    const roomId = currentRoom.id;
+    try {
+      let before = targetCreatedAt + 1;
+      for (let i = 0; i < 10; i++) { // safety cap: ~500 messages of backscroll
+        if (!currentRoom || currentRoom.id !== roomId) return false; // room changed under us
+        const data = await api('GET', `/rooms/${roomId}/messages?before=${before}&limit=50`);
+        if (!data?.messages) return null;
+        const batch = data.messages;
+        if (!batch.length) return false;
+        await prependMessages(batch);
+        if (batch.some(m => m.id === targetId)) return true;
+        before = batch[0].created_at;
+      }
+      return false;
+    } finally {
+      _loadingOlder = false;
+    }
   }
 
   // Two messages sent close together (e.g. a text message, then an
@@ -1536,29 +1591,14 @@ function initDashboardView() {
       </div>`;
   }
 
-  appendMessage = function (msg) {
-    const container = document.getElementById('messages-container');
-    if (msg.id && container.querySelector(`[data-msg-id="${msg.id}"]`)) return;
-    window._messagesById.set(msg.id, msg);
+  // Builds the row element for one message (assumes msg.content /
+  // msg.reply_to.content are already decrypted). Shared by the bottom-
+  // append path (new/initial messages) and the top-prepend path (older
+  // messages paged in via jumpToMessage) so both render identically.
+  function buildMessageRowEl(msg, compact) {
     const isOwn = msg.user_id === currentUser.id;
-    const msgDate = new Date(msg.created_at).toDateString();
     const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const fullTime = new Date(msg.created_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    if (msgDate !== window._lastMsgDate) {
-      window._lastMsgDate = msgDate;
-      const today = new Date().toDateString();
-      const yesterday = new Date(Date.now() - 86400000).toDateString();
-      const label = msgDate === today ? 'Today' : msgDate === yesterday ? 'Yesterday' : new Date(msg.created_at).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-      const div = document.createElement('div');
-      div.className = 'msg-date-divider';
-      div.innerHTML = `<span>${label}</span>`;
-      container.appendChild(div);
-      window._lastMsgUserId = null;
-    }
-    const now = msg.created_at;
-    const sameUser = msg.user_id === window._lastMsgUserId && (now - window._lastMsgTime) < 5 * 60 * 1000 && !msg.reply_to_id;
-    window._lastMsgUserId = msg.user_id;
-    window._lastMsgTime = now;
     const displayName = msg.display_name || msg.username || 'Unknown';
     // Highlight @mentions in the (already decrypted, if applicable) text.
     // msg.mentions is a list of user IDs from the server; resolve those
@@ -1578,7 +1618,7 @@ function initDashboardView() {
     const actionsHtml = buildMsgActionsHtml(msg, isOwn);
     const row = document.createElement('div');
     row.dataset.msgId = msg.id;
-    if (sameUser) {
+    if (compact) {
       row.className = 'msg-row compact' + (isOwn ? ' outgoing' : '');
       row.innerHTML = `
         <div class="msg-content-col">
@@ -1605,7 +1645,38 @@ function initDashboardView() {
         </div>
         ${actionsHtml}`;
     }
-    container.appendChild(row);
+    return row;
+  }
+
+  function buildDateDividerEl(label) {
+    const div = document.createElement('div');
+    div.className = 'msg-date-divider';
+    div.innerHTML = `<span>${label}</span>`;
+    return div;
+  }
+
+  function dateLabelFor(ts) {
+    const d = new Date(ts).toDateString();
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    return d === today ? 'Today' : d === yesterday ? 'Yesterday' : new Date(ts).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  appendMessage = function (msg) {
+    const container = document.getElementById('messages-container');
+    if (msg.id && container.querySelector(`[data-msg-id="${msg.id}"]`)) return;
+    window._messagesById.set(msg.id, msg);
+    const msgDate = new Date(msg.created_at).toDateString();
+    if (msgDate !== window._lastMsgDate) {
+      window._lastMsgDate = msgDate;
+      container.appendChild(buildDateDividerEl(dateLabelFor(msg.created_at)));
+      window._lastMsgUserId = null;
+    }
+    const now = msg.created_at;
+    const compact = msg.user_id === window._lastMsgUserId && (now - window._lastMsgTime) < 5 * 60 * 1000 && !msg.reply_to_id;
+    window._lastMsgUserId = msg.user_id;
+    window._lastMsgTime = now;
+    container.appendChild(buildMessageRowEl(msg, compact));
   }
 
   // ─── APPEND MESSAGE E2EE WRAPPER ──────────────────────────
@@ -1627,49 +1698,105 @@ function initDashboardView() {
   // no matter how long any individual decrypt takes. (This backs up
   // _sendQueue and the room-load loop above, which assumed this was
   // already true.)
+  // Decrypts msg.content and msg.reply_to.content in place. Shared by the
+  // bottom-append path and prependMessages (used when paging in older
+  // messages to jump to a reply target) so both decrypt identically.
+  async function decryptMsgForDisplay(msg, retry = false) {
+    let displayContent = msg.content;
+    if (msg.nonce) {
+      const sharedKey = await getSharedKeyForRoom(msg.room_id);
+      if (sharedKey) {
+        const decrypted = decryptMessage(msg.content, msg.nonce, sharedKey);
+        if (decrypted !== null) displayContent = decrypted;
+        else if (!retry) {
+          await new Promise(r => setTimeout(r, 300));
+          const sharedKey2 = await getSharedKeyForRoom(msg.room_id);
+          if (sharedKey2) {
+            const decrypted2 = decryptMessage(msg.content, msg.nonce, sharedKey2);
+            displayContent = decrypted2 !== null ? decrypted2 : '🔒 Failed to decrypt';
+          } else displayContent = '🔒 Shared key unavailable';
+        } else displayContent = '🔒 Failed to decrypt';
+      } else displayContent = '🔒 Shared key unavailable';
+    }
+    // Leave msg.content set to the decrypted plaintext (don't revert to
+    // ciphertext) — the message object is stored by reference in
+    // window._messagesById (see originalAppendMessage / prependMessages),
+    // and other code that looks it up later — reply quotes, the
+    // reply-preview bar, editing — all read msg.content expecting
+    // plaintext.
+    msg.content = displayContent;
+
+    // msg.reply_to (server-resolved, see POST/GET /rooms/:id/messages)
+    // carries the *original* message's own content+nonce — decrypt it
+    // the same way, in place, so buildReplyQuoteHtml can just read
+    // msg.reply_to.content like any other decrypted message, whether or
+    // not the original happens to already be in window._messagesById.
+    if (msg.reply_to && msg.reply_to.nonce) {
+      const replyKey = await getSharedKeyForRoom(msg.room_id);
+      const replyDecrypted = replyKey ? decryptMessage(msg.reply_to.content, msg.reply_to.nonce, replyKey) : null;
+      msg.reply_to.content = replyDecrypted !== null ? replyDecrypted : '🔒 Failed to decrypt';
+    }
+    // Cache a stub for the replied-to message so jumpToMessage has a
+    // created_at anchor to page backwards from even when the original
+    // itself has never been loaded into this room yet.
+    if (msg.reply_to && msg.reply_to.id && !window._messagesById.has(msg.reply_to.id)) {
+      window._messagesById.set(msg.reply_to.id, msg.reply_to);
+    }
+    return msg;
+  }
+
   let _appendMsgQueue = Promise.resolve();
   appendMessage = function(msg, retry = false) {
     const run = async () => {
-      let displayContent = msg.content;
-      if (msg.nonce) {
-        const sharedKey = await getSharedKeyForRoom(msg.room_id);
-        if (sharedKey) {
-          const decrypted = decryptMessage(msg.content, msg.nonce, sharedKey);
-          if (decrypted !== null) displayContent = decrypted;
-          else if (!retry) {
-            await new Promise(r => setTimeout(r, 300));
-            const sharedKey2 = await getSharedKeyForRoom(msg.room_id);
-            if (sharedKey2) {
-              const decrypted2 = decryptMessage(msg.content, msg.nonce, sharedKey2);
-              displayContent = decrypted2 !== null ? decrypted2 : '🔒 Failed to decrypt';
-            } else displayContent = '🔒 Shared key unavailable';
-          } else displayContent = '🔒 Failed to decrypt';
-        } else displayContent = '🔒 Shared key unavailable';
-      }
-      // Leave msg.content set to the decrypted plaintext (don't revert to
-      // ciphertext) — the message object is stored by reference in
-      // window._messagesById (see originalAppendMessage), and other code
-      // that looks it up later — reply quotes, the reply-preview bar,
-      // editing — all read msg.content expecting plaintext.
-      msg.content = displayContent;
-
-      // msg.reply_to (server-resolved, see POST/GET /rooms/:id/messages)
-      // carries the *original* message's own content+nonce — decrypt it
-      // the same way, in place, so buildReplyQuoteHtml can just read
-      // msg.reply_to.content like any other decrypted message, whether or
-      // not the original happens to already be in window._messagesById.
-      if (msg.reply_to && msg.reply_to.nonce) {
-        const replyKey = await getSharedKeyForRoom(msg.room_id);
-        const replyDecrypted = replyKey ? decryptMessage(msg.reply_to.content, msg.reply_to.nonce, replyKey) : null;
-        msg.reply_to.content = replyDecrypted !== null ? replyDecrypted : '🔒 Failed to decrypt';
-      }
-
+      await decryptMsgForDisplay(msg, retry);
       originalAppendMessage.call(this, msg);
     };
     // .then(run, run) so one failed append doesn't wedge every append after it.
     _appendMsgQueue = _appendMsgQueue.then(run, run);
     return _appendMsgQueue;
   };
+
+  // Pages older messages in at the TOP of the container (see
+  // loadOlderMessagesUntil, used by jumpToMessage). `batch` is oldest→
+  // newest, matching what GET /rooms/:id/messages returns. Grouping
+  // (date dividers, compact same-author rows) is computed locally within
+  // the batch — it doesn't reach back into window._lastMsgDate/_lastMsgUserId,
+  // since those track the *bottom* of the timeline and prepending happens
+  // at the top; the only seam this can miss is the boundary row right
+  // below the inserted batch not being retroactively marked compact,
+  // which is a cosmetic no-op, not a correctness issue.
+  async function prependMessages(batch) {
+    const container = document.getElementById('messages-container');
+    const fresh = [];
+    for (const raw of batch) {
+      if (container.querySelector(`[data-msg-id="${raw.id}"]`)) continue; // already loaded
+      await decryptMsgForDisplay(raw);
+      fresh.push(raw);
+    }
+    if (!fresh.length) return;
+
+    const frag = document.createDocumentFragment();
+    let lastDate = null, lastUserId = null, lastTime = 0;
+    for (const msg of fresh) {
+      const msgDate = new Date(msg.created_at).toDateString();
+      if (msgDate !== lastDate) {
+        lastDate = msgDate;
+        frag.appendChild(buildDateDividerEl(dateLabelFor(msg.created_at)));
+        lastUserId = null;
+      }
+      const compact = msg.user_id === lastUserId && (msg.created_at - lastTime) < 5 * 60 * 1000 && !msg.reply_to_id;
+      lastUserId = msg.user_id;
+      lastTime = msg.created_at;
+      frag.appendChild(buildMessageRowEl(msg, compact));
+      window._messagesById.set(msg.id, msg);
+    }
+    // Preserve scroll position: without this, inserting content above the
+    // viewport would yank the visible messages downward.
+    const prevHeight = container.scrollHeight;
+    const prevTop = container.scrollTop;
+    container.insertBefore(frag, container.firstChild);
+    container.scrollTop = prevTop + (container.scrollHeight - prevHeight);
+  }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  EDIT, DELETE, REACTIONS, MORE MENU (short versions)
@@ -2772,6 +2899,10 @@ function initDashboardView() {
   window.renderEmojiPicker = renderEmojiPicker;
   window.setReplyTo = setReplyTo;
   window.cancelReply = cancelReply;
+  // Reply quotes' onclick (see buildReplyQuoteHtml) calls this directly —
+  // it has to be reachable from global scope like every other inline
+  // onclick handler here, or clicking a quote silently no-ops.
+  window.jumpToMessage = jumpToMessage;
   window.openRoom = openRoom;
   window.hideDM = hideDM;
   window.closeDM = closeDM;

@@ -13,7 +13,7 @@ const { isBlocked } = require('../services/blocks');
 // this room, or was itself deleted along the way.
 function resolveReplyTo(msgDb, userDb, roomId, replyToId) {
   if (!replyToId) return null;
-  const original = getMessage(msgDb, 'SELECT id, room_id, user_id, content, nonce, msg_type, deleted FROM messages WHERE id = ? AND room_id = ?', [replyToId, roomId]);
+  const original = getMessage(msgDb, 'SELECT id, room_id, user_id, content, nonce, msg_type, created_at, deleted FROM messages WHERE id = ? AND room_id = ?', [replyToId, roomId]);
   if (!original) return null;
   const author = get(userDb, 'SELECT username, display_name FROM users WHERE id = ?', [original.user_id]);
   return {
@@ -24,6 +24,11 @@ function resolveReplyTo(msgDb, userDb, roomId, replyToId) {
     content: original.deleted ? null : original.content,
     nonce: original.deleted ? null : original.nonce,
     msg_type: original.msg_type,
+    // created_at travels with the reply preview even when the original
+    // message itself hasn't been paginated into the client yet — the
+    // client uses it as the anchor to page `before` this timestamp and
+    // fetch the original message on demand (see jumpToMessage).
+    created_at: original.created_at,
     deleted: !!original.deleted
   };
 }
