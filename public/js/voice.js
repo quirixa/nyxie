@@ -218,6 +218,24 @@ function initVoiceFeatures() {
   let recordTimerInterval = null;
   let recordCancelled = false;
 
+  // startRecording() is async and awaits getPublicKey() + getUserMedia()
+  // (the latter can hang indefinitely on a first-time mic-permission
+  // prompt) before mediaRecorder actually gets created. mousedown/
+  // touchstart fires it without awaiting, so a quick tap — or a
+  // mouseup/touchend that lands while that permission dialog is still
+  // up — used to call stopRecordingAndSend() while mediaRecorder was
+  // still null. stopRecordingAndSend() would just no-op in that case,
+  // and by the time startRecording() finished and actually started the
+  // recorder, nothing was left to ever stop it: the mic kept recording
+  // in the background with no way to send or cancel it. These two
+  // variables close that gap: `recordStartPromise` lets a stop/cancel
+  // that arrives too early wait for the in-flight start to finish
+  // before acting on it, and `pendingStop` tells startRecording() "the
+  // user already let go — stop yourself the instant you're ready"
+  // instead of leaving the recorder running.
+  let recordStartPromise = null;
+  let pendingStop = null; // null | 'send' | 'cancel'
+
   function injectMicButton() {
     const inputBox = document.getElementById('input-box');
     const sendBtn = document.getElementById('send-btn');
@@ -230,9 +248,16 @@ function initVoiceFeatures() {
     btn.innerHTML = '<svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 11z"/></svg>';
     sendBtn.parentNode.insertBefore(btn, sendBtn);
 
-    const start = (ev) => { ev.preventDefault(); startRecording(); };
-    const stop = (ev) => { if (ev) ev.preventDefault(); stopRecordingAndSend(false); };
-    const cancel = () => stopRecordingAndSend(true);
+    const start = (ev) => { ev.preventDefault(); recordStartPromise = startRecording(); };
+    const stop = async (ev) => {
+      if (ev) ev.preventDefault();
+      if (recordStartPromise && !mediaRecorder) { pendingStop = 'send'; await recordStartPromise; }
+      stopRecordingAndSend(false);
+    };
+    const cancel = async () => {
+      if (recordStartPromise && !mediaRecorder) { pendingStop = 'cancel'; await recordStartPromise; }
+      stopRecordingAndSend(true);
+    };
 
     btn.addEventListener('mousedown', start);
     btn.addEventListener('touchstart', start, { passive: false });
@@ -244,6 +269,7 @@ function initVoiceFeatures() {
 
   async function startRecording() {
     if (mediaRecorder) return; // already recording
+    pendingStop = null;
     if (!currentRoom) { toast('Open a conversation first'); return; }
     const otherId = currentDmOtherId();
     if (!otherId) { toast('Voice messages are only available in direct messages'); return; }
@@ -258,6 +284,19 @@ function initVoiceFeatures() {
       recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       toast('Microphone access denied');
+      return;
+    }
+
+    // The user already released the button (or the mic-permission
+    // prompt swallowed their touch/mouse-up) before getUserMedia()
+    // resolved — don't start a recording nobody asked to keep going.
+    // Release the mic immediately instead of leaving it running with
+    // no listener left to stop it.
+    if (pendingStop) {
+      recordStream.getTracks().forEach(t => t.stop());
+      recordStream = null;
+      if (pendingStop === 'send') toast('Recording too short');
+      pendingStop = null;
       return;
     }
 

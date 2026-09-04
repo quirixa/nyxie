@@ -412,7 +412,7 @@ function initDashboardView() {
 
   if (!token || !currentUser) { router.navigate('/login'); return; }
 
-  function scrollToBottom() {
+  scrollToBottom = function scrollToBottom() {
     const container = document.getElementById('messages-container');
     if (container) container.scrollTop = container.scrollHeight;
   }
@@ -675,7 +675,7 @@ function initDashboardView() {
     });
   }
 
-  async function api(method, path, body) {
+  api = async function api(method, path, body) {
     try {
       const res = await fetch(API + '/api' + path, {
         method,
@@ -934,7 +934,7 @@ function initDashboardView() {
     return nacl.util.encodeUTF8(decrypted);
   }
 
-  async function getPublicKey(userId) {
+  getPublicKey = async function getPublicKey(userId) {
     try {
       const res = await api('GET', `/users/${userId}`);
       return res?.user?.public_key || null;
