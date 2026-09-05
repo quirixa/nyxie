@@ -51,6 +51,14 @@
 function initVoiceFeatures() {
   'use strict';
 
+  // Stroke-style lock/unlock icons matching the pattern used elsewhere
+  // in the app (e.g. the wallet PIN-settings icon) — used wherever a
+  // 🔒/🔓 badge indicates end-to-end encryption status.
+  const SVG_LOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  const SVG_UNLOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
+  const SVG_PLAY = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+  const SVG_PAUSE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+
   // ---------------------------------------------------------------------
   // Binary NaCl secretbox helpers (voice messages, shared-secret E2EE)
   // ---------------------------------------------------------------------
@@ -183,7 +191,7 @@ function initVoiceFeatures() {
 
     callBar = document.createElement('div');
     callBar.id = 'call-bar';
-    callBar.innerHTML = `<span id="call-bar-lock">🔒</span><span id="call-bar-text">On call</span><span id="call-bar-timer">00:00</span><button id="call-bar-mute" type="button">Mute</button><button id="call-bar-hangup" type="button">Hang up</button>`;
+    callBar.innerHTML = `<span id="call-bar-lock">${SVG_LOCK}</span><span id="call-bar-text">On call</span><span id="call-bar-timer">00:00</span><button id="call-bar-mute" type="button">Mute</button><button id="call-bar-hangup" type="button">Hang up</button>`;
     document.body.appendChild(callBar);
     callBar.querySelector('#call-bar-hangup').onclick = () => hangUp();
     callBar.querySelector('#call-bar-mute').onclick = () => {
@@ -372,7 +380,7 @@ function initVoiceFeatures() {
 
     const dmObj = dms.find(d => d.id === currentRoom.id);
     if (dmObj) {
-      dmObj.last_message = '🎤 Voice message';
+      dmObj.last_message = 'Voice message';
       dmObj.last_message_at = res.message.created_at;
       dms = [dmObj, ...dms.filter(d => d.id !== dmObj.id)];
       renderDMList();
@@ -401,7 +409,7 @@ function initVoiceFeatures() {
       audio.addEventListener('timeupdate', () => {
         if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
       });
-      audio.addEventListener('ended', () => { playBtn.textContent = '▶'; fill.style.width = '0%'; });
+      audio.addEventListener('ended', () => { playBtn.innerHTML = SVG_PLAY; fill.style.width = '0%'; });
       entry = { audio };
       voiceAudioCache.set(msgId, entry);
     }
@@ -409,12 +417,13 @@ function initVoiceFeatures() {
     voiceAudioCache.forEach((e, id) => {
       if (id !== msgId && !e.audio.paused) {
         e.audio.pause();
-        document.getElementById('voice-bubble-' + id)?.querySelector('.voice-msg-play')?.replaceChildren(document.createTextNode('▶'));
+        const otherBtn = document.getElementById('voice-bubble-' + id)?.querySelector('.voice-msg-play');
+        if (otherBtn) otherBtn.innerHTML = SVG_PLAY;
       }
     });
 
-    if (entry.audio.paused) { entry.audio.play(); playBtn.textContent = '⏸'; }
-    else { entry.audio.pause(); playBtn.textContent = '▶'; }
+    if (entry.audio.paused) { entry.audio.play(); playBtn.innerHTML = SVG_PAUSE; }
+    else { entry.audio.pause(); playBtn.innerHTML = SVG_PLAY; }
   };
 
   async function renderVoiceMessage(msg) {
@@ -448,10 +457,10 @@ function initVoiceFeatures() {
     const displayName = msg.display_name || msg.username || 'Unknown';
     const bubble = `
       <div class="voice-msg-bubble" id="voice-bubble-${msg.id}">
-        <button class="voice-msg-play" onclick="window.__playVoiceMsg('${msg.id}')">▶</button>
+        <button class="voice-msg-play" onclick="window.__playVoiceMsg('${msg.id}')">${SVG_PLAY}</button>
         <div class="voice-msg-bar"><div class="voice-msg-bar-fill"></div></div>
         <span class="voice-msg-duration">${fmtDuration(msg.duration)}</span>
-        <span class="voice-msg-lock" title="End-to-end encrypted">🔒</span>
+        <span class="voice-msg-lock" title="End-to-end encrypted">${SVG_LOCK}</span>
       </div>`;
 
     const row = document.createElement('div');
@@ -707,7 +716,7 @@ function initVoiceFeatures() {
       if (typeof Ringtone !== 'undefined') Ringtone.stop();
       overlay.classList.remove('open');
       callBar.classList.add('open');
-      document.getElementById('call-bar-lock').textContent = insertableStreamsSupported ? '🔒' : '🔓';
+      document.getElementById('call-bar-lock').innerHTML = insertableStreamsSupported ? SVG_LOCK : SVG_UNLOCK;
       document.getElementById('call-bar-lock').title = insertableStreamsSupported
         ? 'End-to-end encrypted (frame-level E2EE + DTLS-SRTP)'
         : 'Encrypted via standard WebRTC (DTLS-SRTP); frame-level E2EE unsupported in this browser';

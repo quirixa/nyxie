@@ -2,7 +2,9 @@
 // directory the process was started from (e.g. `node server/server.js`
 // from the project root, vs `cd server && node server.js` — both should
 // find the same .env).
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({
+  path: require('path').join(__dirname, '..', '.env')
+});
 
 const express = require('express');
 const path = require('path');
@@ -33,13 +35,25 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
+// ── Reverse proxy configuration ─────────────────────────────────
+//
+// Nyxie may run behind a reverse proxy such as Render's proxy.
+// The proxy forwards the original client IP using X-Forwarded-For.
+//
+// Trust only the first proxy hop. This allows Express and
+// express-rate-limit to correctly determine the real client IP
+// without blindly trusting arbitrary forwarded headers.
+app.set('trust proxy', 1);
+
 // ── Rate limiting ────────────────────────────────────────────────
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
+  message: {
+    error: 'Too many requests, please try again later.'
+  }
 });
 
 const authLimiter = rateLimit({
@@ -47,14 +61,20 @@ const authLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many login attempts, please try again later.' }
+  message: {
+    error: 'Too many login attempts, please try again later.'
+  }
 });
 
-// ── Security headers ───────────────────────────────────────────────
+// ── Security headers ─────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader(
+    'Referrer-Policy',
+    'strict-origin-when-cross-origin'
+  );
+
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; " +
@@ -65,6 +85,7 @@ app.use((req, res, next) => {
     "connect-src 'self' ws: wss:; " +
     "frame-ancestors 'none';"
   );
+
   next();
 });
 
@@ -73,20 +94,42 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static(PUBLIC_DIR));
 
 // ─── Serve uploaded media (avatars / banners / uploads) ──────────
-app.use('/avatars', express.static(path.join(DATA_DIR, 'avatars')));
-app.use('/banners', express.static(path.join(DATA_DIR, 'banners')));
+app.use(
+  '/avatars',
+  express.static(path.join(DATA_DIR, 'avatars'))
+);
+
+app.use(
+  '/banners',
+  express.static(path.join(DATA_DIR, 'banners'))
+);
+
 // Custom route (not express.static) — decides Content-Type/Disposition
 // per file instead of letting the browser sniff/render whatever an
 // uploaded file's extension claims. See routes/uploadServe.js.
-app.use('/uploads', require('./routes/uploadServe'));
+app.use(
+  '/uploads',
+  require('./routes/uploadServe')
+);
 
-// ── Upload route ────────────────────────────────────────────────────
-app.use('/api/upload', require('./routes/uploads'));
+// ── Upload route ─────────────────────────────────────────────────
+app.use(
+  '/api/upload',
+  require('./routes/uploads')
+);
 
 // ── Rate-limited API routes ──────────────────────────────────────
 app.use('/api/', globalLimiter);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+
+app.use(
+  '/api/auth/login',
+  authLimiter
+);
+
+app.use(
+  '/api/auth/register',
+  authLimiter
+);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -95,36 +138,60 @@ app.use('/api/servers', serverRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/wallet', walletRoutes);
 
-// ── Dev-only test funding (spec section 17) — never mounted in prod ─
+// ── Dev-only test funding — never mounted in production ──────────
 if (process.env.NODE_ENV !== 'production') {
-  app.use('/api/dev', require('./routes/dev'));
+  app.use(
+    '/api/dev',
+    require('./routes/dev')
+  );
 }
 
-// ── Health check ───────────────────────────────────────────────────
+// ── Health check ─────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// ── SPA fallback ───────────────────────────────────────────────────
-// All non-API, non-asset routes fall back to index.html so the SPA router can handle them.
-app.get(/^\/(?!api\/|avatars\/|banners\/|uploads\/|health).*/, (req, res, next) => {
-  // If the path has a file extension, it's a static asset that 404'd – don't mask it.
-  if (path.extname(req.path)) return next();
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
-});
+// ── SPA fallback ─────────────────────────────────────────────────
+//
+// All non-API, non-asset routes fall back to index.html so the SPA
+// router can handle them.
+app.get(
+  /^\/(?!api\/|avatars\/|banners\/|uploads\/|health).*/,
+  (req, res, next) => {
+    // If the path has a file extension, it's a static asset that
+    // 404'd — don't mask it.
+    if (path.extname(req.path)) {
+      return next();
+    }
 
-// ── 404 & global error handler ───────────────────────────────────
+    res.sendFile(
+      path.join(PUBLIC_DIR, 'index.html')
+    );
+  }
+);
+
+// ── 404 handler ──────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).json({
+    error: 'Not found'
+  });
 });
 
+// ── Global error handler ─────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+
+  res.status(500).json({
+    error: 'Internal server error'
+  });
 });
 
-// ── WebSocket setup ────────────────────────────────────────────────
+// ── WebSocket setup ──────────────────────────────────────────────
 const { broadcast, broadcastToUser } = setupWebSocket(server);
+
 app.locals.broadcast = broadcast;
 app.locals.broadcastToUser = broadcastToUser;
 
@@ -132,17 +199,26 @@ app.locals.broadcastToUser = broadcastToUser;
 getUserDb()
   .then(() => {
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(
+        `Server running on http://localhost:${PORT}`
+      );
     });
   })
   .catch(err => {
-    console.error('Failed to initialize database:', err);
+    console.error(
+      'Failed to initialize database:',
+      err
+    );
+
     process.exit(1);
   });
 
-// ── Graceful shutdown ────────────────────────────────────────────
+// ── Graceful shutdown ─────────────────────────────────────────────
 function shutdown(signal) {
-  console.log(`${signal} received, shutting down gracefully`);
+  console.log(
+    `${signal} received, shutting down gracefully`
+  );
+
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -151,3 +227,4 @@ function shutdown(signal) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+

@@ -743,12 +743,12 @@ function initDashboardView() {
             if (dm) {
               (async () => {
                 let preview = m.msg_type === 'voice'
-                  ? '🎤 Voice message'
+                  ? 'Voice message'
                   : await decryptDmPreview(m.content, m.nonce, dm._otherId);
                 if (!preview && m.attachments && m.attachments.length) {
-                  preview = '📎 Attachment';
+                  preview = 'Attachment';
                 }
-                dm.last_message = preview || '📎 Attachment';
+                dm.last_message = preview || 'Attachment';
                 dm.last_message_at = m.created_at;
                 dms = [dm, ...dms.filter(d => d.id !== dm.id)];
                 renderDMList();
@@ -1113,11 +1113,11 @@ function initDashboardView() {
     if (!nonce) return content;
     const pub = otherPublicKey || (otherId ? await getPublicKey(otherId) : null);
     const priv = localStorage.getItem('nyxie_private_key_' + currentUser.id);
-    if (!pub || !priv) return '🔒 Encrypted message';
+    if (!pub || !priv) return 'Encrypted message';
     const sharedKey = deriveSharedKey(pub, priv);
-    if (!sharedKey) return '🔒 Shared key failed';
+    if (!sharedKey) return 'Shared key failed';
     const decrypted = decryptMessage(content, nonce, sharedKey);
-    return decrypted !== null ? decrypted : '🔒 Encrypted message';
+    return decrypted !== null ? decrypted : 'Encrypted message';
   }
 
   async function loadDMs() {
@@ -1134,17 +1134,29 @@ function initDashboardView() {
       }
       if (dm.last_message_nonce) {
         let preview = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey);
-        if (!preview) preview = '📎 Attachment';
+        if (!preview) preview = 'Attachment';
         dm.last_message = preview;
       } else if (dm.last_message_at) {
         // There was a last message but it has no content (e.g. attachment-only)
-        dm.last_message = dm.last_message || '📎 Attachment';
+        dm.last_message = dm.last_message || 'Attachment';
       }
     }));
     dms = fresh;
     renderDMList();
     dms.forEach(d => wsJoin(d.id));
   }
+
+  // Small stroke-style icon prefixes for the fixed status labels that
+  // stand in for dm.last_message (see loadDMs / decryptDmPreview / the
+  // WS handler above) when there's no plaintext to show — matched
+  // exactly, not by substring, so real message text starting with the
+  // same words is never mistaken for one of these.
+  const DM_PREVIEW_ICONS = {
+    'Voice message': '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 11z"/></svg>',
+    'Attachment': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 1 1 4.24 4.24L9.41 17.41a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg>',
+    'Encrypted message': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    'Shared key failed': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+  };
 
   function renderDMList() {
     const list = document.getElementById('dm-list');
@@ -1156,7 +1168,12 @@ function initDashboardView() {
       const name = dm.display_name || dm.name || 'Unknown';
       const status = dm._status || 'offline';
       const unread = unreadCounts[dm.id] || 0;
-      const preview = dm.last_message ? escapeHtml(dm.last_message.slice(0, 50)) : '<i style="color:var(--text-muted)">No messages yet</i>';
+      const previewIcon = dm.last_message ? DM_PREVIEW_ICONS[dm.last_message] : null;
+      const preview = dm.last_message
+        ? (previewIcon
+          ? `<span style="display:inline-flex;align-items:center;gap:4px;">${previewIcon}${escapeHtml(dm.last_message)}</span>`
+          : escapeHtml(dm.last_message.slice(0, 50)))
+        : '<i style="color:var(--text-muted)">No messages yet</i>';
       const time = dm.last_message_at ? fmtTime(dm.last_message_at) : '';
       const isActive = currentRoom?.id === dm.id;
       let avatarHtml = name[0].toUpperCase();
@@ -1271,7 +1288,7 @@ function initDashboardView() {
       const thumb = isImage ? URL.createObjectURL(f) : '';
       return `
         <div class="attachment-chip" style="position:relative;display:flex;align-items:center;gap:6px;background:var(--bg-tertiary);padding:6px 10px;border-radius:8px;flex-shrink:0;border:1px solid var(--border-color);">
-          ${isImage ? `<img src="${thumb}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" />` : `<span style="font-size:1.2rem;">📎</span>`}
+          ${isImage ? `<img src="${thumb}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" />` : `<span style="display:inline-flex;color:var(--text-muted);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 1 1 4.24 4.24L9.41 17.41a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg></span>`}
           <span style="font-size:.8rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</span>
           <button onclick="window.removeAttachment(${i})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;line-height:1;padding:0 4px;">×</button>
         </div>`;
@@ -1478,7 +1495,7 @@ function initDashboardView() {
     scrollToBottom();
     const dmObj = dms.find(d => d.id === currentRoom.id);
     if (dmObj) {
-      dmObj.last_message = plaintext || '📎 Attachment';
+      dmObj.last_message = plaintext || 'Attachment';
       dmObj.last_message_at = Date.now();
       dms = [dmObj, ...dms.filter(d => d.id !== dmObj.id)];
       renderDMList();
@@ -1540,7 +1557,7 @@ function initDashboardView() {
         // bottom through that pop-in for anyone who was already there.
         html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="window.open(this.src,'_blank')" />`;
       } else {
-        html += `<a href="${escapeHtml(a.url)}" target="_blank" style="color:var(--accent);font-size:.85rem;">📎 ${escapeHtml(a.name)}</a>`;
+        html += `<a href="${escapeHtml(a.url)}" target="_blank" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 1 1 4.24 4.24L9.41 17.41a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
       }
     }
     html += '</div>';

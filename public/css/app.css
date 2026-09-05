@@ -43,18 +43,34 @@ html, body, #app-root {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  background: #111;
-  color: #fff;
+  gap: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   text-align: center;
   padding: 24px;
 }
-.route-error h1 { font-size: 1.4rem; }
-.route-error p { color: #a1a1aa; max-width: 420px; }
+.route-error .route-error-glyph {
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -3px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  user-select: none;
+}
+.route-error h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 2px; }
+.route-error p { color: var(--text-secondary); max-width: 380px; margin-bottom: 8px; }
 .route-error a {
-  color: #fd6671;
+  display: inline-block;
+  margin-top: 8px;
+  padding: 9px 18px;
+  border-radius: var(--radius, 8px);
+  background: var(--accent);
+  color: #fff;
   text-decoration: none;
   font-weight: 600;
+  font-size: 14px;
+  transition: background 0.15s ease;
 }
-.route-error a:hover { text-decoration: underline; }
+.route-error a:hover { background: var(--accent-hover); text-decoration: none; }

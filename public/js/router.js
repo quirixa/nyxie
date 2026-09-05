@@ -80,12 +80,23 @@ const router = (() => {
   }
 
   function renderNotFound() {
-    root().innerHTML = `
-      <div class="route-error">
-        <h1>Page not found</h1>
-        <p>That page doesn't exist.</p>
-        <a href="/" data-link>Back home</a>
-      </div>`;
+    const tpl = document.getElementById('tpl-404');
+    root().innerHTML = '';
+    if (tpl) {
+      root().appendChild(tpl.content.cloneNode(true));
+      if (typeof applyTheme === 'function') applyTheme();
+      if (typeof applyAccent === 'function') applyAccent();
+    } else {
+      // Fallback in case the template is ever missing from the page.
+      root().innerHTML = `
+        <div class="route-error">
+          <div class="route-error-glyph">404</div>
+          <h1>This room doesn't exist</h1>
+          <p>The page you're looking for was moved, deleted, or never existed.</p>
+          <a href="/" data-link class="no-accent">Back to Nyxie</a>
+        </div>`;
+    }
+    current = null;
   }
 
   async function render(path) {
