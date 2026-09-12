@@ -82,6 +82,13 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "font-src https://fonts.gstatic.com; " +
     "img-src 'self' blob: data:; " +
+    // Voice messages are recorded/played back as `blob:` object URLs
+    // (MediaRecorder -> Blob -> URL.createObjectURL) and previously
+    // recorded messages are decrypted client-side into a Blob too — so
+    // <audio> playback needs blob: allowed here. media-src isn't covered
+    // by img-src, and without it explicitly set it falls back to
+    // default-src 'self', which blocks blob: audio entirely.
+    "media-src 'self' blob:; " +
     "connect-src 'self' ws: wss:; " +
     "frame-ancestors 'none';"
   );

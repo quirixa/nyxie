@@ -91,6 +91,38 @@ function initVoiceFeatures() {
     return `${m}:${String(sec).padStart(2, '0')}`;
   }
 
+  // Preferred recording formats, best first. WebM/Opus is what every
+  // Chromium/Firefox browser supports and gives the best size/quality,
+  // but Safari (desktop + iOS) doesn't support WebM containers at all —
+  // MediaRecorder there only understands MP4/AAC. Ogg/Opus is included
+  // as a middle fallback for older Firefox builds that don't do WebM.
+  // Checked in order at record time via MediaRecorder.isTypeSupported()
+  // rather than hardcoding one, so we never hand MediaRecorder a type
+  // it will throw NotSupportedError on.
+  const VOICE_MIME_CANDIDATES = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+    'audio/aac'
+  ];
+
+  // Returns the first MIME type this browser's MediaRecorder can
+  // actually record, or null if MediaRecorder/voice recording isn't
+  // supported at all (very old browsers, some embedded webviews).
+  function pickRecordingMimeType() {
+    if (!window.MediaRecorder) return null;
+    for (const type of VOICE_MIME_CANDIDATES) {
+      try { if (MediaRecorder.isTypeSupported(type)) return type; } catch { /* keep trying */ }
+    }
+    // MediaRecorder exists but none of our candidates report as
+    // supported (isTypeSupported can be overly conservative on some
+    // browsers) — let MediaRecorder itself try with no mimeType, which
+    // makes it fall back to its own internal default.
+    return '';
+  }
+
   // Derive shared key for a room (same as dashboard.html)
   async function getVoiceSharedKey(roomId) {
     const dm = dms.find(d => d.id === roomId);
@@ -288,6 +320,16 @@ function initVoiceFeatures() {
       return;
     }
 
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast('Voice recording is not supported in this browser');
+      return;
+    }
+    const mimeType = pickRecordingMimeType();
+    if (mimeType === null) {
+      toast('Voice recording is not supported in this browser');
+      return;
+    }
+
     try {
       recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
@@ -310,9 +352,22 @@ function initVoiceFeatures() {
 
     recordedChunks = [];
     recordCancelled = false;
-    const mimeType = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))
-      ? 'audio/webm;codecs=opus' : 'audio/webm';
-    mediaRecorder = new MediaRecorder(recordStream, { mimeType });
+    try {
+      // An empty string means "let the browser pick its own default"
+      // (see pickRecordingMimeType) — MediaRecorder treats an explicit
+      // {mimeType: ''} the same as omitting the option entirely.
+      mediaRecorder = mimeType
+        ? new MediaRecorder(recordStream, { mimeType })
+        : new MediaRecorder(recordStream);
+    } catch {
+      // Belt-and-braces: isTypeSupported() said yes but the browser
+      // still refused (seen on some older WebViews). Release the mic
+      // instead of leaving it open with nothing recording.
+      recordStream.getTracks().forEach(t => t.stop());
+      recordStream = null;
+      toast('Voice recording is not supported in this browser');
+      return;
+    }
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.start();
     recordStartTime = Date.now();
@@ -354,7 +409,14 @@ function initVoiceFeatures() {
       return;
     }
 
-    const blob = new Blob(recordedChunks, { type: recorder.mimeType || 'audio/webm' });
+    // recorder.mimeType is what the browser actually recorded with
+    // (may differ slightly from what we requested — e.g. the browser
+    // fills in a default codec), so that's the value used for the
+    // Blob *and* the one sent to the server, rather than assuming
+    // webm/opus. This is what makes playback work correctly on
+    // browsers (Safari) that recorded audio/mp4 instead.
+    const actualMimeType = recorder.mimeType || 'audio/webm';
+    const blob = new Blob(recordedChunks, { type: actualMimeType });
     const bytes = new Uint8Array(await blob.arrayBuffer());
 
     const otherId = currentDmOtherId();
@@ -366,7 +428,7 @@ function initVoiceFeatures() {
     if (!sharedKey) { toast('🔒 Cannot send voice message — encryption keys unavailable'); return; }
     const { ciphertext, nonce } = encryptBinary(bytes, sharedKey);
     const res = await api('POST', `/rooms/${currentRoom.id}/messages`, {
-      type: 'voice', ciphertext, nonce, duration: Math.round(durationSec)
+      type: 'voice', ciphertext, nonce, duration: Math.round(durationSec), mimeType: actualMimeType
     });
     if (!res || res.error) { toast(res?.error || 'Failed to send voice message'); return; }
 
@@ -404,13 +466,18 @@ function initVoiceFeatures() {
       if (!sharedKey) { toast('🔒 Cannot decrypt voice message — keys unavailable'); return; }
       const bytes = decryptBinary(msg.content, msg.nonce, sharedKey);
       if (!bytes) { toast('🔒 Failed to decrypt voice message'); return; }
-      const blob = new Blob([bytes], { type: 'audio/webm' });
-      const audio = new Audio(URL.createObjectURL(blob));
+      // Use the MIME type the sender actually recorded with (stored
+      // server-side alongside the message) rather than assuming webm —
+      // a mismatch here is what breaks playback for e.g. a Safari
+      // sender's audio/mp4 clip on a recipient's browser: the bytes
+      // are fine, but a Blob mislabeled as audio/webm fails to decode.
+      const blobUrl = URL.createObjectURL(new Blob([bytes], { type: msg.mime_type || 'audio/webm' }));
+      const audio = new Audio(blobUrl);
       audio.addEventListener('timeupdate', () => {
         if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
       });
       audio.addEventListener('ended', () => { playBtn.innerHTML = SVG_PLAY; fill.style.width = '0%'; });
-      entry = { audio };
+      entry = { audio, blobUrl };
       voiceAudioCache.set(msgId, entry);
     }
 
@@ -843,6 +910,20 @@ function initVoiceFeatures() {
   _voiceRuntime.hangUp = hangUp;
   _voiceRuntime.stopRecordingAndSend = stopRecordingAndSend;
   _voiceRuntime.getMediaRecorder = () => mediaRecorder;
+  // Every played-back voice message holds a blob: URL (created above in
+  // window.__playVoiceMsg) that stays resident until explicitly revoked
+  // — the browser won't garbage-collect it on its own. Left unrevoked
+  // across a long session (or many DM navigations, since a fresh
+  // #view-app mount gets a fresh voiceAudioCache) these accumulate
+  // indefinitely. Pause playback and revoke them all when the view is
+  // torn down.
+  _voiceRuntime.cleanupVoicePlayback = () => {
+    voiceAudioCache.forEach(entry => {
+      try { entry.audio.pause(); } catch (e) {}
+      try { URL.revokeObjectURL(entry.blobUrl); } catch (e) {}
+    });
+    voiceAudioCache.clear();
+  };
 }
 window.initVoiceFeatures = initVoiceFeatures;
 
@@ -855,6 +936,7 @@ function destroyVoiceFeatures() {
   try { if (_voiceRuntime.chatObserver) _voiceRuntime.chatObserver.disconnect(); } catch (e) {}
   try { if (_voiceRuntime.getMediaRecorder && _voiceRuntime.getMediaRecorder()) _voiceRuntime.stopRecordingAndSend(true); } catch (e) {}
   try { if (_voiceRuntime.hangUp) _voiceRuntime.hangUp(); } catch (e) {}
+  try { if (_voiceRuntime.cleanupVoicePlayback) _voiceRuntime.cleanupVoicePlayback(); } catch (e) {}
   for (const k of Object.keys(_voiceRuntime)) delete _voiceRuntime[k];
 }
 window.destroyVoiceFeatures = destroyVoiceFeatures;

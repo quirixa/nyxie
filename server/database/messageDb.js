@@ -39,6 +39,7 @@ async function getMessageDb() {
       nonce TEXT,
       msg_type TEXT DEFAULT 'text',
       duration INTEGER,
+      mime_type TEXT,
       created_at INTEGER NOT NULL,
       edited_at INTEGER,
       deleted INTEGER DEFAULT 0
@@ -56,6 +57,14 @@ async function getMessageDb() {
   try { db.run("ALTER TABLE messages ADD COLUMN msg_type TEXT DEFAULT 'text'"); } catch (e) {}
   // duration: length of a voice message in whole seconds (voice only).
   try { db.run("ALTER TABLE messages ADD COLUMN duration INTEGER"); } catch (e) {}
+  // mime_type: the actual MIME type MediaRecorder produced for a voice
+  // message (e.g. 'audio/webm;codecs=opus', or 'audio/mp4' on Safari,
+  // which doesn't support webm). Recorded per-message rather than
+  // assumed, since different senders' browsers can pick different
+  // formats — the client needs this to reconstruct a valid Blob on
+  // playback instead of guessing/hardcoding a type that may not match
+  // what was actually recorded.
+  try { db.run("ALTER TABLE messages ADD COLUMN mime_type TEXT"); } catch (e) {}
   // attachments: JSON-encoded array of {name, url, type} for uploaded files.
   try { db.run("ALTER TABLE messages ADD COLUMN attachments TEXT"); } catch (e) {}
   // mentions: JSON-encoded array of user IDs pinged by this message

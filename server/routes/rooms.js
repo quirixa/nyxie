@@ -159,7 +159,7 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
 
   const messages = allMessages(msgDb, `
-    SELECT id, room_id, user_id, content, nonce, msg_type, duration, attachments, mentions, reply_to_id, created_at, edited_at, deleted
+    SELECT id, room_id, user_id, content, nonce, msg_type, duration, mime_type, attachments, mentions, reply_to_id, created_at, edited_at, deleted
     FROM messages
     WHERE room_id = ? AND created_at < ?
     ORDER BY created_at DESC
@@ -203,7 +203,7 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
     }
   }
 
-  const { content, ciphertext, nonce, type, duration, attachments, reply_to_id } = req.body;
+  const { content, ciphertext, nonce, type, duration, mimeType, attachments, reply_to_id } = req.body;
   const msgType = type === 'voice' ? 'voice' : 'text';
   const msgDb = await getMessageDb();
 
@@ -266,10 +266,20 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
     }
     const msgDuration = Number.isFinite(duration) ? Math.max(0, Math.round(duration)) : null;
 
+    // The recorded MIME type is client-controlled and gets echoed back
+    // (and later handed to `new Blob([...], { type })` on every
+    // recipient's device), so constrain it to a plausible audio MIME
+    // string rather than storing whatever the client sends verbatim.
+    // Falls back to the historical default if missing/invalid so old
+    // clients (and any pre-migration rows) keep working.
+    const cleanMimeType = (typeof mimeType === 'string' && /^audio\/[a-zA-Z0-9.+-]+(;\s*codecs=[a-zA-Z0-9.,="]+)?$/.test(mimeType))
+      ? mimeType.slice(0, 100)
+      : 'audio/webm';
+
     const msgId = crypto.randomUUID();
     const now = Date.now();
-    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, cleanReplyToId, now]);
+    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, mime_type, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, cleanMimeType, cleanReplyToId, now]);
 
     const message = {
       id: msgId,
@@ -278,6 +288,7 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
       nonce,
       msg_type: 'voice',
       duration: msgDuration,
+      mime_type: cleanMimeType,
       created_at: now,
       user_id: req.user.id,
       username: req.user.username,

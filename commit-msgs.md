@@ -1,98 +1,77 @@
-# Nyxie E2EE Attachments
+fix(voice): allow blob: audio playback under CSP and match recorded/stored MIME types
 
-Adds client-side end-to-end encryption for Nyxie attachments.
+Voice messages failed to play with:
 
-## What's Included
+    Loading media from 'blob:https://nyxie.ethiodeploy.com/...' violates
+    the following Content Security Policy directive: "default-src 'self'".
+    Note that 'media-src' was not explicitly set, so 'default-src' is
+    used as a fallback.
 
-* Client-side encryption for image and file attachments
-* E2EE voice messages
-* Per-attachment encryption keys
-* Encrypted attachment metadata
-* Authenticated encryption with nonce protection
-* Server stores encrypted attachment ciphertext instead of plaintext
-* Existing E2EE text messaging remains unchanged
-* Attachment encryption and decryption tests
+    Uncaught (in promise) NotSupportedError: Failed to load because no
+    supported source was found.
 
-## Attachment Flow
+Root causes:
 
-```text
-File
-  |
-  v
-Client generates random encryption key
-  |
-  v
-Client encrypts file
-  |
-  v
-Encrypted ciphertext uploaded
-  |
-  v
-Server stores ciphertext
-  |
-  v
-E2EE message contains attachment metadata
-  |
-  v
-Recipient downloads ciphertext
-  |
-  v
-Recipient decrypts locally
-  |
-  v
-Original file
-```
+1. The CSP had no `media-src` directive, so `<audio>` blob: playback
+   fell back to `default-src 'self'`, which blocks `blob:` outright.
+2. Voice message playback always rebuilt the decrypted audio into a
+   `Blob` hardcoded as `type: 'audio/webm'`, regardless of what the
+   sender's browser actually recorded. Safari cannot record WebM at
+   all (MediaRecorder there only supports MP4/AAC), so any Safari
+   sender's clip was mislabeled on every recipient's device and
+   failed to decode.
+3. The recorded MIME type was never sent to or stored by the server,
+   so there was no way for playback to know a message's real format.
+4. Recording itself hardcoded a `'audio/webm'` fallback if Opus
+   wasn't supported, which throws in browsers (Safari) that support
+   neither WebM variant.
+5. Decrypted playback Blob URLs (`URL.createObjectURL`) were never
+   revoked, leaking for the life of the view.
 
-## Security Model
+Changes:
 
-The server should never have access to:
+- **server/server.js**: add `media-src 'self' blob:;` to the CSP.
+- **server/database/messageDb.js**, **server/database/messageDbPg.js**:
+  add a `mime_type` column (migrated via `ALTER TABLE ... IF NOT
+  EXISTS`-style guard) to persist the real recorded format per voice
+  message. Existing rows default to NULL; client falls back to
+  `audio/webm` for those.
+- **server/routes/rooms.js**: accept an optional `mimeType` on voice
+  message POSTs, validate it against a constrained audio-MIME regex
+  (falls back to `audio/webm` if missing/invalid — it's
+  client-controlled and gets echoed back to every recipient), store
+  it, and return/select it on every message read.
+- **public/js/voice.js**:
+  - `pickRecordingMimeType()`: tries WebM/Opus → WebM → Ogg/Opus →
+    MP4/AAC → AAC via `MediaRecorder.isTypeSupported`, falls back to
+    the browser's own default, and surfaces a clear "not supported"
+    toast if MediaRecorder is unavailable entirely.
+  - Wrap `MediaRecorder` construction in try/catch to release the mic
+    gracefully if construction still fails despite a supported-type
+    check.
+  - Send the recorder's actual `mimeType` alongside the message.
+  - Build playback Blobs using `msg.mime_type` from the server
+    instead of a hardcoded value.
+  - Revoke cached playback Blob URLs on view teardown
+    (`destroyVoiceFeatures`) to stop the leak.
 
-* Plaintext attachment contents
-* Attachment encryption keys
-* Plaintext E2EE message contents
+No changes to text/image/file/E2EE/WebSocket handling, upload routes,
+or UI/markup beyond what's required for voice playback.
 
-Attachments are encrypted before they are uploaded.
+Testing:
+- Local server boot + CSP header verified to include `media-src 'self'
+  blob:;`.
+- End-to-end DM round trip (register → DM → POST voice message → GET
+  messages) confirms a non-webm `mimeType` (simulated Safari
+  `audio/mp4` sender) persists correctly through insert and read.
+- Verified a malicious/invalid `mimeType` input safely falls back to
+  `audio/webm` server-side.
+- Regression-checked text messages, room list previews, and existing
+  API responses remain unaffected.
 
-> This implementation has not been independently audited and should be considered experimental. Do not use it for highly sensitive communications until the cryptographic design has been professionally reviewed.
-
-## Testing
-
-Run locally with:
-
-```bash
-npm install
-npm start
-```
-
-Then open:
-
-```text
-http://localhost:3000
-```
-
-Test with two separate accounts and verify:
-
-1. Text messages still work.
-2. Images can be encrypted, uploaded, downloaded, and decrypted.
-3. Voice messages work.
-4. Uploaded files are ciphertext on the server.
-5. Tampering with an encrypted attachment causes authentication or decryption to fail.
-6. The recipient can decrypt attachments while the server cannot.
-
-## Environment
-
-Create a `.env` file containing the required server secrets:
-
-```env
-PORT=3000
-JWT_SECRET=your-secret-here
-NODE_ENV=development
-```
-
-Never commit `.env` or plaintext uploaded data to the repository.
-
-## Status
-
-**Experimental — E2EE attachment implementation**
-
-This commit focuses on making Nyxie's media and attachment pipeline E2EE while preserving the existing application architecture.
+Files changed:
+- server/server.js
+- server/database/messageDb.js
+- server/database/messageDbPg.js
+- server/routes/rooms.js
+- public/js/voice.js
