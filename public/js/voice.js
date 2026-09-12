@@ -637,11 +637,28 @@ function initVoiceFeatures() {
     pc.getSenders().forEach(s => { if (s.track) setupSenderE2EE(s); });
   }
 
+  // Guards every WebSocket signaling send in the call flow. `ws` can be
+  // mid-reconnect (readyState CONNECTING) when a user hits "call" or
+  // "hang up" right after a network blip — calling send() on a socket
+  // that isn't OPEN yet throws InvalidStateError synchronously, which
+  // (uncaught, inside a click handler) would abort whatever call
+  // teardown/setup logic was running after it. This doesn't retry the
+  // send — the call just can't proceed without a live socket — but it
+  // fails safely instead of throwing.
+  function wsSend(payload) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      toast('Connection not ready — try again in a moment');
+      return false;
+    }
+    ws.send(JSON.stringify(payload));
+    return true;
+  }
+
   function createPeerConnection() {
     const conn = new RTCPeerConnection(RTC_CONFIG);
     conn.onicecandidate = (e) => {
       if (e.candidate && currentCallId) {
-        ws.send(JSON.stringify({ type: 'call_ice_candidate', call_id: currentCallId, candidate: e.candidate }));
+        wsSend({ type: 'call_ice_candidate', call_id: currentCallId, candidate: e.candidate });
       }
     };
     conn.ontrack = (e) => {
@@ -692,14 +709,18 @@ function initVoiceFeatures() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    ws.send(JSON.stringify({
+    const sent = wsSend({
       type: 'call_offer',
       target_user_id: otherId,
       room_id: currentRoom.id,
       call_id: currentCallId,
       sdp: offer.sdp,
       ephemeral_pubkey: bytesToB64(myEphemeral.publicKey)
-    }));
+    });
+    // The offer never reached the other side — tear down the
+    // outgoing-call UI/PC/mic we already set up above instead of
+    // leaving a "Calling…" screen up for a call nobody will ever answer.
+    if (!sent) { teardownCall(); return; }
   };
 
   async function acceptCall() {
@@ -722,24 +743,28 @@ function initVoiceFeatures() {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
-    ws.send(JSON.stringify({
+    const sent = wsSend({
       type: 'call_answer',
       call_id: currentCallId,
       sdp: answer.sdp,
       ephemeral_pubkey: bytesToB64(myEphemeral.publicKey)
-    }));
+    });
+    // The answer never reached the caller — nothing to stay "active"
+    // for, so tear down rather than showing a connected-looking UI
+    // for a call the other side never received an answer to.
+    if (!sent) { teardownCall(); return; }
 
     pendingOffer = null;
     showCallUI('active');
   }
 
   function rejectCall() {
-    if (currentCallId) ws.send(JSON.stringify({ type: 'call_reject', call_id: currentCallId }));
+    if (currentCallId) wsSend({ type: 'call_reject', call_id: currentCallId });
     teardownCall();
   }
 
   function hangUp() {
-    if (currentCallId) ws.send(JSON.stringify({ type: 'call_end', call_id: currentCallId }));
+    if (currentCallId) wsSend({ type: 'call_end', call_id: currentCallId });
     teardownCall();
   }
 
@@ -810,7 +835,7 @@ function initVoiceFeatures() {
 
   async function handleCallOffer(msg) {
     if (currentCallId) {
-      ws.send(JSON.stringify({ type: 'call_reject', call_id: msg.call_id }));
+      wsSend({ type: 'call_reject', call_id: msg.call_id });
       return;
     }
     currentCallId = msg.call_id;
