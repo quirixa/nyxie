@@ -847,6 +847,7 @@ function initDashboardView() {
             friendRequests.incoming = [r, ...friendRequests.incoming];
             updateFriendsBadge();
             if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
+            playNotificationSound();
             toast(`👋 ${r.from_name || r.from_username} sent you a friend request`);
           }
           break;
@@ -859,7 +860,7 @@ function initDashboardView() {
           if (f && !friends.find(x => x.id === f.id)) friends = [...friends, f];
           updateFriendsBadge();
           if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
-          if (f) toast(`✅ ${f.display_name || f.username} accepted your friend request`);
+          if (f) { playNotificationSound(); toast(`✅ ${f.display_name || f.username} accepted your friend request`); }
           break;
         }
 
@@ -2662,7 +2663,11 @@ function initDashboardView() {
           <div class="fr-sub">@${escapeHtml(f.username)} · ${f.status||'offline'}</div>
         </div>
         <div class="fr-actions">
-          <button class="fr-btn" onclick="event.stopPropagation();messageFriend('${f.id}','${escapeJs(name)}')">💬</button>
+          <button class="fr-btn" onclick="event.stopPropagation();messageFriend('${f.id}','${escapeJs(name)}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>
+          </button>
           <button class="fr-btn decline" onclick="event.stopPropagation();removeFriend('${f.id}')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"/>
