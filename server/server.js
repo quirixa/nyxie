@@ -16,6 +16,9 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roomRoutes = require('./routes/rooms');
 const serverRoutes = require('./routes/servers');
+const channelRoutes = require('./routes/channels');
+const inviteRoutes = require('./routes/invites');
+const groupRoutes = require('./routes/groups');
 const friendRoutes = require('./routes/friends');
 const walletRoutes = require('./routes/wallet');
 const marketplaceRoutes = require('./routes/marketplace');
@@ -140,10 +143,40 @@ app.use(
   authLimiter
 );
 
+// Servers, invites, and groups all have creation/join endpoints that are
+// cheap to call and abusable (spamming servers, brute-forcing invite
+// codes, mass-adding to groups) — cap those more tightly than the
+// general 1000/15min API limit.
+const creationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' }
+});
+const inviteJoinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many invite attempts, please slow down.' }
+});
+
+app.use(['/api/servers', '/api/groups'], (req, res, next) => {
+  if (req.method === 'POST' && (req.path === '/' || /^\/[^/]+\/(invites|channels|members)$/.test(req.path))) {
+    return creationLimiter(req, res, next);
+  }
+  next();
+});
+app.use('/api/invites/:code/join', inviteJoinLimiter);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/servers', serverRoutes);
+app.use('/api/channels', channelRoutes);
+app.use('/api/invites', inviteRoutes);
+app.use('/api/groups', groupRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/marketplace', marketplaceRoutes);

@@ -397,6 +397,12 @@ function initDashboardView() {
   // @mention autocomplete and, via mnActive, tells the compose box which
   // usernames are real users worth resolving into a mention on send.
   let currentRoomMembers = [];
+  // ─── Servers & Group Chats state ───────────────────────────
+  let servers = [];              // servers I'm a member of, from GET /servers
+  let currentServerId = null;    // server currently shown in the sidebar, or null (DM view)
+  let serverChannels = [];       // channels of currentServerId, from GET /servers/:id/channels
+  let currentServerRoles = [];   // roles of currentServerId, cached for the members/role picker
+  let joinPreviewInvite = null;  // last invite preview shown in the "Join a Server" tab
   // Dedupes the notification sound when the same message reaches us
   // through both the room broadcast ('new_message') and the dedicated
   // ('mention') ping — see both handlers below. Capped and trimmed so it
@@ -651,8 +657,8 @@ function initDashboardView() {
     chAvatar.innerHTML = '';
     chAvatar.textContent = name[0].toUpperCase();
     chAvatar.style.background = hashColor(name);
-    document.getElementById('chat-room-name-text').textContent = '@' + name;
-    document.getElementById('msg-input').placeholder = 'Message @' + name;
+    document.getElementById('chat-room-name-text').textContent = room.is_group ? name : ('@' + name);
+    document.getElementById('msg-input').placeholder = 'Message ' + (room.is_group ? name : ('@' + name));
 
     if (room._otherId) {
       api('GET', `/users/${room._otherId}`).then(udata => {
@@ -916,6 +922,124 @@ function initDashboardView() {
 
         case 'connected':
           break;
+
+        // ─── Servers ───────────────────────────────────────
+        case 'server_joined': {
+          loadServers();
+          break;
+        }
+        case 'server_member_joined': {
+          if (currentServerId === msg.server_id) renderServerMembersIfOpen();
+          break;
+        }
+        case 'server_updated': {
+          const idx = servers.findIndex(s => s.id === msg.server.id);
+          if (idx !== -1) servers[idx] = { ...servers[idx], ...msg.server };
+          renderServerRail();
+          if (currentServerId === msg.server.id) {
+            document.getElementById('server-panel-name').textContent = msg.server.name;
+          }
+          break;
+        }
+        case 'server_deleted':
+        case 'server_left': {
+          servers = servers.filter(s => s.id !== msg.server_id);
+          renderServerRail();
+          if (currentServerId === msg.server_id) { showDMView(); toast('You are no longer in that server'); }
+          break;
+        }
+        case 'server_member_left':
+        case 'server_member_kicked':
+        case 'server_member_banned': {
+          if (msg.user_id === currentUser.id && msg.server_id) {
+            servers = servers.filter(s => s.id !== msg.server_id);
+            renderServerRail();
+            if (currentServerId === msg.server_id) {
+              showDMView();
+              toast(msg.type === 'server_member_kicked' ? 'You were kicked from that server' : msg.type === 'server_member_banned' ? 'You were banned from that server' : 'You left that server');
+            }
+          } else if (currentServerId === msg.server_id) {
+            renderServerMembersIfOpen();
+          }
+          break;
+        }
+        case 'server_member_updated': {
+          if (currentServerId === msg.server_id) renderServerMembersIfOpen();
+          break;
+        }
+        case 'server_role_created':
+        case 'server_role_updated':
+        case 'server_role_deleted': {
+          if (currentServerId === msg.server_id) loadServerRoles();
+          break;
+        }
+        case 'channel_created': {
+          if (currentServerId === msg.server_id && !serverChannels.find(c => c.id === msg.channel.id)) {
+            serverChannels = [...serverChannels, msg.channel].sort((a, b) => (a.position || 0) - (b.position || 0));
+            renderChannelList();
+          }
+          break;
+        }
+        case 'channel_updated': {
+          if (currentServerId === msg.server_id) {
+            const ci = serverChannels.findIndex(c => c.id === msg.channel.id);
+            if (ci !== -1) { serverChannels[ci] = { ...serverChannels[ci], ...msg.channel }; renderChannelList(); }
+            if (currentRoom?.id === msg.channel.id) {
+              document.getElementById('chat-room-name-text').textContent = '# ' + msg.channel.name;
+            }
+          }
+          break;
+        }
+        case 'channel_deleted': {
+          if (currentServerId === msg.server_id) {
+            serverChannels = serverChannels.filter(c => c.id !== msg.channel_id);
+            renderChannelList();
+            if (currentRoom?.id === msg.channel_id) {
+              currentRoom = null;
+              document.getElementById('chat-view').style.display = 'none';
+            }
+          }
+          break;
+        }
+
+        // ─── Group chats ───────────────────────────────────
+        case 'group_created': {
+          if (!dms.find(d => d.id === msg.group.id)) {
+            dms = [{ ...msg.group, id: msg.group.id, is_dm: 1, is_group: 1, display_name: msg.group.name, _avatar: msg.group.icon || null }, ...dms];
+            renderDMList();
+            wsJoin(msg.group.id);
+            toast(`Added to group "${msg.group.name}"`);
+          }
+          break;
+        }
+        case 'group_updated': {
+          const idx = dms.findIndex(d => d.id === msg.group.id);
+          if (idx !== -1) {
+            dms[idx] = { ...dms[idx], name: msg.group.name, display_name: msg.group.name, icon: msg.group.icon, _avatar: msg.group.icon || null };
+            renderDMList();
+          }
+          if (currentRoom?.id === msg.group.id) {
+            document.getElementById('chat-room-name-text').textContent = msg.group.name;
+          }
+          break;
+        }
+        case 'group_member_added':
+        case 'group_member_removed':
+        case 'group_member_left': {
+          if (msg.type !== 'group_member_added' && msg.user_id === currentUser.id) {
+            dms = dms.filter(d => d.id !== msg.group_id);
+            renderDMList();
+            if (currentRoom?.id === msg.group_id) { currentRoom = null; document.getElementById('chat-view').style.display = 'none'; }
+            toast('You left the group');
+          }
+          break;
+        }
+        case 'group_deleted': {
+          dms = dms.filter(d => d.id !== msg.group_id);
+          renderDMList();
+          if (currentRoom?.id === msg.group_id) { currentRoom = null; document.getElementById('chat-view').style.display = 'none'; toast('This group was deleted'); }
+          break;
+        }
       }
     };
 
@@ -1162,6 +1286,8 @@ function initDashboardView() {
         dm._status = udata?.user?.status || 'offline';
         dm._avatar = udata?.user?.avatar || null;
         otherPublicKey = udata?.user?.public_key || null;
+      } else if (dm.is_group) {
+        dm._avatar = dm.icon || null;
       }
       if (dm.last_message_nonce) {
         let preview = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey);
@@ -1219,7 +1345,7 @@ function initDashboardView() {
         ${chk}
         <div class="dm-avatar-wrap">
           ${dmAvatar}
-          <div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>
+          ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
         </div>
         <div class="dm-content">
           <div class="dm-top">
@@ -2877,6 +3003,7 @@ function initDashboardView() {
       if (typeof initVoiceFeatures === 'function') { try { initVoiceFeatures(); } catch (e) { console.error('Voice feature init failed:', e); } }
       await loadDMs();
       await loadFriendsData();
+      await loadServers();
       // Set by router.js's '/wallets' or '/app/rooms/:roomId' route
       // before calling initDashboardView() — lets a direct navigation,
       // page refresh, or browser back/forward land on that specific
@@ -3008,6 +3135,558 @@ function initDashboardView() {
   window.searchFriendUsers = searchFriendUsers;
   window.toggleDMSelect = toggleDMSelect;
   window.deleteSelectedChats = deleteSelectedChats;
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  SERVERS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  async function loadServers() {
+    const data = await api('GET', '/servers');
+    if (!data) return;
+    servers = data.servers || [];
+    renderServerRail();
+  }
+
+  function renderServerRail() {
+    const list = document.getElementById('server-rail-list');
+    if (!list) return;
+    list.innerHTML = servers.map(s => {
+      const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+      const inner = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
+      return `<div class="server-pill${currentServerId === s.id ? ' active' : ''}" data-server-id="${s.id}"
+        onclick="selectServer('${s.id}')" title="${escapeHtml(s.name)}">${inner}</div>`;
+    }).join('');
+    document.getElementById('server-pill-home').classList.toggle('active', !currentServerId);
+  }
+
+  function showDMView() {
+    currentServerId = null;
+    currentRoom = null;
+    document.getElementById('server-panel').classList.add('hidden');
+    document.getElementById('conv-header').classList.remove('hidden');
+    document.getElementById('search-wrap').classList.remove('hidden');
+    document.getElementById('dm-section').style.display = '';
+    document.getElementById('chat-view').style.display = 'none';
+    renderServerRail();
+    navigateTo('home');
+  }
+
+  async function selectServer(serverId) {
+    currentServerId = serverId;
+    currentRoom = null;
+    document.getElementById('welcome-view').style.display = 'none';
+    document.getElementById('friends-panel').style.display = 'none';
+    document.getElementById('saved-notes-panel').style.display = 'none';
+    document.getElementById('wallet-panel').style.display = 'none';
+    document.getElementById('notifications-panel').style.display = 'none';
+    document.getElementById('chat-view').style.display = 'none';
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+    document.getElementById('conv-header').classList.add('hidden');
+    document.getElementById('search-wrap').classList.add('hidden');
+    document.getElementById('dm-section').style.display = 'none';
+    document.getElementById('server-panel').classList.remove('hidden');
+    renderServerRail();
+
+    const server = servers.find(s => s.id === serverId);
+    document.getElementById('server-panel-name').textContent = server?.name || 'Server';
+    document.getElementById('channel-list').innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">Loading…</div>`;
+
+    await loadServerChannels(serverId);
+    await loadServerRoles();
+    if (serverChannels.length) openChannel(serverChannels[0].id);
+  }
+
+  async function loadServerChannels(serverId) {
+    const data = await api('GET', `/servers/${serverId}/channels`);
+    serverChannels = data?.channels || [];
+    serverChannels.forEach(c => (c.server_id = serverId));
+    renderChannelList();
+    serverChannels.forEach(c => wsJoin(c.id));
+  }
+
+  async function loadServerRoles() {
+    if (!currentServerId) return;
+    const data = await api('GET', `/servers/${currentServerId}/roles`);
+    currentServerRoles = data?.roles || [];
+  }
+
+  function renderChannelList() {
+    const list = document.getElementById('channel-list');
+    if (!serverChannels.length) {
+      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">No channels yet</div>`;
+      return;
+    }
+    list.innerHTML = serverChannels.map(c => `
+      <div class="channel-item${currentRoom?.id === c.id ? ' active' : ''}" data-channel-id="${c.id}" onclick="openChannel('${c.id}')">
+        <span class="channel-hash">#</span><span>${escapeHtml(c.name)}</span>
+      </div>
+    `).join('');
+  }
+
+  function openChannel(channelId) {
+    const channel = serverChannels.find(c => c.id === channelId);
+    if (!channel) return toast('Channel not found');
+    const loadToken = ++_roomLoadToken;
+    currentRoom = channel;
+    currentRoomMembers = [];
+    closeMentionSuggest();
+
+    document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+    const el = document.querySelector(`[data-channel-id="${channelId}"]`);
+    if (el) el.classList.add('active');
+
+    document.getElementById('welcome-view').style.display = 'none';
+    document.getElementById('friends-panel').style.display = 'none';
+    document.getElementById('saved-notes-panel').style.display = 'none';
+    document.getElementById('wallet-panel').style.display = 'none';
+    document.getElementById('notifications-panel').style.display = 'none';
+    document.getElementById('chat-view').style.display = 'flex';
+    showMobileDetail();
+
+    wsJoin(channel.id);
+
+    const chAvatar = document.getElementById('ch-avatar');
+    chAvatar.innerHTML = '#';
+    chAvatar.style.background = hashColor(channel.name);
+    document.getElementById('chat-room-name-text').textContent = '# ' + channel.name;
+    document.getElementById('chat-status-text').textContent = channel.description || 'Text channel';
+    document.getElementById('ch-status-dot').className = 'ch-status-dot';
+    document.getElementById('ch-status-dot').style.display = 'none';
+    document.getElementById('msg-input').placeholder = 'Message #' + channel.name;
+
+    const container = document.getElementById('messages-container');
+    container.innerHTML = `<div style="color:var(--text-muted);padding:32px;text-align:center">Loading...</div>`;
+    api('GET', `/channels/${channel.id}/messages`).then(async data => {
+      if (loadToken !== _roomLoadToken) return;
+      container.innerHTML = '';
+      window._lastMsgUserId = null;
+      window._lastMsgTime = 0;
+      window._lastMsgDate = null;
+      if (data?.messages?.length) {
+        _roomHasMessages = true;
+        for (const m of data.messages) {
+          if (loadToken !== _roomLoadToken) return;
+          await appendMessage(m);
+        }
+        scrollToBottom();
+      } else {
+        container.innerHTML = `
+          <div class="conversation-start">
+            <div class="start-header">
+              <h3>Welcome to the beginning of</h3>
+              <h1>#${escapeHtml(channel.name)}</h1>
+            </div>
+          </div>
+        `;
+        _roomHasMessages = false;
+      }
+    });
+  }
+
+  function showAddServerModal() {
+    document.getElementById('add-server-modal').style.display = 'flex';
+    switchAddServerTab('create');
+  }
+
+  function switchAddServerTab(tab) {
+    document.getElementById('as-tab-create').classList.toggle('active', tab === 'create');
+    document.getElementById('as-tab-join').classList.toggle('active', tab === 'join');
+    document.getElementById('as-pane-create').style.display = tab === 'create' ? '' : 'none';
+    document.getElementById('as-pane-join').style.display = tab === 'join' ? '' : 'none';
+  }
+
+  async function submitCreateServer() {
+    const name = document.getElementById('create-server-name').value.trim();
+    const description = document.getElementById('create-server-desc').value.trim();
+    if (!name) return toast('Server name required');
+    const data = await api('POST', '/servers', { name, description });
+    if (!data?.server) return toast(data?.error || 'Failed to create server');
+    document.getElementById('add-server-modal').style.display = 'none';
+    document.getElementById('create-server-name').value = '';
+    document.getElementById('create-server-desc').value = '';
+    await loadServers();
+    selectServer(data.server.id);
+    toast(`Server "${data.server.name}" created`);
+  }
+
+  function extractInviteCode(input) {
+    const trimmed = (input || '').trim();
+    const match = trimmed.match(/([A-Za-z0-9_-]{4,16})\/?$/);
+    return match ? match[1] : trimmed;
+  }
+
+  async function onJoinCodeInput(value) {
+    clearTimeout(_searchTimer);
+    const code = extractInviteCode(value);
+    const preview = document.getElementById('join-server-preview');
+    if (!code) { preview.innerHTML = ''; joinPreviewInvite = null; return; }
+    _searchTimer = setTimeout(async () => {
+      const data = await api('GET', `/invites/${encodeURIComponent(code)}`);
+      if (!data?.server) { preview.innerHTML = `<div style="color:var(--danger);font-size:0.82rem;margin-top:6px">Invite not found</div>`; joinPreviewInvite = null; return; }
+      joinPreviewInvite = { code, ...data };
+      if (data.banned) {
+        preview.innerHTML = `<div style="color:var(--danger);font-size:0.82rem;margin-top:6px">You are banned from this server</div>`;
+      } else if (!data.valid) {
+        preview.innerHTML = `<div style="color:var(--danger);font-size:0.82rem;margin-top:6px">${escapeHtml(data.error || 'This invite is no longer valid')}</div>`;
+      } else {
+        preview.innerHTML = `<div class="picker-row" style="margin-top:8px">
+          <div class="picker-avatar">${data.server.icon ? `<img src="${versionedMediaUrl(data.server.icon)}" />` : escapeHtml((data.server.name||'?')[0].toUpperCase())}</div>
+          <div class="picker-info">
+            <div class="picker-name">${escapeHtml(data.server.name)}</div>
+            <div class="picker-sub">${data.server.member_count} member${data.server.member_count === 1 ? '' : 's'}${data.already_member ? ' · already a member' : ''}</div>
+          </div>
+        </div>`;
+      }
+    }, 300);
+  }
+
+  async function submitJoinServer() {
+    const code = extractInviteCode(document.getElementById('join-server-code').value);
+    if (!code) return toast('Enter an invite code or link');
+    const data = await api('POST', `/invites/${encodeURIComponent(code)}/join`);
+    if (!data?.ok) return toast(data?.error || 'Failed to join server');
+    document.getElementById('add-server-modal').style.display = 'none';
+    document.getElementById('join-server-code').value = '';
+    document.getElementById('join-server-preview').innerHTML = '';
+    await loadServers();
+    if (data.server_id) selectServer(data.server_id);
+    toast('Joined server');
+  }
+
+  function showCreateChannelModal() {
+    document.getElementById('create-channel-name').value = '';
+    document.getElementById('create-channel-topic').value = '';
+    document.getElementById('create-channel-modal').style.display = 'flex';
+  }
+
+  async function submitCreateChannel() {
+    const name = document.getElementById('create-channel-name').value.trim();
+    const description = document.getElementById('create-channel-topic').value.trim();
+    if (!name) return toast('Channel name required');
+    if (!currentServerId) return;
+    const data = await api('POST', `/servers/${currentServerId}/channels`, { name, description });
+    if (!data?.channel) return toast(data?.error || 'Failed to create channel');
+    document.getElementById('create-channel-modal').style.display = 'none';
+    data.channel.server_id = currentServerId;
+    if (!serverChannels.find(c => c.id === data.channel.id)) {
+      serverChannels = [...serverChannels, data.channel];
+      renderChannelList();
+    }
+    openChannel(data.channel.id);
+  }
+
+  // ─── Server Settings (overview / members / invites) ─────────
+
+  async function showServerSettingsModal() {
+    if (!currentServerId) return;
+    const server = servers.find(s => s.id === currentServerId);
+    if (!server) return;
+    document.getElementById('ss-server-name').textContent = server.name;
+    document.getElementById('ss-name-input').value = server.name;
+    document.getElementById('ss-desc-input').value = server.description || '';
+    document.getElementById('ss-delete-btn').style.display = server.is_owner ? '' : 'none';
+    document.getElementById('ss-leave-btn').style.display = server.is_owner ? 'none' : '';
+    document.getElementById('server-settings-modal').style.display = 'flex';
+    switchServerSettingsTab('overview');
+  }
+
+  function switchServerSettingsTab(tab) {
+    ['overview', 'members', 'invites'].forEach(t => {
+      document.getElementById(`ss-tab-${t}`).classList.toggle('active', t === tab);
+      document.getElementById(`ss-pane-${t}`).style.display = t === tab ? '' : 'none';
+    });
+    if (tab === 'members') renderServerMembers();
+    if (tab === 'invites') renderServerInvites();
+  }
+
+  async function renderServerMembersIfOpen() {
+    if (document.getElementById('server-settings-modal').style.display === 'flex' &&
+        document.getElementById('ss-pane-members').style.display !== 'none') {
+      renderServerMembers();
+    }
+  }
+
+  async function renderServerMembers() {
+    const container = document.getElementById('ss-member-list');
+    container.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Loading…</div>`;
+    const server = servers.find(s => s.id === currentServerId);
+    const [membersData] = await Promise.all([api('GET', `/servers/${currentServerId}/members`), loadServerRoles()]);
+    const members = membersData?.members || [];
+    const canManage = server && (server.is_owner || (server.my_permissions & 16) /* MANAGE_MEMBERS */);
+    const canKick = server && (server.is_owner || (server.my_permissions & 64));
+    const roleOptions = currentServerRoles.slice().sort((a, b) => b.position - a.position);
+
+    container.innerHTML = members.map(m => {
+      const avatarHtml = m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : escapeHtml((m.display_name || '?')[0].toUpperCase());
+      const roleSelect = (canManage && !m.is_owner)
+        ? `<select class="picker-role-select" onchange="submitMemberRoleChange('${m.id}', this.value)">
+             ${roleOptions.map(r => `<option value="${r.id}" ${m.role?.id === r.id ? 'selected' : ''}>${escapeHtml(r.name)}</option>`).join('')}
+           </select>`
+        : `<span class="picker-sub">${escapeHtml(m.role?.name || 'Member')}</span>`;
+      const kickBtn = (canKick && !m.is_owner && m.id !== currentUser.id)
+        ? `<button class="picker-action-btn" onclick="confirmKickMember('${m.id}', ${JSON.stringify(m.display_name || m.username).replace(/"/g, '&quot;')})">Kick</button>`
+        : '';
+      return `<div class="picker-row">
+        <div class="picker-avatar">${avatarHtml}</div>
+        <div class="picker-info">
+          <div class="picker-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ' <span class="picker-owner-tag">Owner</span>' : ''}</div>
+          <div class="picker-sub">@${escapeHtml(m.username)}</div>
+        </div>
+        ${roleSelect}
+        ${kickBtn}
+      </div>`;
+    }).join('') || `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
+  }
+
+  async function submitMemberRoleChange(userId, roleId) {
+    const data = await api('PATCH', `/servers/${currentServerId}/members/${userId}`, { role_id: roleId });
+    if (!data?.ok) { toast(data?.error || 'Failed to change role'); renderServerMembers(); return; }
+    toast('Role updated');
+  }
+
+  function confirmKickMember(userId, name) {
+    if (!confirm(`Kick ${name} from this server?`)) return;
+    api('DELETE', `/servers/${currentServerId}/members/${userId}`).then(data => {
+      if (!data?.ok) return toast(data?.error || 'Failed to kick member');
+      toast(`${name} was kicked`);
+      renderServerMembers();
+    });
+  }
+
+  async function renderServerInvites() {
+    const container = document.getElementById('ss-invite-list');
+    container.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Loading…</div>`;
+    const data = await api('GET', `/servers/${currentServerId}/invites`);
+    const invites = data?.invites || [];
+    container.innerHTML = invites.map(inv => {
+      const meta = [
+        inv.max_uses ? `${inv.uses}/${inv.max_uses} uses` : `${inv.uses} uses`,
+        inv.expires_at ? `expires ${new Date(inv.expires_at).toLocaleDateString()}` : 'never expires',
+        inv.revoked ? 'revoked' : ''
+      ].filter(Boolean).join(' · ');
+      return `<div class="invite-row">
+        <div>
+          <div class="invite-code">${escapeHtml(inv.code)}</div>
+          <div class="invite-meta">${escapeHtml(meta)}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="picker-action-btn" onclick="copyInviteCode('${inv.code}')">Copy</button>
+          ${!inv.revoked ? `<button class="picker-action-btn" onclick="revokeInvite('${inv.code}')">Revoke</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') || `<div style="padding:10px;color:var(--text-muted)">No invites yet</div>`;
+  }
+
+  function copyInviteCode(code) {
+    const url = `${location.origin}/invite/${code}`;
+    navigator.clipboard?.writeText(url);
+    toast('Invite link copied');
+  }
+
+  async function revokeInvite(code) {
+    const data = await api('DELETE', `/invites/${code}`);
+    if (!data?.ok) return toast(data?.error || 'Failed to revoke invite');
+    toast('Invite revoked');
+    renderServerInvites();
+  }
+
+  async function submitCreateInvite() {
+    const data = await api('POST', `/servers/${currentServerId}/invites`, {});
+    if (!data?.invite) return toast(data?.error || 'Failed to create invite');
+    renderServerInvites();
+  }
+
+  async function submitServerOverview() {
+    const name = document.getElementById('ss-name-input').value.trim();
+    const description = document.getElementById('ss-desc-input').value.trim();
+    if (!name) return toast('Server name required');
+    const data = await api('PATCH', `/servers/${currentServerId}`, { name, description });
+    if (!data?.server) return toast(data?.error || 'Failed to update server');
+    await loadServers();
+    document.getElementById('server-panel-name').textContent = data.server.name;
+    document.getElementById('ss-server-name').textContent = data.server.name;
+    toast('Server updated');
+  }
+
+  function confirmDeleteServer() {
+    const server = servers.find(s => s.id === currentServerId);
+    if (!confirm(`Delete "${server?.name}"? This cannot be undone — all channels and messages will be lost.`)) return;
+    api('DELETE', `/servers/${currentServerId}`).then(data => {
+      if (!data?.ok) return toast(data?.error || 'Failed to delete server');
+      document.getElementById('server-settings-modal').style.display = 'none';
+      servers = servers.filter(s => s.id !== currentServerId);
+      showDMView();
+      toast('Server deleted');
+    });
+  }
+
+  function confirmLeaveServer() {
+    if (!confirm('Leave this server?')) return;
+    api('POST', `/servers/${currentServerId}/leave`).then(data => {
+      if (!data?.ok) return toast(data?.error || 'Failed to leave server');
+      document.getElementById('server-settings-modal').style.display = 'none';
+      servers = servers.filter(s => s.id !== currentServerId);
+      showDMView();
+      toast('Left server');
+    });
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  GROUP CHATS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  function showNewGroupModal() {
+    document.getElementById('new-group-name').value = '';
+    const list = document.getElementById('new-group-friend-list');
+    if (!friends.length) {
+      list.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Add some friends first to start a group.</div>`;
+    } else {
+      list.innerHTML = friends.map(f => `
+        <label class="picker-row" style="cursor:pointer">
+          <input type="checkbox" value="${f.id}" class="new-group-friend-check" style="margin-right:2px" />
+          <div class="picker-avatar">${f.avatar ? `<img src="${versionedMediaUrl(f.avatar)}" />` : escapeHtml((f.display_name || f.username || '?')[0].toUpperCase())}</div>
+          <div class="picker-info">
+            <div class="picker-name">${escapeHtml(f.display_name || f.username)}</div>
+            <div class="picker-sub">@${escapeHtml(f.username)}</div>
+          </div>
+        </label>
+      `).join('');
+    }
+    document.getElementById('new-group-modal').style.display = 'flex';
+  }
+
+  async function submitCreateGroup() {
+    const name = document.getElementById('new-group-name').value.trim();
+    const memberIds = Array.from(document.querySelectorAll('.new-group-friend-check:checked')).map(el => el.value);
+    if (!name) return toast('Group name required');
+    if (!memberIds.length) return toast('Select at least one friend');
+    const data = await api('POST', '/groups', { name, member_ids: memberIds });
+    if (!data?.group) return toast(data?.error || 'Failed to create group');
+    document.getElementById('new-group-modal').style.display = 'none';
+    if (!dms.find(d => d.id === data.group.id)) {
+      dms = [{ id: data.group.id, is_dm: 1, is_group: 1, display_name: data.group.name, name: data.group.name, icon: data.group.icon, _avatar: data.group.icon || null, last_message: null, last_message_at: null }, ...dms];
+      renderDMList();
+      wsJoin(data.group.id);
+    }
+    openRoom(data.group.id);
+    toast(`Group "${data.group.name}" created`);
+  }
+
+  // Called from the chat header's ch-info click — dispatches to the
+  // right "info" surface depending on what's currently open: a group
+  // chat's member list, or nothing for a channel/1:1 DM (which already
+  // has its own profile popout elsewhere).
+  function openRoomInfo() {
+    if (currentRoom?.is_group) return openGroupInfoModal(currentRoom.id);
+    if (currentRoom?.server_id) return; // channels: no per-channel info surface yet
+    if (currentRoom?._otherId) return showUserProfile(currentRoom._otherId);
+  }
+
+  async function openGroupInfoModal(groupId) {
+    const data = await api('GET', `/groups/${groupId}`);
+    if (!data?.group) return toast('Group not found');
+    const group = data.group;
+    document.getElementById('group-info-title').textContent = group.name;
+    const isCreator = group.created_by === currentUser.id;
+    const memberIds = new Set(group.members.map(m => m.user_id));
+    const addable = friends.filter(f => !memberIds.has(f.id));
+
+    const memberRows = group.members.map(m => `
+      <div class="picker-row">
+        <div class="picker-avatar">${m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase())}</div>
+        <div class="picker-info">
+          <div class="picker-name">${escapeHtml(m.display_name || m.username)}${m.user_id === group.created_by ? ' <span class="picker-owner-tag">Creator</span>' : ''}</div>
+          <div class="picker-sub">@${escapeHtml(m.username)}</div>
+        </div>
+        ${(isCreator && m.user_id !== group.created_by) ? `<button class="picker-action-btn" onclick="removeGroupMember('${groupId}','${m.user_id}')">Remove</button>` : ''}
+      </div>
+    `).join('');
+
+    const addSection = addable.length ? `
+      <div style="margin-top:14px">
+        <label>Add friends</label>
+        <div class="picker-list">
+          ${addable.map(f => `
+            <label class="picker-row" style="cursor:pointer">
+              <input type="checkbox" value="${f.id}" class="group-add-friend-check" style="margin-right:2px" />
+              <div class="picker-avatar">${f.avatar ? `<img src="${versionedMediaUrl(f.avatar)}" />` : escapeHtml((f.display_name || f.username || '?')[0].toUpperCase())}</div>
+              <div class="picker-info"><div class="picker-name">${escapeHtml(f.display_name || f.username)}</div></div>
+            </label>
+          `).join('')}
+        </div>
+        <button class="btn-primary" style="margin-top:8px" onclick="submitAddGroupMembers('${groupId}')">Add Selected</button>
+      </div>` : '';
+
+    document.getElementById('group-info-body').innerHTML = `
+      <div class="picker-sub" style="margin-bottom:8px">${group.member_count} member${group.member_count === 1 ? '' : 's'}</div>
+      <div class="picker-list">${memberRows}</div>
+      ${addSection}
+    `;
+    document.getElementById('group-leave-btn').onclick = () => confirmLeaveGroupById(groupId);
+    document.getElementById('group-info-modal').style.display = 'flex';
+  }
+
+  async function submitAddGroupMembers(groupId) {
+    const ids = Array.from(document.querySelectorAll('.group-add-friend-check:checked')).map(el => el.value);
+    if (!ids.length) return toast('Select at least one friend');
+    const data = await api('POST', `/groups/${groupId}/members`, { user_ids: ids });
+    if (!data?.group) return toast(data?.error || 'Failed to add members');
+    toast('Members added');
+    openGroupInfoModal(groupId);
+  }
+
+  function removeGroupMember(groupId, userId) {
+    if (!confirm('Remove this member from the group?')) return;
+    api('DELETE', `/groups/${groupId}/members/${userId}`).then(data => {
+      if (!data?.ok) return toast(data?.error || 'Failed to remove member');
+      openGroupInfoModal(groupId);
+    });
+  }
+
+  function confirmLeaveGroup() {
+    if (currentRoom?.is_group) confirmLeaveGroupById(currentRoom.id);
+  }
+
+  function confirmLeaveGroupById(groupId) {
+    if (!confirm('Leave this group?')) return;
+    api('DELETE', `/groups/${groupId}/members/${currentUser.id}`).then(data => {
+      if (!data?.ok) return toast(data?.error || 'Failed to leave group');
+      document.getElementById('group-info-modal').style.display = 'none';
+      dms = dms.filter(d => d.id !== groupId);
+      renderDMList();
+      if (currentRoom?.id === groupId) { currentRoom = null; document.getElementById('chat-view').style.display = 'none'; showDMView(); }
+      toast('Left group');
+    });
+  }
+
+  window.loadServers = loadServers;
+  window.selectServer = selectServer;
+  window.showDMView = showDMView;
+  window.openChannel = openChannel;
+  window.showAddServerModal = showAddServerModal;
+  window.switchAddServerTab = switchAddServerTab;
+  window.submitCreateServer = submitCreateServer;
+  window.onJoinCodeInput = onJoinCodeInput;
+  window.submitJoinServer = submitJoinServer;
+  window.showCreateChannelModal = showCreateChannelModal;
+  window.submitCreateChannel = submitCreateChannel;
+  window.showServerSettingsModal = showServerSettingsModal;
+  window.switchServerSettingsTab = switchServerSettingsTab;
+  window.submitMemberRoleChange = submitMemberRoleChange;
+  window.confirmKickMember = confirmKickMember;
+  window.copyInviteCode = copyInviteCode;
+  window.revokeInvite = revokeInvite;
+  window.submitCreateInvite = submitCreateInvite;
+  window.submitServerOverview = submitServerOverview;
+  window.confirmDeleteServer = confirmDeleteServer;
+  window.confirmLeaveServer = confirmLeaveServer;
+  window.showNewGroupModal = showNewGroupModal;
+  window.submitCreateGroup = submitCreateGroup;
+  window.openRoomInfo = openRoomInfo;
+  window.submitAddGroupMembers = submitAddGroupMembers;
+  window.removeGroupMember = removeGroupMember;
+  window.confirmLeaveGroup = confirmLeaveGroup;
+
   window.toggleSelectMode = toggleSelectMode;
   window.filterSidebar = filterSidebar;
   window.handleFileUpload = handleFileUpload;

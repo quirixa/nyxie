@@ -5,6 +5,7 @@ const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, allMessages, getMessage, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
 const { isBlocked } = require('../services/blocks');
+const { PERMISSIONS, getServerContext, hasPermission } = require('../services/permissions');
 
 // Resolves a reply_to_id into the shape the client needs to render a
 // reply quote (author + content/nonce, so it decrypts exactly like any
@@ -61,6 +62,29 @@ async function getLatestMessages(roomIds) {
   return map;
 }
 
+// True if `userId` may currently view/read `room` (a row from `rooms`,
+// must include at least id/server_id/is_dm/is_group). Room membership
+// (room_members) is necessary but not sufficient for a server channel —
+// the member's role also needs VIEW_CHANNEL. DMs/groups have no
+// server_id, so membership alone is sufficient there, same as before
+// this feature existed.
+function canViewRoom(db, room, userId) {
+  const isMember = !!get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room.id, userId]);
+  if (!isMember) return false;
+  if (!room.server_id) return true;
+  const ctx = getServerContext(db, room.server_id, userId);
+  return hasPermission(ctx, PERMISSIONS.VIEW_CHANNEL);
+}
+
+// True if `userId` may currently send messages into `room`.
+function canSendToRoom(db, room, userId) {
+  if (!canViewRoom(db, room, userId)) return false;
+  if (!room.server_id) return true;
+  const ctx = getServerContext(db, room.server_id, userId);
+  if (ctx && ctx.muted && !ctx.isOwner) return false;
+  return hasPermission(ctx, PERMISSIONS.SEND_MESSAGES);
+}
+
 router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const { server_id } = req.query;
@@ -68,16 +92,16 @@ router.get('/', requireAuth, async (req, res) => {
   let rooms;
   if (server_id) {
     rooms = all(db, `
-      SELECT r.id, r.name, r.description, r.created_at, r.is_dm,
+      SELECT r.id, r.name, r.description, r.created_at, r.is_dm, r.position,
         (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
       WHERE r.server_id = ? AND r.is_dm = 0 AND rm.user_id = ?
-      ORDER BY r.created_at DESC
+      ORDER BY r.position ASC, r.created_at ASC
     `, [server_id, req.user.id]);
   } else {
     rooms = all(db, `
-      SELECT r.id, r.name, r.description, r.created_at, r.is_dm,
+      SELECT r.id, r.name, r.description, r.created_at, r.is_dm, r.is_group, r.icon, r.created_by,
         (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
@@ -85,6 +109,12 @@ router.get('/', requireAuth, async (req, res) => {
       ORDER BY r.created_at DESC
     `, [req.user.id]);
     for (const room of rooms) {
+      if (room.is_group) {
+        // Group chats carry their own name/icon — never derived from a
+        // single "other" member the way a 1-to-1 DM's display name is.
+        room.display_name = room.name;
+        continue;
+      }
       const members = all(db, `SELECT user_id FROM room_members WHERE room_id = ?`, [room.id]);
       const other = members.find(m => m.user_id !== req.user.id);
       if (other) {
@@ -127,7 +157,7 @@ router.post('/dm', requireAuth, async (req, res) => {
     SELECT r.id FROM rooms r
     JOIN room_members rm1 ON rm1.room_id = r.id AND rm1.user_id = ?
     JOIN room_members rm2 ON rm2.room_id = r.id AND rm2.user_id = ?
-    WHERE r.is_dm = 1
+    WHERE r.is_dm = 1 AND (r.is_group IS NULL OR r.is_group = 0)
     AND (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) = 2
     LIMIT 1
   `, [req.user.id, target_user_id]);
@@ -149,10 +179,20 @@ router.post('/dm', requireAuth, async (req, res) => {
   res.status(201).json({ room_id: roomId });
 });
 
-router.get('/:id/messages', requireAuth, async (req, res) => {
+// ─── Message handlers ──────────────────────────────────────────────
+// Pulled out as standalone functions (reading the room id from
+// req.params.id) so routes/servers.js (channels) and routes/groups.js
+// can mount the exact same logic at /api/channels/:channelId/messages
+// and /api/groups/:groupId/messages without duplicating the message
+// pipeline — a channel or a group chat's messages are just this room's
+// messages, and the E2EE/attachment/mention/reply handling above is
+// already generic across every room type.
+
+async function listMessages(req, res) {
   const userDb = await getUserDb();
-  const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
-  if (!isMember) return res.status(403).json({ error: 'Not a member' });
+  const room = get(userDb, 'SELECT id, server_id, is_dm, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  if (!room) return res.status(404).json({ error: 'Not found' });
+  if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
 
   const msgDb = await getMessageDb();
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
@@ -184,19 +224,20 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   }));
 
   res.json({ messages: enriched.reverse() });
-});
+}
 
-router.post('/:id/messages', requireAuth, async (req, res) => {
+async function postMessage(req, res) {
   const userDb = await getUserDb();
-  const isMember = get(userDb, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
-  if (!isMember) return res.status(403).json({ error: 'Not a member' });
+  const room = get(userDb, 'SELECT id, server_id, is_dm, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  if (!room) return res.status(404).json({ error: 'Not found' });
+  if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
+  if (!canSendToRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'You do not have permission to send messages here' });
 
   // Blocking only applies to 1:1 DMs — group rooms/channels aren't gated
   // by a two-person block relationship. If the block happened after this
   // DM was created, this is what actually stops new messages going
   // through (creation-time checks in POST /dm only cover new DMs).
-  const room = get(userDb, 'SELECT is_dm FROM rooms WHERE id = ?', [req.params.id]);
-  if (room && room.is_dm) {
+  if (room.is_dm && !room.is_group) {
     const other = get(userDb, 'SELECT user_id FROM room_members WHERE room_id = ? AND user_id != ?', [req.params.id, req.user.id]);
     if (other && isBlocked(userDb, req.user.id, other.user_id)) {
       return res.status(403).json({ error: 'You cannot message this user' });
@@ -349,11 +390,11 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
   }
 
   res.status(201).json({ message });
-});
+}
 
-router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
+async function editMessage(req, res) {
   const msgDb = await getMessageDb();
-  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
+  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.id]);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'Not your message' });
   if (msg.deleted) return res.status(400).json({ error: 'Cannot edit deleted message' });
@@ -364,25 +405,41 @@ router.patch('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
   const now = Date.now();
   runMessage(msgDb, 'UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', [content.trim(), now, msg.id]);
 
-  req.app.locals.broadcast(req.params.roomId, {
+  req.app.locals.broadcast(req.params.id, {
     type: 'message_edited',
     message_id: msg.id,
     content: content.trim(),
     edited_at: now
   });
   res.json({ ok: true });
-});
+}
 
-router.delete('/:roomId/messages/:msgId', requireAuth, async (req, res) => {
+async function deleteMessage(req, res) {
+  const userDb = await getUserDb();
   const msgDb = await getMessageDb();
-  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.roomId]);
+  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.id]);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
-  if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'Not your message' });
+
+  if (msg.user_id !== req.user.id) {
+    // Not your own message — only a channel moderator (MANAGE_MESSAGES,
+    // or the server owner) can delete someone else's message, and only
+    // inside a server channel. DMs/groups have no such moderation layer.
+    const room = get(userDb, 'SELECT server_id FROM rooms WHERE id = ?', [req.params.id]);
+    const ctx = room?.server_id ? getServerContext(userDb, room.server_id, req.user.id) : null;
+    if (!hasPermission(ctx, PERMISSIONS.MANAGE_MESSAGES)) {
+      return res.status(403).json({ error: 'Not your message' });
+    }
+  }
 
   runMessage(msgDb, 'UPDATE messages SET deleted = 1, content = \'[deleted]\' WHERE id = ?', [msg.id]);
-  req.app.locals.broadcast(req.params.roomId, { type: 'message_deleted', message_id: msg.id });
+  req.app.locals.broadcast(req.params.id, { type: 'message_deleted', message_id: msg.id });
   res.json({ ok: true });
-});
+}
+
+router.get('/:id/messages', requireAuth, listMessages);
+router.post('/:id/messages', requireAuth, postMessage);
+router.patch('/:id/messages/:msgId', requireAuth, editMessage);
+router.delete('/:id/messages/:msgId', requireAuth, deleteMessage);
 
 router.post('/:id/leave', requireAuth, async (req, res) => {
   const db = await getUserDb();
@@ -391,3 +448,9 @@ router.post('/:id/leave', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.listMessages = listMessages;
+module.exports.postMessage = postMessage;
+module.exports.editMessage = editMessage;
+module.exports.deleteMessage = deleteMessage;
+module.exports.canViewRoom = canViewRoom;
+module.exports.canSendToRoom = canSendToRoom;

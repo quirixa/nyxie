@@ -472,6 +472,17 @@ __    __  __      __  __    __  ______  ________
 <template id="tpl-app">
     <div id="view-app">
         <div id="app">
+            <!-- Server rail -->
+            <div id="server-rail">
+                <div class="server-pill home-pill active" id="server-pill-home" onclick="showDMView()" title="Direct Messages">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="m21.743 12.331-9-10c-.379-.422-1.107-.422-1.486 0l-9 10a.998.998 0 0 0-.17 1.076c.16.361.518.593.913.593h2v7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4h4v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-7h2a.998.998 0 0 0 .743-1.669z"/></svg>
+                </div>
+                <div class="server-rail-divider"></div>
+                <div id="server-rail-list"></div>
+                <div class="server-pill server-pill-add" id="server-pill-add" onclick="showAddServerModal()" title="Add a server">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </div>
+            </div>
             <!-- Sidebar -->
             <div id="sidebar">
                 <div id="sidebar-header">
@@ -486,6 +497,10 @@ __    __  __      __  __    __  ______  ________
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 11h7v2h-7zm1 4h6v2h-6zm-2-8h8v2h-8zM4 19h10v-1c0-2.757-2.243-5-5-5H7c-2.757 0-5 2.243-5 5v1h2zm4-7c1.995 0 3.5-1.505 3.5-3.5S9.995 5 8 5 4.5 6.505 4.5 8.5 6.005 12 8 12z"/></svg>
                         <span>Friends</span>
                         <span class="badge" id="nav-friends-badge" style="display:none;background:#ed4245;color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:auto;"></span>
+                    </div>
+                    <div class="nav-item" id="nav-saved" onclick="navigateTo('saved')">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+                        <span>Saved Notes</span>
                     </div>
                     <div class="nav-item" id="nav-marketplace" onclick="navigateTo('marketplace')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z"/><path d="M9 21V13h6v8"/></svg>
@@ -505,6 +520,9 @@ __    __  __      __  __    __  ______  ________
                 </div>
                 <div id="conv-header">
                     <span>Conversations</span>
+                    <button class="conv-add" onclick="showNewGroupModal()" title="New group chat">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
                     <button class="conv-add" onclick="showNewDmModal()" title="New conversation">+</button>
                 </div>
                 <div id="search-wrap">
@@ -522,6 +540,23 @@ __    __  __      __  __    __  ______  ________
                     <div id="dm-list">
                         <div class="dm-empty">No conversations yet</div>
                     </div>
+                </div>
+                <!-- Shown instead of #conv-header/#search-wrap/#dm-section while a server is active -->
+                <div id="server-panel" class="hidden">
+                    <div id="server-panel-header">
+                        <button id="server-back-btn" onclick="showDMView()" title="Back to Direct Messages">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <span id="server-panel-name">Server</span>
+                        <button id="server-settings-btn" onclick="showServerSettingsModal()" title="Server settings">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                    <div id="channel-list-header">
+                        <span>Text Channels</span>
+                        <button id="channel-add-btn" onclick="showCreateChannelModal()" title="Create channel">+</button>
+                    </div>
+                    <div id="channel-list"></div>
                 </div>
                 <div id="user-panel">
                     <div id="up-avatar-wrap" onclick="toggleProfilePopout()">
@@ -601,7 +636,7 @@ __    __  __      __  __    __  ______  ________
                     </div>
                 </div>
 
-                <!-- Marketplace Panel -->
+                <!-- Wallet Panel -->
                 <div id="marketplace-panel" style="display:none;">
                     <!-- Browse sub-view -->
                     <div id="mp-browse-view" class="mp-view">
@@ -921,7 +956,7 @@ __    __  __      __  __    __  ______  ________
                             <div class="ch-avatar" id="ch-avatar">U</div>
                             <div class="ch-status-dot pip-offline" id="ch-status-dot"></div>
                         </div>
-                        <div class="ch-info">
+                        <div class="ch-info" onclick="openRoomInfo()" style="cursor:pointer">
                             <div class="ch-room-name">
                                 <span id="chat-room-name-text">@zuko</span>
                             </div>
@@ -1383,6 +1418,109 @@ __    __  __      __  __    __  ______  ________
                 <div class="modal-actions">
                     <button class="btn-cancel" onclick="document.getElementById('delete-chat-modal').style.display='none'">Cancel</button>
                     <button class="btn-primary btn-danger" onclick="confirmDeleteChat()">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add a Server Modal -->
+        <div class="overlay" id="add-server-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Add a Server</h2>
+                <p>Create your own server, or join one with an invite.</p>
+                <div class="modal-tabs">
+                    <button class="modal-tab active" id="as-tab-create" onclick="switchAddServerTab('create')">Create a Server</button>
+                    <button class="modal-tab" id="as-tab-join" onclick="switchAddServerTab('join')">Join a Server</button>
+                </div>
+                <div id="as-pane-create">
+                    <label>Server Name</label>
+                    <input type="text" id="create-server-name" placeholder="My Awesome Server" autocomplete="off" maxlength="50" />
+                    <label>Description (optional)</label>
+                    <textarea id="create-server-desc" placeholder="What's this server about?" maxlength="300"></textarea>
+                    <div class="modal-actions">
+                        <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Cancel</button>
+                        <button class="btn-primary" onclick="submitCreateServer()">Create</button>
+                    </div>
+                </div>
+                <div id="as-pane-join" style="display:none">
+                    <label>Invite Link or Code</label>
+                    <input type="text" id="join-server-code" placeholder="e.g. AbCd1234 or /invite/AbCd1234" autocomplete="off" oninput="onJoinCodeInput(this.value)" />
+                    <div id="join-server-preview"></div>
+                    <div class="modal-actions">
+                        <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Cancel</button>
+                        <button class="btn-primary" onclick="submitJoinServer()">Join Server</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Channel Modal -->
+        <div class="overlay" id="create-channel-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Create Text Channel</h2>
+                <label>Channel Name</label>
+                <input type="text" id="create-channel-name" placeholder="new-channel" autocomplete="off" maxlength="32" />
+                <label>Topic (optional)</label>
+                <input type="text" id="create-channel-topic" placeholder="What's this channel for?" maxlength="200" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('create-channel-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="submitCreateChannel()">Create Channel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Group Chat Modal -->
+        <div class="overlay" id="new-group-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>New Group Chat</h2>
+                <label>Group Name</label>
+                <input type="text" id="new-group-name" placeholder="Weekend Plans" autocomplete="off" maxlength="50" />
+                <label>Select Friends</label>
+                <div id="new-group-friend-list" class="picker-list"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('new-group-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="submitCreateGroup()">Create Group</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Group Info / Members Modal -->
+        <div class="overlay" id="group-info-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2 id="group-info-title">Group Chat</h2>
+                <div id="group-info-body"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="group-leave-btn" onclick="confirmLeaveGroup()">Leave Group</button>
+                    <button class="btn-primary" onclick="document.getElementById('group-info-modal').style.display='none'">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Settings Modal -->
+        <div class="overlay" id="server-settings-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal modal-wide">
+                <h2 id="ss-server-name">Server Settings</h2>
+                <div class="modal-tabs">
+                    <button class="modal-tab active" id="ss-tab-overview" onclick="switchServerSettingsTab('overview')">Overview</button>
+                    <button class="modal-tab" id="ss-tab-members" onclick="switchServerSettingsTab('members')">Members</button>
+                    <button class="modal-tab" id="ss-tab-invites" onclick="switchServerSettingsTab('invites')">Invites</button>
+                </div>
+                <div id="ss-pane-overview">
+                    <label>Server Name</label>
+                    <input type="text" id="ss-name-input" maxlength="50" />
+                    <label>Description</label>
+                    <textarea id="ss-desc-input" maxlength="300"></textarea>
+                    <div class="modal-actions" style="justify-content:space-between">
+                        <button class="btn-cancel btn-danger" id="ss-delete-btn" onclick="confirmDeleteServer()">Delete Server</button>
+                        <button class="btn-primary" onclick="submitServerOverview()">Save Changes</button>
+                    </div>
+                    <button class="btn-cancel" id="ss-leave-btn" onclick="confirmLeaveServer()" style="width:100%;margin-top:8px">Leave Server</button>
+                </div>
+                <div id="ss-pane-members" style="display:none">
+                    <div id="ss-member-list" class="picker-list"></div>
+                </div>
+                <div id="ss-pane-invites" style="display:none">
+                    <button class="btn-primary" onclick="submitCreateInvite()" style="margin-bottom:10px">Create Invite</button>
+                    <div id="ss-invite-list"></div>
                 </div>
             </div>
         </div>
