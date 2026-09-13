@@ -533,7 +533,6 @@ function initDashboardView() {
     document.getElementById('nav-' + section)?.classList.add('active');
     document.getElementById('welcome-view').style.display = 'none';
     document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('saved-notes-panel').style.display = 'none';
     document.getElementById('wallet-panel').style.display = 'none';
     document.getElementById('marketplace-panel').style.display = 'none';
     document.getElementById('admin-panel').style.display = 'none';
@@ -545,9 +544,6 @@ function initDashboardView() {
       document.getElementById('friends-panel').style.display = 'flex';
       await loadFriendsData();
       renderFriendsList();
-      showMobileDetail();
-    } else if (section === 'saved') {
-      document.getElementById('saved-notes-panel').style.display = 'flex';
       showMobileDetail();
     } else if (section === 'wallet') {
       document.getElementById('wallet-panel').style.display = 'flex';
@@ -637,7 +633,6 @@ function initDashboardView() {
 
     document.getElementById('welcome-view').style.display = 'none';
     document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('saved-notes-panel').style.display = 'none';
     document.getElementById('wallet-panel').style.display = 'none';
     // Added as requested: ensure wallet-panel and notifications-panel are hidden
     document.getElementById('wallet-panel').style.display = 'none';
@@ -3181,7 +3176,6 @@ function initDashboardView() {
     currentRoom = null;
     document.getElementById('welcome-view').style.display = 'none';
     document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('saved-notes-panel').style.display = 'none';
     document.getElementById('wallet-panel').style.display = 'none';
     document.getElementById('notifications-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'none';
@@ -3243,7 +3237,6 @@ function initDashboardView() {
 
     document.getElementById('welcome-view').style.display = 'none';
     document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('saved-notes-panel').style.display = 'none';
     document.getElementById('wallet-panel').style.display = 'none';
     document.getElementById('notifications-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'flex';
