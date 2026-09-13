@@ -648,6 +648,12 @@ function initDashboardView() {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     showMobileDetail();
 
+    // DMs and group chats have no server-wide member list to show.
+    document.getElementById('member-list-toggle-btn').style.display = 'none';
+    document.getElementById('member-list-toggle-btn').classList.remove('active');
+    document.getElementById('member-list-panel').style.display = 'none';
+    document.getElementById('member-list-panel').classList.remove('force-open');
+
     wsJoin(room.id);
 
     const name = room.display_name || room.name || 'Unknown';
@@ -3243,6 +3249,12 @@ function initDashboardView() {
     document.getElementById('chat-view').style.display = 'flex';
     showMobileDetail();
 
+    document.getElementById('member-list-toggle-btn').style.display = 'flex';
+    document.getElementById('member-list-toggle-btn').classList.add('active');
+    document.getElementById('member-list-panel').style.display = 'flex';
+    document.getElementById('member-list-panel').classList.remove('force-open');
+    loadChannelMemberList();
+
     wsJoin(channel.id);
 
     const chAvatar = document.getElementById('ch-avatar');
@@ -3403,6 +3415,69 @@ function initDashboardView() {
     if (document.getElementById('server-settings-modal').style.display === 'flex' &&
         document.getElementById('ss-pane-members').style.display !== 'none') {
       renderServerMembers();
+    }
+    if (currentRoom?.server_id === currentServerId) loadChannelMemberList();
+  }
+
+  // ─── Right-side member list (persistent, not the settings modal's
+  // management list above) — shown whenever a server channel is open.
+  // Grouped ONLINE/OFFLINE like a typical Discord-style roster; DMs and
+  // group chats have no server roster so this stays hidden for those
+  // (see openRoom()/showDMView()).
+  async function loadChannelMemberList() {
+    const container = document.getElementById('member-list');
+    const countEl = document.getElementById('member-list-count');
+    const serverId = currentServerId;
+    if (!serverId) return;
+    const data = await api('GET', `/servers/${serverId}/members`);
+    if (currentServerId !== serverId) return; // switched servers while loading
+    const members = data?.members || [];
+    countEl.textContent = `${members.length} Member${members.length === 1 ? '' : 's'}`;
+
+    const online = members.filter(m => m._status !== 'offline' && m.status !== 'offline');
+    const offline = members.filter(m => m._status === 'offline' || m.status === 'offline');
+
+    function row(m) {
+      const status = m.status || 'offline';
+      const isOffline = status === 'offline';
+      const avatarHtml = m.avatar
+        ? `<img src="${versionedMediaUrl(m.avatar)}" />`
+        : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase());
+      return `<div class="ml-row ${isOffline ? 'offline' : ''}" onclick="showUserProfile('${m.id}')">
+        <div class="ml-avatar">
+          ${avatarHtml}
+          <span class="ml-status-dot pip-${isOffline ? 'offline' : 'online'}"></span>
+        </div>
+        <div class="ml-info">
+          <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ' 👑' : ''}</div>
+          <div class="ml-sub">${escapeHtml(m.role?.name || 'Member')}</div>
+        </div>
+      </div>`;
+    }
+
+    container.innerHTML =
+      (online.length ? `<div class="ml-group-label">Online — ${online.length}</div>${online.map(row).join('')}` : '') +
+      (offline.length ? `<div class="ml-group-label">Offline — ${offline.length}</div>${offline.map(row).join('')}` : '') ||
+      `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
+  }
+
+  // Toggles the member list panel. On wide layouts it's a normal flex
+  // sibling (CSS handles show/hide via display:none by default until
+  // this sets 'flex'); below the 1100px breakpoint (see dashboard.css)
+  // it's hidden by default and this instead adds .force-open, which the
+  // media query turns into a floating overlay panel.
+  function toggleMemberList() {
+    const panel = document.getElementById('member-list-panel');
+    const btn = document.getElementById('member-list-toggle-btn');
+    const narrow = window.innerWidth <= 1100;
+    if (narrow) {
+      const open = panel.classList.toggle('force-open');
+      panel.style.display = open ? 'flex' : 'none';
+      btn.classList.toggle('active', open);
+    } else {
+      const open = panel.style.display !== 'flex';
+      panel.style.display = open ? 'flex' : 'none';
+      btn.classList.toggle('active', open);
     }
   }
 
@@ -3663,6 +3738,7 @@ function initDashboardView() {
   window.selectServer = selectServer;
   window.showDMView = showDMView;
   window.openChannel = openChannel;
+  window.toggleMemberList = toggleMemberList;
   window.showAddServerModal = showAddServerModal;
   window.switchAddServerTab = switchAddServerTab;
   window.submitCreateServer = submitCreateServer;

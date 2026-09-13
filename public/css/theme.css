@@ -87,25 +87,28 @@ body.theme-dark {
 
 /* ---- Theme: Esc (pure black, red accent, from File A but adjusted) ---- */
 body.theme-esc {
-  --bg-primary: #000000;
-  --bg-secondary: #050505;
-  --bg-sidebar: #000000;
-  --bg-input: #0a0a0a;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-active: rgba(255, 255, 255, 0.10);
-  --msg-hover: rgba(255, 255, 255, 0.03);
-  --bg-modal: #050505;
-  --bg-modal-sidebar: #080808;
-  --bg-modal-card: #101010;
-  --bg-modal-hover: #151515;
+  /* Deep purple-black — same tonal family as the accent, so panels read
+     as part of one dark palette rather than neutral grey boxes with a
+     pink accent dropped on top. */
+  --bg-primary: #120c1f;
+  --bg-secondary: #0f0b1a;
+  --bg-sidebar: #0d0916;
+  --bg-input: #150f24;
+  --bg-hover: rgba(180, 140, 255, 0.08);
+  --bg-active: rgba(180, 140, 255, 0.14);
+  --msg-hover: rgba(180, 140, 255, 0.04);
+  --bg-modal: #0f0b1a;
+  --bg-modal-sidebar: #08050f;
+  --bg-modal-card: #150f24;
+  --bg-modal-hover: #1b1430;
 
-  --text-primary: #ffffff;
-  --text-secondary: #b8b8b8;
-  --text-muted: #8c8c8c;
+  --text-primary: #f2eefc;
+  --text-secondary: #b6aed0;
+  --text-muted: #837a9c;
 
-  --border-color: #151515;
-  --border-medium: #222222;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --border-color: #1c1530;
+  --border-medium: #2a2144;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
 
   --online: #3ba55c;
   --offline: #6a6a72;
@@ -116,25 +119,25 @@ body.theme-esc {
   --emoji-item-size: 36px;
 }
 
-/* ---- Fallback (no theme class) = Esc (pure black) ---- */
+/* ---- Fallback (no theme class) = Esc (deep purple-black) ---- */
 body:not(.theme-light):not(.theme-dark):not(.theme-esc):not(.theme-retro) {
-  --bg-primary: #000000;
-  --bg-secondary: #050505;
-  --bg-sidebar: #000000;
-  --bg-input: #0a0a0a;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-active: rgba(255, 255, 255, 0.10);
-  --msg-hover: rgba(255, 255, 255, 0.03);
-  --bg-modal: #050505;
-  --bg-modal-sidebar: #080808;
-  --bg-modal-card: #101010;
-  --bg-modal-hover: #151515;
-  --text-primary: #ffffff;
-  --text-secondary: #b8b8b8;
-  --text-muted: #8c8c8c;
-  --border-color: #151515;
-  --border-medium: #222222;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --bg-primary: #120c1f;
+  --bg-secondary: #0f0b1a;
+  --bg-sidebar: #0d0916;
+  --bg-input: #150f24;
+  --bg-hover: rgba(180, 140, 255, 0.08);
+  --bg-active: rgba(180, 140, 255, 0.14);
+  --msg-hover: rgba(180, 140, 255, 0.04);
+  --bg-modal: #0f0b1a;
+  --bg-modal-sidebar: #08050f;
+  --bg-modal-card: #150f24;
+  --bg-modal-hover: #1b1430;
+  --text-primary: #f2eefc;
+  --text-secondary: #b6aed0;
+  --text-muted: #837a9c;
+  --border-color: #1c1530;
+  --border-medium: #2a2144;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   --online: #3ba55c;
   --offline: #6a6a72;
   --danger: #ed4245;
