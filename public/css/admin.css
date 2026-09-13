@@ -1,0 +1,37 @@
+/* admin.css — styles specific to the admin marketplace-dispute panel
+   (admin.js). Panel/view chrome (.mp-view, .mp-header, .mp-body,
+   .mp-toolbar, .mp-select, .mp-order-row, .mp-row-*, .mp-form,
+   .mp-order-summary*, .panel-header, .modal, .btn-primary, .btn-cancel,
+   .icon-btn) all come from marketplace.css/dashboard.css/theme.css via
+   the #view-app scope — this file only adds the handful of things
+   those don't already cover: dispute-status colors (marketplace.css
+   only has order-status colors: paid/delivered/completed/disputed/
+   cancelled/refunded — dispute status is a related but separate field
+   with its own values) and the read-only "already resolved" note box. */
+
+#view-app .mp-row-status.open,
+#view-app .mp-row-status.investigating { color: var(--warning); background: rgba(250, 166, 26, 0.12); }
+#view-app .mp-row-status.resolved_buyer,
+#view-app .mp-row-status.resolved_seller { color: var(--online); background: rgba(59, 165, 92, 0.12); }
+#view-app .mp-row-status.closed { color: var(--text-muted); background: var(--bg-hover); }
+
+#view-app .admin-note-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 16px;
+}
+
+#view-app .admin-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 18px 0 8px;
+}
+#view-app .admin-section-label:first-child { margin-top: 0; }

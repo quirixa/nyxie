@@ -77,6 +77,12 @@ async function getUserDb() {
   try { db.run("ALTER TABLE users ADD COLUMN bio TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN status_updated_at INTEGER"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0"); } catch (e) {}
+  // `role` also gets added defensively by walletDb.js's ensureWalletTables(),
+  // but that only runs lazily on first use of a wallet route — too late for
+  // middleware/auth.js, which selects `role` on every authenticated request
+  // starting from server startup. Adding it here too guarantees it exists
+  // before any request can hit that query.
+  try { db.run("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'USER'"); } catch (e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS servers (

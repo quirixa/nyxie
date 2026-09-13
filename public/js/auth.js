@@ -149,8 +149,8 @@ function initRegisterView() {
       usernameInput.focus();
       return;
     }
-    const reserved = ['admin', 'root', 'system', 'nyxie', 'support'];
-    if (reserved.includes(username.toLowerCase())) {
+    const reserved = await ReservedUsernames.isReserved(username);
+    if (reserved) {
       setError(usernameGroup, 'This username is not available.');
       usernameInput.focus();
       return;

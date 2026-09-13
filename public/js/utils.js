@@ -95,7 +95,47 @@ function debounce(fn, wait) {
   };
 }
 
-// versionedMediaUrl — cache-friendly replacement for the old
+// ReservedUsernames — client-side mirror of the server's reserved-list
+// check (server/services/reservedUsernames.js), used only to give
+// instant feedback before a round trip; the server is what actually
+// enforces this. Same load-with-fallback shape as the emoji engine in
+// dashboard.js (fetch a public JSON file once, cache it, fall back to a
+// small built-in list if the fetch fails) so both registration and the
+// settings "change username" flow can share one source instead of each
+// hardcoding the list.
+const ReservedUsernames = (() => {
+  let list = null;
+  let loadPromise = null;
+  // No hardcoded fallback list — the JSON file is the only source of
+  // truth. If the fetch fails, nothing is treated as reserved here;
+  // the server-side check (which enforces this for real) is what
+  // actually stops registration, this is just instant client feedback.
+
+  function load() {
+    if (list) return Promise.resolve(list);
+    if (loadPromise) return loadPromise;
+    loadPromise = fetch('/assets/reserved-usernames.json')
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(data => {
+        list = Array.isArray(data) ? data.map(s => String(s).toLowerCase()) : [];
+        return list;
+      })
+      .catch(() => { list = []; return list; });
+    return loadPromise;
+  }
+
+  async function isReserved(username) {
+    const reserved = await load();
+    return reserved.includes(String(username || '').toLowerCase());
+  }
+
+  return { load, isReserved };
+})();
+// Kick off the load immediately (fire-and-forget) so it's already
+// cached by the time someone actually submits a form — the `await` in
+// auth.js/settings.js is just a safety net for whichever request wins.
+ReservedUsernames.load();
+
 // `url + '?t=' + Date.now()` pattern. Appending a fresh timestamp on
 // *every* render defeated the browser cache entirely, so avatars/banners
 // re-fetched from the network on every navigation (visible flash/reload

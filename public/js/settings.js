@@ -318,8 +318,7 @@ function initSettingsView() {
       toast('Invalid username (3-30 chars, letters, numbers, _ or -)');
       return;
     }
-    const reserved = ['admin', 'root', 'system', 'nyxie', 'support'];
-    if (reserved.includes(newUsername.toLowerCase())) {
+    if (await ReservedUsernames.isReserved(newUsername)) {
       toast('Username not available');
       return;
     }

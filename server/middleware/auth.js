@@ -13,7 +13,12 @@ async function requireAuth(req, res, next) {
     const token = authHeader.slice(7);
     const payload = verifyToken(token);
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name, disabled FROM users WHERE id = ?', [payload.sub]);
+    // `role` is included so downstream middleware (requireAdmin) doesn't
+    // need a second DB round-trip; walletDb.js's ensureWalletTables()
+    // defensively ALTERs this column onto `users` before any request
+    // that could reach here would run (server.js initializes the user
+    // DB before listening), so it's always present by the time we query.
+    const user = get(db, 'SELECT id, username, display_name, disabled, role FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     if (user.disabled) return res.status(403).json({ error: 'Account disabled' });
     req.user = user;
@@ -23,4 +28,14 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+// Admin-only routes (marketplace dispute resolution, etc.). Must run
+// after requireAuth. Never trust a client-supplied role — this only
+// ever reads req.user.role, which requireAuth populated from the DB.
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireAdmin };

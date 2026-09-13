@@ -529,6 +529,8 @@ function initDashboardView() {
     document.getElementById('friends-panel').style.display = 'none';
     document.getElementById('saved-notes-panel').style.display = 'none';
     document.getElementById('wallet-panel').style.display = 'none';
+    document.getElementById('marketplace-panel').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'none';
     if (section === 'home') {
       document.getElementById('welcome-view').style.display = 'flex';
@@ -545,6 +547,24 @@ function initDashboardView() {
       document.getElementById('wallet-panel').style.display = 'flex';
       if (typeof initWalletPanel === 'function') initWalletPanel();
       showMobileDetail();
+    } else if (section === 'marketplace') {
+      document.getElementById('marketplace-panel').style.display = 'flex';
+      if (typeof initMarketplacePanel === 'function') initMarketplacePanel();
+      showMobileDetail();
+    } else if (section === 'admin') {
+      // Cosmetic gate, mirroring router.js's 'admin' auth guard — this
+      // covers the case where something calls navigateTo('admin')
+      // directly (e.g. stale UI state) rather than through a route
+      // change. The real enforcement is server-side (requireAdmin in
+      // server/middleware/auth.js); every /api/admin/marketplace call
+      // this panel makes is re-checked there regardless of this check.
+      if (!currentUser || currentUser.role !== 'ADMIN') {
+        toast('Admin access required', true);
+        return navigateTo('home');
+      }
+      document.getElementById('admin-panel').style.display = 'flex';
+      if (typeof initAdminPanel === 'function') initAdminPanel();
+      showMobileDetail();
     }
     // Keep the address bar in sync with the wallet section specifically
     // (it's the one section with its own real route — see '/wallets' in
@@ -555,12 +575,20 @@ function initDashboardView() {
     // panels). Same idea for leaving an open conversation (its own
     // '/app/rooms/:id' route — see openRoom()) for a different section:
     // drop back to a plain URL without pushing a new history entry.
+    // Marketplace gets the same '/marketplace' treatment as '/wallets',
+    // and admin gets the same treatment via '/admin/disputes'.
     const path = window.location.pathname;
     const onWalletUrl = path === '/wallets';
+    const onMarketplaceUrl = path === '/marketplace';
+    const onAdminUrl = path === '/admin/disputes';
     const onRoomUrl = path.startsWith('/app/rooms/');
     if (section === 'wallet' && !onWalletUrl) {
       window.history.replaceState({}, '', '/wallets');
-    } else if (section !== 'wallet' && (onWalletUrl || onRoomUrl)) {
+    } else if (section === 'marketplace' && !onMarketplaceUrl) {
+      window.history.replaceState({}, '', '/marketplace');
+    } else if (section === 'admin' && !onAdminUrl) {
+      window.history.replaceState({}, '', '/admin/disputes');
+    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onRoomUrl)) {
       window.history.replaceState({}, '', '/app');
     }
   }
@@ -608,6 +636,8 @@ function initDashboardView() {
     // Added as requested: ensure wallet-panel and notifications-panel are hidden
     document.getElementById('wallet-panel').style.display = 'none';
     document.getElementById('notifications-panel').style.display = 'none';
+    document.getElementById('marketplace-panel').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'flex';
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     showMobileDetail();
@@ -2838,6 +2868,10 @@ function initDashboardView() {
       document.getElementById('up-status-pip').className = pipClass(currentUser._status);
       document.getElementById('up-name').textContent = name;
       document.getElementById('up-tag').textContent = '@' + currentUser.username;
+      // Cosmetic only — hides the nav link for non-admins so it doesn't
+      // invite clicks that just bounce back (see router.js's 'admin'
+      // auth guard and navigateTo('admin') above for the actual gate).
+      document.getElementById('nav-admin').style.display = currentUser.role === 'ADMIN' ? 'flex' : 'none';
       try { await ensureE2EEKeys(); } catch (e) { console.error('E2EE key setup failed:', e); toast('⚠️ Encryption setup failed — messages will send unencrypted'); }
       connectWS();
       if (typeof initVoiceFeatures === 'function') { try { initVoiceFeatures(); } catch (e) { console.error('Voice feature init failed:', e); } }

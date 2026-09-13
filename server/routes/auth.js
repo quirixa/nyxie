@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const { getUserDb, all, get, run } = require('../database/userDb');
 const { signToken, verifyToken } = require('../services/jwt');
+const { isReservedUsername } = require('../services/reservedUsernames');
 
 const SALT_ROUNDS = 10;
 
@@ -24,8 +25,7 @@ router.post('/register', async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{3,30}$/.test(trimmedUsername)) {
       return res.status(400).json({ error: 'Username must be 3-30 characters (letters, numbers, _ or -).' });
     }
-    const reserved = ['admin', 'root', 'system', 'nyxie', 'support'];
-    if (reserved.includes(trimmedUsername.toLowerCase())) {
+    if (isReservedUsername(trimmedUsername)) {
       return res.status(400).json({ error: 'Username not available' });
     }
 
@@ -128,7 +128,13 @@ router.post('/login', async (req, res) => {
         public_key: user.public_key || null,
         encrypted_private_key: user.encrypted_private_key || null,
         key_salt: user.key_salt || null,
-        key_nonce: user.key_nonce || null
+        key_nonce: user.key_nonce || null,
+        // Included so the frontend can cosmetically show/hide admin-only
+        // UI (e.g. the admin nav link/route) without a separate request —
+        // this is display-only; every admin endpoint re-checks the real
+        // role server-side via requireAdmin (server/middleware/auth.js)
+        // and never trusts this client-held copy.
+        role: user.role || 'USER'
       }
     });
   } catch (err) {
@@ -146,7 +152,11 @@ router.get('/me', async (req, res) => {
     const token = authHeader.slice(7);
     const payload = verifyToken(token);
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen FROM users WHERE id = ?', [payload.sub]);
+    // `role` is selected here too (see the comment on it in the /login
+    // response above) — dashboard.js refreshes currentUser from this
+    // endpoint on every app load, so it's the other place the client's
+    // cached role can go stale without this.
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     res.json({ user });
   } catch (err) {

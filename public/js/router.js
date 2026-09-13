@@ -46,6 +46,17 @@ const router = (() => {
     // refresh while the wallet panel was open had nowhere to go — see
     // window._initialSection in dashboard.js, which this reads).
     { path: '/wallets', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'wallet'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Same idea as /wallets, for the marketplace panel.
+    { path: '/marketplace', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'marketplace'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Admin-only, same panel-with-its-own-URL pattern as /wallets and
+    // /marketplace above. auth: 'admin' (see applyAuthGuard) is the
+    // cosmetic, client-side half of the admin gate — it keeps the page
+    // from even rendering for a non-admin who types/bookmarks this URL.
+    // The real enforcement is entirely server-side (requireAdmin in
+    // server/middleware/auth.js); this guard can't be trusted on its
+    // own since currentUser.role is just whatever the last /auth/login
+    // or /auth/me response said.
+    { path: '/admin/disputes', template: 'tpl-app', auth: 'admin', init: () => { window._initialSection = 'admin'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     // One real URL per open conversation (mirrors the /wallets pattern
     // above): opening a DM pushes '/app/rooms/<id>' so refreshing,
     // sharing the link, or using browser back/forward lands back on
@@ -76,6 +87,13 @@ const router = (() => {
     if (!route) return '/';
     if (route.auth === 'required' && !isLoggedIn()) return '/login';
     if (route.auth === 'guest' && isLoggedIn()) return '/app';
+    if (route.auth === 'admin') {
+      if (!isLoggedIn()) return '/login';
+      // currentUser is whatever /auth/login or /auth/me last returned
+      // (see state.js) — a non-admin who navigates here directly just
+      // bounces back to the app, same as any other 404-ish redirect.
+      if (!currentUser || currentUser.role !== 'ADMIN') return '/app';
+    }
     return null; // no redirect needed
   }
 

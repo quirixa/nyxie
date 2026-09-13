@@ -54,6 +54,8 @@
 <link rel="stylesheet" href="/css/dashboard.css">
 <link rel="stylesheet" href="/css/settings.css">
 <link rel="stylesheet" href="/css/wallet.css">
+<link rel="stylesheet" href="/css/marketplace.css">
+<link rel="stylesheet" href="/css/admin.css">
 
 <style>
     /* ─── Cropper Overlay ──────────────────────────────────── */
@@ -485,13 +487,20 @@ __    __  __      __  __    __  ______  ________
                         <span>Friends</span>
                         <span class="badge" id="nav-friends-badge" style="display:none;background:#ed4245;color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:auto;"></span>
                     </div>
-                    <div class="nav-item" id="nav-saved" onclick="navigateTo('saved')">
-                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
-                        <span>Saved Notes</span>
+                    <div class="nav-item" id="nav-marketplace" onclick="navigateTo('marketplace')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z"/><path d="M9 21V13h6v8"/></svg>
+                        <span>Marketplace</span>
                     </div>
                     <div class="nav-item" id="nav-wallet" onclick="navigateTo('wallet')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
                         <span>Wallet</span>
+                    </div>
+                    <!-- Hidden by default; shown by dashboard.js only when
+                         currentUser.role === 'ADMIN' (cosmetic — the real
+                         gate is server-side requireAdmin). -->
+                    <div class="nav-item" id="nav-admin" onclick="navigateTo('admin')" style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+                        <span>Admin</span>
                     </div>
                 </div>
                 <div id="conv-header">
@@ -589,6 +598,214 @@ __    __  __      __  __    __  ______  ________
                             <polyline points="10 9 9 9 8 9"/>
                         </svg>
                         <span>No saved notes yet.</span>
+                    </div>
+                </div>
+
+                <!-- Marketplace Panel -->
+                <div id="marketplace-panel" style="display:none;">
+                    <!-- Browse sub-view -->
+                    <div id="mp-browse-view" class="mp-view">
+                        <div class="mp-header">
+                            <span class="mp-title">Marketplace</span>
+                            <span class="mp-balance-pill" id="mp-balance-pill">— NX</span>
+                            <button class="icon-btn" title="Sell an item" onclick="mpOpenSell()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <button class="icon-btn" title="My orders" onclick="mpOpenManage()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                            </button>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-toolbar">
+                            <div class="mp-search-wrap">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="mp-search-input" placeholder="Search listings…" oninput="mpOnSearchInput()" />
+                            </div>
+                            <select class="mp-select" id="mp-category-select" onchange="mpReloadListings()">
+                                <option value="">All</option>
+                                <option value="gaming">Gaming</option>
+                                <option value="digital">Digital</option>
+                                <option value="services">Services</option>
+                                <option value="other">Other</option>
+                            </select>
+                            <select class="mp-select" id="mp-sort-select" onchange="mpReloadListings()">
+                                <option value="newest">Newest</option>
+                                <option value="price_asc">Price: Low → High</option>
+                                <option value="price_desc">Price: High → Low</option>
+                                <option value="rating">Rating</option>
+                                <option value="popular">Popular</option>
+                            </select>
+                        </div>
+                        <div class="mp-body">
+                            <div class="mp-grid" id="mp-listings-grid">
+                                <div class="mp-empty">Loading…</div>
+                            </div>
+                            <div class="mp-pagination" id="mp-pagination" style="display:none;">
+                                <button class="btn-cancel" id="mp-prev-page" onclick="mpChangePage(-1)">Prev</button>
+                                <span id="mp-page-label">Page 1</span>
+                                <button class="btn-cancel" id="mp-next-page" onclick="mpChangePage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Listing detail sub-view -->
+                    <div id="mp-listing-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Listing</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="mp-listing-body"></div>
+                    </div>
+
+                    <!-- Sell / create listing sub-view -->
+                    <div id="mp-sell-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Create Listing</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body">
+                            <form class="mp-form" id="mp-sell-form" onsubmit="return mpSubmitListing(event)">
+                                <div>
+                                    <label>Title</label>
+                                    <input type="text" id="mp-f-title" maxlength="100" placeholder="e.g. Minecraft Account" required />
+                                </div>
+                                <div>
+                                    <label>Category</label>
+                                    <select id="mp-f-category" required>
+                                        <option value="gaming">Gaming</option>
+                                        <option value="digital">Digital</option>
+                                        <option value="services">Services</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>Description</label>
+                                    <textarea id="mp-f-description" maxlength="4000" placeholder="Describe what the buyer is getting…" required></textarea>
+                                </div>
+                                <div class="mp-form-row">
+                                    <div>
+                                        <label>Price (NX)</label>
+                                        <input type="text" inputmode="decimal" id="mp-f-price" placeholder="25" required oninput="mpUpdatePricePreview()" />
+                                        <div class="mp-form-hint" id="mp-f-price-preview">$0.00 USD</div>
+                                    </div>
+                                    <div>
+                                        <label>Stock</label>
+                                        <input type="number" min="1" step="1" id="mp-f-stock" value="1" required />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label>Delivery</label>
+                                    <select id="mp-f-delivery">
+                                        <option value="manual">Manual</option>
+                                        <option value="instant">Instant</option>
+                                    </select>
+                                </div>
+                                <div class="modal-actions" style="justify-content:flex-start;">
+                                    <button type="submit" class="btn-primary" id="mp-sell-submit-btn">Publish Listing</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Manage sub-view: Purchases / Sales / My Listings -->
+                    <div id="mp-manage-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">My Orders</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab active" id="mp-tab-purchases" onclick="mpSwitchManageTab('purchases')">Purchases</button>
+                            <button class="mp-tab" id="mp-tab-sales" onclick="mpSwitchManageTab('sales')">Sales</button>
+                            <button class="mp-tab" id="mp-tab-listings" onclick="mpSwitchManageTab('listings')">My Listings</button>
+                        </div>
+                        <div class="mp-body" id="mp-manage-body">
+                            <div class="mp-empty">Loading…</div>
+                        </div>
+                    </div>
+
+                    <!-- Order detail sub-view -->
+                    <div id="mp-order-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToManage()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Order</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="mp-order-body"></div>
+                    </div>
+
+                    <!-- Vendor profile sub-view -->
+                    <div id="mp-vendor-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Vendor</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="mp-vendor-body"></div>
+                    </div>
+                </div>
+
+                <!-- Admin Panel (marketplace dispute review — admin.js).
+                     Reuses the .mp-view/.mp-header/.mp-body/.mp-tabs/etc.
+                     classes from marketplace.css (those selectors are
+                     scoped to #view-app generally, not #marketplace-panel
+                     specifically), plus a small admin.css for the extra
+                     dispute-status colors marketplace.css doesn't have. -->
+                <div id="admin-panel" style="display:none;">
+                    <!-- Disputes list sub-view -->
+                    <div id="admin-disputes-view" class="mp-view">
+                        <div class="mp-header">
+                            <span class="mp-title">Marketplace Disputes</span>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-toolbar">
+                            <select class="mp-select" id="admin-status-select" onchange="adminReloadDisputes()">
+                                <option value="open">Open</option>
+                                <option value="investigating">Investigating</option>
+                                <option value="resolved_buyer">Resolved (buyer)</option>
+                                <option value="resolved_seller">Resolved (seller)</option>
+                                <option value="closed">Closed</option>
+                                <option value="">All statuses</option>
+                            </select>
+                        </div>
+                        <div class="mp-body">
+                            <div id="admin-disputes-list">
+                                <div class="mp-empty">Loading…</div>
+                            </div>
+                            <div class="mp-pagination" id="admin-pagination" style="display:none;">
+                                <button class="btn-cancel" id="admin-prev-page" onclick="adminChangePage(-1)">Prev</button>
+                                <span id="admin-page-label">Page 1</span>
+                                <button class="btn-cancel" id="admin-next-page" onclick="adminChangePage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dispute detail / resolve sub-view -->
+                    <div id="admin-dispute-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="adminBackToList()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Dispute</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="admin-dispute-body"></div>
                     </div>
                 </div>
 
@@ -1001,6 +1218,61 @@ __    __  __      __  __    __  ______  ________
                 <div class="modal-actions">
                     <button type="button" class="btn-cancel" onclick="document.getElementById('wallet-pin-modal').style.display='none'">Cancel</button>
                     <button type="button" class="btn-primary" id="wpm-save-btn" onclick="submitWalletPin()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace: Purchase confirmation modal -->
+        <div class="overlay" id="mp-purchase-modal" style="display:none" onclick="if(event.target===this)mpCloseModal('mp-purchase-modal')">
+            <div class="modal wallet-modal">
+                <h2>Confirm Purchase</h2>
+                <p id="mp-purchase-title">—</p>
+                <div class="wm-confirm-amount" id="mp-purchase-amount">0.00 NX</div>
+                <div class="wm-confirm-row"><span>Quantity</span><span id="mp-purchase-qty">1</span></div>
+                <div class="wm-confirm-row"><span>You will pay</span><span id="mp-purchase-total">0.00 NX</span></div>
+                <div class="mp-form-hint" id="mp-purchase-error" style="color:var(--danger);"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="mpCloseModal('mp-purchase-modal')">Cancel</button>
+                    <button type="button" class="btn-primary" id="mp-purchase-confirm-btn" onclick="mpConfirmPurchase()">Confirm Purchase</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace: Leave a review modal -->
+        <div class="overlay" id="mp-review-modal" style="display:none" onclick="if(event.target===this)mpCloseModal('mp-review-modal')">
+            <div class="modal wallet-modal">
+                <h2>Leave a Review</h2>
+                <div class="mp-star-input" id="mp-review-stars">
+                    <span data-star="1">★</span><span data-star="2">★</span><span data-star="3">★</span><span data-star="4">★</span><span data-star="5">★</span>
+                </div>
+                <label>Comment (optional)</label>
+                <textarea id="mp-review-comment" maxlength="1000" placeholder="How was it?"></textarea>
+                <div class="mp-form-hint" id="mp-review-error" style="color:var(--danger);"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="mpCloseModal('mp-review-modal')">Cancel</button>
+                    <button type="button" class="btn-primary" id="mp-review-submit-btn" onclick="mpSubmitReview()">Submit Review</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace: Open dispute modal -->
+        <div class="overlay" id="mp-dispute-modal" style="display:none" onclick="if(event.target===this)mpCloseModal('mp-dispute-modal')">
+            <div class="modal wallet-modal">
+                <h2>Open a Dispute</h2>
+                <label>Reason</label>
+                <select id="mp-dispute-reason">
+                    <option value="item_not_received">Item not received</option>
+                    <option value="item_not_as_described">Item not as described</option>
+                    <option value="seller_not_responding">Seller not responding</option>
+                    <option value="buyer_issue">Buyer issue</option>
+                    <option value="other">Other</option>
+                </select>
+                <label>Description</label>
+                <textarea id="mp-dispute-description" maxlength="2000" placeholder="Explain what happened…"></textarea>
+                <div class="mp-form-hint" id="mp-dispute-error" style="color:var(--danger);"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="mpCloseModal('mp-dispute-modal')">Cancel</button>
+                    <button type="button" class="btn-primary" id="mp-dispute-submit-btn" onclick="mpSubmitDispute()">Submit Dispute</button>
                 </div>
             </div>
         </div>
@@ -1762,6 +2034,8 @@ __    __  __      __  __    __  ______  ________
 <script src="/js/notifications.js"></script>
 <script src="/js/dashboard.js"></script>
 <script src="/js/wallet.js"></script>
+<script src="/js/marketplace.js"></script>
+<script src="/js/admin.js"></script>
 <script src="/js/voice.js"></script>
 <script src="/js/settings.js"></script>
 <script src="/js/cropper.js"></script>

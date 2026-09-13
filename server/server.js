@@ -18,6 +18,8 @@ const roomRoutes = require('./routes/rooms');
 const serverRoutes = require('./routes/servers');
 const friendRoutes = require('./routes/friends');
 const walletRoutes = require('./routes/wallet');
+const marketplaceRoutes = require('./routes/marketplace');
+const adminMarketplaceRoutes = require('./routes/adminMarketplace');
 const { getUserDb } = require('./database/userDb');
 
 const app = express();
@@ -144,6 +146,8 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/admin/marketplace', adminMarketplaceRoutes);
 
 // ── Dev-only test funding — never mounted in production ──────────
 if (process.env.NODE_ENV !== 'production') {

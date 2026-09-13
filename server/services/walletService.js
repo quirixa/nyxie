@@ -215,43 +215,64 @@ function checkRateLimits(db, senderWalletDbId, amountSubunits) {
 
 // ── Core ledger primitive ───────────────────────────────────────────
 // Writes a transaction row + matching double-entry ledger rows, and
-// updates cached wallet balances, all inside one BEGIN/COMMIT block.
-// `legs` is an array of { walletDbId, amount, direction } that MUST sum
-// to zero net movement for money that isn't entering/leaving the system
-// (system credit/debit and deposits/withdrawals are the deliberate
-// exceptions — a single-leg entry against the system).
-function writeTransaction(db, { type, status, senderWalletDbId, receiverWalletDbId, amount, description, metadata, idempotencyKey, legs }) {
+// updates cached wallet balances. `legs` is an array of { walletDbId,
+// amount, direction } that MUST sum to zero net movement for money that
+// isn't entering/leaving the system (system credit/debit, deposits/
+// withdrawals, and escrow hold/release/refund legs are the deliberate
+// single-leg exceptions — see marketplaceService.js for the escrow case).
+//
+// This is the "inline" version: it does NOT open its own BEGIN/COMMIT,
+// so callers that need several ledger writes to succeed-or-fail together
+// (e.g. marketplace escrow release, which both credits the seller AND
+// flips the original hold's status in the same breath) can wrap several
+// calls to this in one outer transaction. `writeTransaction` below is
+// the everyday single-write wrapper most callers want.
+function writeTransactionInline(db, { type, status, senderWalletDbId, receiverWalletDbId, amount, description, metadata, idempotencyKey, legs }) {
   const now = Date.now();
   const txId = crypto.randomUUID();
   const reference = generateTransactionRef();
 
+  run(db, `
+    INSERT INTO wallet_transactions
+      (id, reference, type, status, sender_wallet_id, receiver_wallet_id, amount, currency, description, metadata, idempotency_key, created_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'NX', ?, ?, ?, ?, ?)
+  `, [txId, reference, type, status, senderWalletDbId || null, receiverWalletDbId || null, amount,
+      description || null, metadata ? JSON.stringify(metadata) : null, idempotencyKey || null, now,
+      status === 'COMPLETED' ? now : null]);
+
+  for (const leg of legs) {
+    run(db, `
+      INSERT INTO ledger_entries (id, transaction_id, wallet_id, amount, direction, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [crypto.randomUUID(), txId, leg.walletDbId, leg.amount, leg.direction, now]);
+
+    const delta = leg.direction === 'CREDIT' ? leg.amount : -leg.amount;
+    run(db, 'UPDATE wallets SET balance = balance + ?, updated_at = ? WHERE id = ?', [delta, now, leg.walletDbId]);
+  }
+
+  return get(db, 'SELECT * FROM wallet_transactions WHERE id = ?', [txId]);
+}
+
+// Marks an existing transaction row COMPLETED (used when an ESCROW hold
+// is released or refunded — the hold itself transitions out of ESCROW
+// status rather than getting a new row). Inline — same rules as above.
+function markTransactionStatusInline(db, transactionId, status) {
+  const now = Date.now();
+  run(db, `UPDATE wallet_transactions SET status = ?, completed_at = ? WHERE id = ?`,
+    [status, status === 'COMPLETED' ? now : null, transactionId]);
+}
+
+// Everyday wrapper: one ledger write, its own BEGIN/COMMIT/ROLLBACK.
+function writeTransaction(db, params) {
   run(db, 'BEGIN TRANSACTION');
   try {
-    run(db, `
-      INSERT INTO wallet_transactions
-        (id, reference, type, status, sender_wallet_id, receiver_wallet_id, amount, currency, description, metadata, idempotency_key, created_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'NX', ?, ?, ?, ?, ?)
-    `, [txId, reference, type, status, senderWalletDbId || null, receiverWalletDbId || null, amount,
-        description || null, metadata ? JSON.stringify(metadata) : null, idempotencyKey || null, now,
-        status === 'COMPLETED' ? now : null]);
-
-    for (const leg of legs) {
-      run(db, `
-        INSERT INTO ledger_entries (id, transaction_id, wallet_id, amount, direction, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [crypto.randomUUID(), txId, leg.walletDbId, leg.amount, leg.direction, now]);
-
-      const delta = leg.direction === 'CREDIT' ? leg.amount : -leg.amount;
-      run(db, 'UPDATE wallets SET balance = balance + ?, updated_at = ? WHERE id = ?', [delta, now, leg.walletDbId]);
-    }
-
+    const tx = writeTransactionInline(db, params);
     run(db, 'COMMIT');
+    return tx;
   } catch (e) {
     try { run(db, 'ROLLBACK'); } catch (e2) { /* best-effort */ }
     throw e;
   }
-
-  return get(db, 'SELECT * FROM wallet_transactions WHERE id = ?', [txId]);
 }
 
 // ── Transfer (send money) — section 5 ───────────────────────────────
@@ -445,6 +466,9 @@ module.exports = {
   pinRecord,
   findByIdempotencyKey,
   writeTransaction,
+  writeTransactionInline,
+  markTransactionStatusInline,
+  checkRateLimits,
   transfer,
   devFaucet,
   requestWithdrawal,

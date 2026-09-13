@@ -8,6 +8,7 @@ const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
 const { hasBlocked } = require('../services/blocks');
+const { isReservedUsername } = require('../services/reservedUsernames');
 
 // ─── Paths ──────────────────────────────────────────────────
 const PROJECT_ROOT = path.resolve(__dirname, '../..'); // because this file is in server/routes/
@@ -165,8 +166,7 @@ router.patch('/me', requireAuth, async (req, res) => {
     if (!/^[a-zA-Z0-9_-]{3,30}$/.test(trimmed)) {
       return res.status(400).json({ error: 'Username must be 3-30 characters (letters, numbers, _ or -).' });
     }
-    const reserved = ['admin', 'root', 'system', 'nyxie', 'support'];
-    if (reserved.includes(trimmed.toLowerCase())) {
+    if (isReservedUsername(trimmed)) {
       return res.status(400).json({ error: 'Username not available' });
     }
     const existing = get(db, 'SELECT id FROM users WHERE username = ? AND id != ?', [trimmed, userId]);
