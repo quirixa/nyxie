@@ -67,6 +67,13 @@
   flex-shrink: 0;
 }
 
+/* Inside a server, the global Home/Friends/Marketplace/Wallet/Admin nav
+   has no meaning — the server rail + channel list are the navigation.
+   Toggled by selectServer()/showDMView() in dashboard.js. */
+#view-app #sidebar.in-server-view #sidebar-nav {
+  display: none;
+}
+
 #view-app .nav-item {
   display: flex;
   align-items: center;
@@ -2314,6 +2321,74 @@ body.select-mode #view-app .dm-checkbox {
   width: 100%;
 }
 
+/* Discover Servers tab (Add Server modal) */
+#view-app .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-secondary, var(--text-muted));
+  margin: 10px 0 2px;
+  cursor: pointer;
+}
+#view-app #discover-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-input);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+#view-app #discover-search-wrap svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+#view-app #discover-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  outline: none;
+}
+#view-app #discover-results {
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#view-app .discover-empty,
+#view-app .discover-status {
+  padding: 24px 10px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+#view-app .discover-join-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#view-app .discover-join-btn:hover {
+  background: var(--accent-hover);
+}
+#view-app .discover-join-btn:disabled {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: default;
+}
+
 /* Generic scrollable list used for member/friend/invite pickers */
 #view-app .picker-list {
   max-height: 320px;
@@ -2541,6 +2616,12 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .ml-row.offline .ml-name {
   color: var(--text-muted);
+}
+#view-app .owner-crown {
+  color: #f2b93b;
+  flex-shrink: 0;
+  margin-left: 4px;
+  vertical-align: -1px;
 }
 #view-app .ml-row.offline .ml-avatar {
   opacity: 0.5;

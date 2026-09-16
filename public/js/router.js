@@ -64,6 +64,13 @@ const router = (() => {
     // window._initialRoomId in dashboard.js, which this sets before the
     // dashboard mounts.
     { path: '/app/rooms/:roomId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialRoomId = params.roomId; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Real, refreshable/shareable URLs for a server and a specific
+    // channel within it — mirrors '/app/rooms/:roomId' above. IDs are
+    // the source of truth (never names): see window._initialServerId/
+    // window._initialChannelId in dashboard.js, which selectServer()/
+    // openChannel() read on mount.
+    { path: '/servers/:serverId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialServerId = params.serverId; window._initialChannelId = null; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    { path: '/servers/:serverId/channels/:channelId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialServerId = params.serverId; window._initialChannelId = params.channelId; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     { path: '/settings', template: 'tpl-settings', auth: 'required', init: () => initSettingsView(), destroy: () => { if (typeof destroySettingsView === 'function') destroySettingsView(); } }
   ];
 

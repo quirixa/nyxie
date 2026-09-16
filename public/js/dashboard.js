@@ -584,13 +584,14 @@ function initDashboardView() {
     const onMarketplaceUrl = path === '/marketplace';
     const onAdminUrl = path === '/admin/disputes';
     const onRoomUrl = path.startsWith('/app/rooms/');
+    const onServerUrl = path.startsWith('/servers/');
     if (section === 'wallet' && !onWalletUrl) {
       window.history.replaceState({}, '', '/wallets');
     } else if (section === 'marketplace' && !onMarketplaceUrl) {
       window.history.replaceState({}, '', '/marketplace');
     } else if (section === 'admin' && !onAdminUrl) {
       window.history.replaceState({}, '', '/admin/disputes');
-    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onRoomUrl)) {
+    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onRoomUrl || onServerUrl)) {
       window.history.replaceState({}, '', '/app');
     }
   }
@@ -3022,6 +3023,25 @@ function initDashboardView() {
           window.history.replaceState({}, '', '/app');
           navigateTo('home');
         }
+      } else if (window._initialServerId) {
+        // Set by router.js's '/servers/:serverId' or
+        // '/servers/:serverId/channels/:channelId' route — lets a direct
+        // navigation, page refresh, or browser back/forward land back on
+        // that exact guild/channel instead of resetting to home.
+        const serverId = window._initialServerId;
+        const channelId = window._initialChannelId;
+        window._initialServerId = null;
+        window._initialChannelId = null;
+        if (servers.find(s => s.id === serverId)) {
+          selectServer(serverId, { fromRoute: true, initialChannelId: channelId });
+        } else {
+          // Deep link to a server we're not a member of (or that no
+          // longer exists) — fall back to home rather than getting stuck
+          // on a broken server URL.
+          toast('Server not found');
+          window.history.replaceState({}, '', '/app');
+          navigateTo('home');
+        }
       } else {
         navigateTo(window._initialSection || 'home');
         window._initialSection = null;
@@ -3140,6 +3160,14 @@ function initDashboardView() {
   //  SERVERS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  // Inline SVG crown shown next to a server's owner in the member list —
+  // driven purely by member.is_owner, which the server derives from
+  // servers.owner_id (see GET /servers/:id/members), never from role
+  // name, array position, or anything client-side.
+  function ownerCrownSvg() {
+    return `<svg class="owner-crown" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-label="Server owner" role="img"><title>Server owner</title><path d="M3 19h18v2H3v-2zm.4-2 1.2-9L9 12l3-7 3 7 4.4-4L21 17H3.4z"/></svg>`;
+  }
+
   async function loadServers() {
     const data = await api('GET', '/servers');
     if (!data) return;
@@ -3167,11 +3195,25 @@ function initDashboardView() {
     document.getElementById('search-wrap').classList.remove('hidden');
     document.getElementById('dm-section').style.display = '';
     document.getElementById('chat-view').style.display = 'none';
+    // Restore the normal global sidebar nav (Home/Friends/Marketplace/
+    // Wallet/Admin) that selectServer() hides — see the .in-server-view
+    // rule in dashboard.css.
+    document.getElementById('sidebar').classList.remove('in-server-view');
     renderServerRail();
+    if (window.location.pathname.startsWith('/servers/')) {
+      window.history.replaceState({}, '', '/app');
+    }
     navigateTo('home');
   }
 
-  async function selectServer(serverId) {
+  // `fromRoute: true` means router.js already matched '/servers/:serverId'
+  // or '/servers/:serverId/channels/:channelId' and mounted the dashboard
+  // for it (page load, refresh, or browser back/forward) — the address
+  // bar is already correct, so this and openChannel() below skip pushing
+  // a new history entry. Every other caller (clicking a server pill) is a
+  // real navigation and should push its own URL, same pattern as
+  // openRoom()'s fromRoute for DMs.
+  async function selectServer(serverId, { fromRoute = false, initialChannelId = null } = {}) {
     currentServerId = serverId;
     currentRoom = null;
     document.getElementById('welcome-view').style.display = 'none';
@@ -3185,15 +3227,31 @@ function initDashboardView() {
     document.getElementById('search-wrap').classList.add('hidden');
     document.getElementById('dm-section').style.display = 'none';
     document.getElementById('server-panel').classList.remove('hidden');
+    // Server view gets its own nav (server rail + channel list); the
+    // global sidebar-nav has no place inside it, so hide it for as long
+    // as a server is active. Restored by showDMView().
+    document.getElementById('sidebar').classList.add('in-server-view');
     renderServerRail();
 
     const server = servers.find(s => s.id === serverId);
-    document.getElementById('server-panel-name').textContent = server?.name || 'Server';
+    if (!server) {
+      toast('Server not found');
+      return showDMView();
+    }
+    document.getElementById('server-panel-name').textContent = server.name;
     document.getElementById('channel-list').innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">Loading…</div>`;
 
     await loadServerChannels(serverId);
     await loadServerRoles();
-    if (serverChannels.length) openChannel(serverChannels[0].id);
+
+    const wanted = initialChannelId && serverChannels.find(c => c.id === initialChannelId);
+    if (wanted) {
+      openChannel(wanted.id, { fromRoute });
+    } else if (serverChannels.length) {
+      openChannel(serverChannels[0].id, { fromRoute });
+    } else if (!fromRoute) {
+      window.history.pushState({}, '', `/servers/${serverId}`);
+    }
   }
 
   async function loadServerChannels(serverId) {
@@ -3223,13 +3281,27 @@ function initDashboardView() {
     `).join('');
   }
 
-  function openChannel(channelId) {
+  function openChannel(channelId, { fromRoute = false } = {}) {
     const channel = serverChannels.find(c => c.id === channelId);
     if (!channel) return toast('Channel not found');
     const loadToken = ++_roomLoadToken;
+    // Leave the previously active channel's WebSocket subscription (if
+    // any) before joining the new one, so live events (new messages,
+    // typing, presence) are scoped to the channel actually being viewed
+    // rather than accumulating across every channel ever opened this
+    // session. DMs/groups are unaffected — they stay joined for
+    // notifications regardless of which view is open.
+    if (currentRoom && currentRoom.server_id && currentRoom.id !== channelId && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'leave_room', room_id: currentRoom.id }));
+    }
     currentRoom = channel;
     currentRoomMembers = [];
     closeMentionSuggest();
+
+    const targetPath = `/servers/${channel.server_id}/channels/${channel.id}`;
+    if (!fromRoute && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
 
     document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
     const el = document.querySelector(`[data-channel-id="${channelId}"]`);
@@ -3290,28 +3362,101 @@ function initDashboardView() {
 
   function showAddServerModal() {
     document.getElementById('add-server-modal').style.display = 'flex';
+    _discoverLoadedOnce = false;
     switchAddServerTab('create');
   }
 
   function switchAddServerTab(tab) {
     document.getElementById('as-tab-create').classList.toggle('active', tab === 'create');
     document.getElementById('as-tab-join').classList.toggle('active', tab === 'join');
+    document.getElementById('as-tab-discover').classList.toggle('active', tab === 'discover');
     document.getElementById('as-pane-create').style.display = tab === 'create' ? '' : 'none';
     document.getElementById('as-pane-join').style.display = tab === 'join' ? '' : 'none';
+    document.getElementById('as-pane-discover').style.display = tab === 'discover' ? '' : 'none';
+    if (tab === 'discover' && !_discoverLoadedOnce) {
+      _discoverLoadedOnce = true;
+      searchDiscoverServers('');
+    }
   }
 
   async function submitCreateServer() {
     const name = document.getElementById('create-server-name').value.trim();
     const description = document.getElementById('create-server-desc').value.trim();
+    const isDiscoverable = document.getElementById('create-server-discoverable').checked;
     if (!name) return toast('Server name required');
-    const data = await api('POST', '/servers', { name, description });
+    const data = await api('POST', '/servers', { name, description, is_discoverable: isDiscoverable });
     if (!data?.server) return toast(data?.error || 'Failed to create server');
     document.getElementById('add-server-modal').style.display = 'none';
     document.getElementById('create-server-name').value = '';
     document.getElementById('create-server-desc').value = '';
+    document.getElementById('create-server-discoverable').checked = false;
     await loadServers();
     selectServer(data.server.id);
     toast(`Server "${data.server.name}" created`);
+  }
+
+  // ─── Discover Servers ────────────────────────────────────────
+  // Backend/database-driven search (GET /servers/discover) — never a
+  // client-side filter over servers already loaded in the browser.
+  let _discoverLoadedOnce = false;
+  let _discoverSearchToken = 0;
+  let _discoverDebounceTimer = null;
+
+  function onDiscoverSearchInput(value) {
+    clearTimeout(_discoverDebounceTimer);
+    _discoverDebounceTimer = setTimeout(() => searchDiscoverServers(value.trim()), 300);
+  }
+
+  async function searchDiscoverServers(query) {
+    const container = document.getElementById('discover-results');
+    const token = ++_discoverSearchToken;
+    container.innerHTML = `<div class="discover-status">Searching…</div>`;
+    let data;
+    try {
+      data = await api('GET', `/servers/discover?query=${encodeURIComponent(query || '')}`);
+    } catch (e) {
+      data = null;
+    }
+    if (token !== _discoverSearchToken) return; // a newer search superseded this one
+    if (!data) {
+      container.innerHTML = `<div class="discover-status">Couldn't load servers. Try again.</div>`;
+      return;
+    }
+    const results = data.servers || [];
+    if (!results.length) {
+      container.innerHTML = `<div class="discover-empty">${query ? `No servers found for “${escapeHtml(query)}”` : 'No public servers to discover yet'}</div>`;
+      return;
+    }
+    container.innerHTML = results.map(s => {
+      const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+      const avatarHtml = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
+      const joinBtn = s.already_member
+        ? `<button class="discover-join-btn" disabled>Joined</button>`
+        : `<button class="discover-join-btn" onclick="joinDiscoveredServer('${s.id}', this)">Join</button>`;
+      return `<div class="picker-row">
+        <div class="picker-avatar">${avatarHtml}</div>
+        <div class="picker-info">
+          <div class="picker-name">${escapeHtml(s.name)}</div>
+          <div class="picker-sub">${escapeHtml(s.description || '')}${s.description ? ' · ' : ''}${s.member_count} member${s.member_count === 1 ? '' : 's'}</div>
+        </div>
+        ${joinBtn}
+      </div>`;
+    }).join('');
+  }
+
+  async function joinDiscoveredServer(serverId, btnEl) {
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Joining…'; }
+    const data = await api('POST', `/servers/${serverId}/join`);
+    if (!data?.ok) {
+      toast(data?.error || 'Failed to join server');
+      if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Join'; }
+      return;
+    }
+    if (btnEl) btnEl.textContent = 'Joined';
+    await loadServers();
+    document.getElementById('add-server-modal').style.display = 'none';
+    selectServer(serverId);
+    toast('Joined server');
   }
 
   function extractInviteCode(input) {
@@ -3436,13 +3581,13 @@ function initDashboardView() {
       const avatarHtml = m.avatar
         ? `<img src="${versionedMediaUrl(m.avatar)}" />`
         : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase());
-      return `<div class="ml-row ${isOffline ? 'offline' : ''}" onclick="showUserProfile('${m.id}')">
+      return `<div class="ml-row ${isOffline ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
         <div class="ml-avatar">
           ${avatarHtml}
           <span class="ml-status-dot pip-${isOffline ? 'offline' : 'online'}"></span>
         </div>
         <div class="ml-info">
-          <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ' 👑' : ''}</div>
+          <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ownerCrownSvg() : ''}</div>
           <div class="ml-sub">${escapeHtml(m.role?.name || 'Member')}</div>
         </div>
       </div>`;
@@ -3644,10 +3789,10 @@ function initDashboardView() {
   // right "info" surface depending on what's currently open: a group
   // chat's member list, or nothing for a channel/1:1 DM (which already
   // has its own profile popout elsewhere).
-  function openRoomInfo() {
+  function openRoomInfo(event) {
     if (currentRoom?.is_group) return openGroupInfoModal(currentRoom.id);
     if (currentRoom?.server_id) return; // channels: no per-channel info surface yet
-    if (currentRoom?._otherId) return showUserProfile(currentRoom._otherId);
+    if (currentRoom?._otherId) return showUserProfile(event, currentRoom._otherId);
   }
 
   async function openGroupInfoModal(groupId) {

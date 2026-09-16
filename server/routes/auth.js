@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const { getUserDb, all, get, run } = require('../database/userDb');
+const { getUserDb, get, run } = require('../database/userDb');
 const { signToken, verifyToken } = require('../services/jwt');
 const { isReservedUsername } = require('../services/reservedUsernames');
 
@@ -55,16 +55,11 @@ router.post('/register', async (req, res) => {
       [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now]
     );
 
-    const defaultServer = get(db, "SELECT id FROM servers WHERE name = 'Nyxie'");
-    if (defaultServer) {
-      run(db, 'INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)',
-          [defaultServer.id, userId, now]);
-      const channels = all(db, 'SELECT id FROM rooms WHERE server_id = ?', [defaultServer.id]);
-      for (const ch of channels) {
-        run(db, 'INSERT OR IGNORE INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)',
-            [ch.id, userId, now]);
-      }
-    }
+    // New users start in zero servers. Servers are opt-in: create one
+    // (POST /api/servers), join with an invite code, or join a public
+    // one through Discover (GET /api/servers/discover, POST
+    // /api/servers/:id/join) — see routes/servers.js. There is
+    // deliberately no automatic enrollment into any server here.
 
     const token = signToken(userId);
     res.status(201).json({

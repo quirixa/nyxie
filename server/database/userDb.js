@@ -96,6 +96,12 @@ async function getUserDb() {
   // description was added after some servers.db files already existed —
   // same reasoning as the users-table migrations above.
   try { db.run("ALTER TABLE servers ADD COLUMN description TEXT"); } catch (e) {}
+  // is_discoverable: whether the server shows up in GET /api/servers/discover
+  // search results. Servers are private (invite-only) by default — an
+  // owner has to opt in via "Make discoverable" at creation or later in
+  // server settings. See routes/servers.js.
+  try { db.run("ALTER TABLE servers ADD COLUMN is_discoverable INTEGER NOT NULL DEFAULT 0"); } catch (e) {}
+  db.run('CREATE INDEX IF NOT EXISTS idx_servers_discoverable ON servers (is_discoverable)');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS server_members (
@@ -213,19 +219,23 @@ async function getUserDb() {
     )
   `);
 
-  // Default server
-  const defaultServer = db.exec("SELECT id FROM servers WHERE name = 'Nyxie'");
-  if (!defaultServer.length || !defaultServer[0].values.length) {
-    const serverId = 'nyxie-default';
-    const now = Date.now();
-    db.run(`INSERT INTO servers (id, name, owner_id, created_at) VALUES (?, 'Nyxie', 'system', ?)`, [serverId, now]);
-    db.run(`INSERT OR IGNORE INTO rooms (id, server_id, name, description, created_by, created_at, is_dm)
-            VALUES ('general', ?, 'general', 'The main chat room', 'system', ?, 0)`, [serverId, now]);
-    db.run(`INSERT OR IGNORE INTO rooms (id, server_id, name, description, created_by, created_at, is_dm)
-            VALUES ('random', ?, 'random', 'Anything goes', 'system', ?, 0)`, [serverId, now]);
-    db.run(`INSERT OR IGNORE INTO rooms (id, server_id, name, description, created_by, created_at, is_dm)
-            VALUES ('introductions', ?, 'introductions', 'Introduce yourself', 'system', ?, 0)`, [serverId, now]);
-  }
+  // NOTE: this used to unconditionally seed a hardcoded 'nyxie-default'
+  // server (owner_id 'system', a user that doesn't exist) and silently
+  // enroll every newly-registered user into it (see the removed block in
+  // routes/auth.js's /register handler). That produced an unexplained
+  // server nobody actually created and nobody could actually own/manage
+  // (no real user ever matches owner_id 'system', so the owner crown,
+  // MANAGE_SERVER, and delete never worked for it either). Servers are
+  // now only ever created by a real, authenticated user via
+  // POST /api/servers, so there is no default/seeded server for fresh
+  // installs.
+  //
+  // Migration for installs that already have the old seeded server: keep
+  // the data (don't destroy existing channels/messages/members) but make
+  // it a normal, intentional, publicly-discoverable server instead of a
+  // mystery one, so it still shows up (opt-in, via Discover) rather than
+  // being force-injected into every account.
+  try { db.run("UPDATE servers SET is_discoverable = 1 WHERE id = 'nyxie-default'"); } catch (e) {}
 
   persist();
   setInterval(persist, 5000);

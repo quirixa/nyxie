@@ -40,6 +40,7 @@ function serializeServer(db, server, ctx) {
     icon: server.icon || null,
     owner_id: server.owner_id,
     created_at: server.created_at,
+    is_discoverable: !!server.is_discoverable,
     member_count: memberCount,
     my_role: ctx ? { id: ctx.roleId, name: ctx.roleName, position: ctx.rolePosition, permissions: ctx.permissions } : null,
     my_permissions: ctx ? ctx.permissions : 0,
@@ -47,6 +48,9 @@ function serializeServer(db, server, ctx) {
     nickname: ctx?.nickname || null
   };
 }
+
+const DISCOVER_PAGE_SIZE = 20;
+const MAX_DISCOVER_PAGE_SIZE = 50;
 
 // ─── Servers ─────────────────────────────────────────────────────
 
@@ -75,17 +79,18 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const db = await getUserDb();
-    let { name, description, icon } = req.body;
+    let { name, description, icon, is_discoverable } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Server name required' });
     name = name.trim().substring(0, MAX_SERVER_NAME);
     description = (description || '').toString().trim().slice(0, MAX_SERVER_DESC);
     icon = (typeof icon === 'string' && icon.startsWith('/uploads/')) ? icon : null;
+    const discoverable = is_discoverable === true ? 1 : 0;
 
     const serverId = crypto.randomUUID();
     const now = Date.now();
 
-    run(db, 'INSERT INTO servers (id, name, description, icon, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [serverId, name, description, icon, req.user.id, now]);
+    run(db, 'INSERT INTO servers (id, name, description, icon, owner_id, created_at, is_discoverable) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [serverId, name, description, icon, req.user.id, now, discoverable]);
 
     const roleIds = createDefaultRoles(db, serverId, now);
     run(db, 'INSERT INTO server_members (server_id, user_id, joined_at, role_id) VALUES (?, ?, ?, ?)',
@@ -106,6 +111,110 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Discover ────────────────────────────────────────────────────
+// Public server search — backend/database driven (not a filter over
+// servers already loaded into the browser). Registered before
+// '/:serverId' below so the literal path '/discover' isn't swallowed
+// by that param route.
+
+router.get('/discover', requireAuth, async (req, res) => {
+  try {
+    const db = await getUserDb();
+    const rawQuery = (req.query.query || req.query.q || '').toString().trim().slice(0, 100);
+    let page = parseInt(req.query.page, 10);
+    if (!Number.isInteger(page) || page < 1) page = 1;
+    let pageSize = parseInt(req.query.page_size, 10);
+    if (!Number.isInteger(pageSize) || pageSize < 1) pageSize = DISCOVER_PAGE_SIZE;
+    pageSize = Math.min(pageSize, MAX_DISCOVER_PAGE_SIZE);
+    const offset = (page - 1) * pageSize;
+
+    // Case-insensitive partial match on name and description. SQLite's
+    // LIKE is already case-insensitive for ASCII by default; lower()
+    // on both sides keeps that true regardless of collation settings.
+    // Only is_discoverable = 1 servers are ever considered here — a
+    // private server's existence/membership is never exposed through
+    // this endpoint, no matter what someone searches for.
+    const like = `%${rawQuery.toLowerCase().replace(/[%_]/g, c => '\\' + c)}%`;
+    const where = rawQuery
+      ? `WHERE s.is_discoverable = 1 AND (lower(s.name) LIKE ? ESCAPE '\\' OR lower(s.description) LIKE ? ESCAPE '\\')`
+      : `WHERE s.is_discoverable = 1`;
+    const params = rawQuery ? [like, like] : [];
+
+    const total = get(db, `SELECT COUNT(*) AS c FROM servers s ${where}`, params)?.c || 0;
+    const rows = all(db, `
+      SELECT s.id, s.name, s.description, s.icon, s.created_at
+      FROM servers s
+      ${where}
+      ORDER BY s.created_at DESC
+      LIMIT ? OFFSET ?
+    `, [...params, pageSize, offset]);
+
+    const results = rows.map(s => {
+      const memberCount = get(db, 'SELECT COUNT(*) AS c FROM server_members WHERE server_id = ?', [s.id])?.c || 0;
+      const alreadyMember = !!get(db, 'SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?', [s.id, req.user.id]);
+      return {
+        id: s.id,
+        name: s.name,
+        description: s.description || '',
+        icon: s.icon || null,
+        member_count: memberCount,
+        already_member: alreadyMember
+      };
+    });
+
+    res.json({
+      servers: results,
+      page,
+      page_size: pageSize,
+      total,
+      has_more: offset + results.length < total
+    });
+  } catch (err) {
+    console.error('Error searching servers:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Join a public, discoverable server directly (no invite code needed).
+// Invite-code joins (private or public servers) go through
+// routes/invites.js's POST /:code/join instead.
+router.post('/:serverId/join', requireAuth, async (req, res) => {
+  try {
+    const db = await getUserDb();
+    const { serverId } = req.params;
+    const server = get(db, 'SELECT * FROM servers WHERE id = ?', [serverId]);
+    if (!server || !server.is_discoverable) return res.status(404).json({ error: 'Server not found' });
+
+    if (get(db, 'SELECT 1 FROM server_bans WHERE server_id = ? AND user_id = ?', [serverId, req.user.id])) {
+      return res.status(403).json({ error: 'You are banned from this server' });
+    }
+    if (get(db, 'SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?', [serverId, req.user.id])) {
+      return res.status(200).json({ ok: true, server_id: serverId, already_member: true });
+    }
+
+    ensureServerRoles(db, serverId);
+    const defaultRoleId = getDefaultRoleId(db, serverId);
+    const now = Date.now();
+    run(db, 'INSERT INTO server_members (server_id, user_id, joined_at, role_id) VALUES (?, ?, ?, ?)',
+      [serverId, req.user.id, now, defaultRoleId]);
+
+    const channels = all(db, 'SELECT id FROM rooms WHERE server_id = ? AND is_dm = 0', [serverId]);
+    for (const ch of channels) {
+      run(db, 'INSERT OR IGNORE INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [ch.id, req.user.id, now]);
+    }
+
+    const joined = { id: req.user.id, username: req.user.username, display_name: req.user.display_name };
+    const memberIds = all(db, 'SELECT user_id FROM server_members WHERE server_id = ?', [serverId]).map(m => m.user_id);
+    memberIds.forEach(uid => req.app.locals.broadcastToUser(uid, { type: 'server_member_joined', server_id: serverId, member: joined }));
+    req.app.locals.broadcastToUser(req.user.id, { type: 'server_joined', server_id: serverId });
+
+    res.json({ ok: true, server_id: serverId });
+  } catch (err) {
+    console.error('Error joining server:', err);
+    res.status(500).json({ error: 'Failed to join server' });
+  }
+});
+
 router.get('/:serverId', requireAuth, requireServerPermission(null), async (req, res) => {
   const db = await getUserDb();
   res.json({ server: serializeServer(db, req.serverCtx.server, req.serverCtx) });
@@ -114,7 +223,7 @@ router.get('/:serverId', requireAuth, requireServerPermission(null), async (req,
 router.patch('/:serverId', requireAuth, requireServerPermission(PERMISSIONS.MANAGE_SERVER), async (req, res) => {
   try {
     const db = await getUserDb();
-    const { name, description, icon } = req.body;
+    const { name, description, icon, is_discoverable } = req.body;
     const updates = [];
     const params = [];
     if (name !== undefined) {
@@ -127,6 +236,9 @@ router.patch('/:serverId', requireAuth, requireServerPermission(PERMISSIONS.MANA
     }
     if (icon !== undefined) {
       updates.push('icon = ?'); params.push(typeof icon === 'string' && icon.startsWith('/uploads/') ? icon : null);
+    }
+    if (is_discoverable !== undefined) {
+      updates.push('is_discoverable = ?'); params.push(is_discoverable ? 1 : 0);
     }
     if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
 
