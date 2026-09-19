@@ -1743,9 +1743,9 @@ __    __  __      __  __    __  ______  ________
                     <div class="settings-section">
                         <div class="section-title">THEME</div>
                         <div class="theme-preview-grid">
-                            <div class="theme-preview-card" data-theme="esc" onclick="setTheme('esc')">
+                            <div class="theme-preview-card active" data-theme="dark" onclick="setTheme('dark')">
                                 <div class="theme-preview">
-                                    <div class="theme-preview-content esc-preview">
+                                    <div class="theme-preview-content dark-preview">
                                         <div class="preview-sidebar">
                                             <div class="preview-sidebar-item active"></div>
                                             <div class="preview-sidebar-item"></div>
@@ -1774,7 +1774,7 @@ __    __  __      __  __    __  ______  ________
                                         </div>
                                     </div>
                                 </div>
-                                <div class="theme-preview-label">ESC</div>
+                                <div class="theme-preview-label">DARK</div>
                             </div>
                             <div class="theme-preview-card" data-theme="light" onclick="setTheme('light')">
                                 <div class="theme-preview">
@@ -1809,9 +1809,9 @@ __    __  __      __  __    __  ______  ________
                                 </div>
                                 <div class="theme-preview-label">LIGHT</div>
                             </div>
-                            <div class="theme-preview-card active" data-theme="dark" onclick="setTheme('dark')">
+                            <div class="theme-preview-card" data-theme="esc" onclick="setTheme('esc')">
                                 <div class="theme-preview">
-                                    <div class="theme-preview-content dark-preview">
+                                    <div class="theme-preview-content esc-preview">
                                         <div class="preview-sidebar">
                                             <div class="preview-sidebar-item active"></div>
                                             <div class="preview-sidebar-item"></div>
@@ -1840,7 +1840,7 @@ __    __  __      __  __    __  ______  ________
                                         </div>
                                     </div>
                                 </div>
-                                <div class="theme-preview-label">DARK</div>
+                                <div class="theme-preview-label">ESC</div>
                             </div>
                             <div class="theme-preview-card" data-theme="retro" onclick="setTheme('retro')">
                                 <div class="theme-preview">
@@ -1996,7 +1996,27 @@ __    __  __      __  __    __  ______  ________
                         </div>
                     </div>
                 </div>
-                <div class="settings-tab" id="tab-language" style="display:none;"><div class="page-title">Language</div><p style="color:var(--text-muted);">Language settings coming soon.</p></div>
+                <div class="settings-tab" id="tab-language" style="display:none;">
+  <div class="page-title" data-i18n="Language">Language</div>
+  <div class="language-settings-card">
+    <div class="language-settings-header">
+      <div class="language-settings-icon" aria-hidden="true">文</div>
+      <div>
+        <h3 data-i18n="Interface Language">Interface Language</h3>
+        <p data-i18n="Choose the language you want to use across Nyxie.">Choose the language you want to use across Nyxie.</p>
+      </div>
+    </div>
+    <div class="language-picker-row">
+      <label for="nyxie-language-select" data-i18n="Select a language">Select a language</label>
+      <select id="nyxie-language-select" aria-label="Interface Language"></select>
+    </div>
+    <div class="language-grid" id="nyxie-language-grid"></div>
+    <div class="language-settings-footer">
+      <span class="language-save-note" data-i18n="Your language is saved on this device.">Your language is saved on this device.</span>
+      <button class="btn-primary language-apply-btn" id="nyxie-language-apply" type="button" data-i18n="Apply Language">Apply Language</button>
+    </div>
+  </div>
+</div>
                 <div class="settings-tab" id="tab-sync" style="display:none;"><div class="page-title">Sync</div><p style="color:var(--text-muted);">Sync settings coming soon.</p></div>
                 <div class="settings-tab" id="tab-experiments" style="display:none;"><div class="page-title">Experiments</div><p style="color:var(--text-muted);">Experimental features coming soon.</p></div>
                 <div class="settings-tab" id="tab-bots" style="display:none;"><div class="page-title">My Bots</div><p style="color:var(--text-muted);">Bot management coming soon.</p></div>
@@ -2207,6 +2227,7 @@ __    __  __      __  __    __  ______  ________
 <script src="/js/utils.js"></script>
 <script src="/js/state.js"></script>
 <script src="/js/theme.js"></script>
+<script src="/js/i18n.js"></script>
 <script src="/js/router.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/notifications.js"></script>

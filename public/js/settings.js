@@ -71,6 +71,7 @@ function initSettingsView() {
       el.style.display = el.id === 'tab-' + tab ? 'block' : 'none';
     });
     if (isMobileLayout()) document.querySelector('.settings-container').classList.add('mobile-tab-active');
+    if (tab === 'language') initLanguageSettings();
   }
 
   // ---- Load user data ----
@@ -269,6 +270,7 @@ function initSettingsView() {
         toast('Profile updated');
         loadProfileForm();
         loadUserData();
+    initLanguageSettings();
       }
     } catch (err) {
       toast(err.message);
@@ -487,6 +489,58 @@ function initSettingsView() {
   function generateBackupCodes() { toast('Backup codes generation coming soon'); }
   function addAuthenticator() { toast('Authenticator setup coming soon'); }
 
+  // ---- Language ----
+  function initLanguageSettings() {
+    const select = document.getElementById('nyxie-language-select');
+    const grid = document.getElementById('nyxie-language-grid');
+    if (!select || !grid || !window.NYXIE_LANGUAGES) return;
+
+    const languages = window.NYXIE_LANGUAGES;
+    const active = window.getLanguage ? window.getLanguage() : 'en';
+
+    select.innerHTML = languages.map(lang =>
+      `<option value="${lang.code}">${lang.flag} ${escapeHtml(lang.native)} — ${escapeHtml(lang.name)}</option>`
+    ).join('');
+    select.value = active;
+
+    grid.innerHTML = languages.map(lang => `
+      <button type="button" class="language-option${lang.code === active ? ' active' : ''}" data-language="${lang.code}">
+        <span class="language-flag" aria-hidden="true">${lang.flag}</span>
+        <span>
+          <span class="language-name">${escapeHtml(lang.name)}</span>
+          <span class="language-native">${escapeHtml(lang.native)}</span>
+        </span>
+      </button>
+    `).join('');
+
+    grid.querySelectorAll('.language-option').forEach(button => {
+      button.addEventListener('click', () => {
+        select.value = button.dataset.language;
+        grid.querySelectorAll('.language-option').forEach(b => b.classList.toggle('active', b === button));
+      });
+    });
+
+    select.addEventListener('change', () => {
+      grid.querySelectorAll('.language-option').forEach(b => b.classList.toggle('active', b.dataset.language === select.value));
+    });
+
+    const apply = document.getElementById('nyxie-language-apply');
+    if (apply && !apply.dataset.bound) {
+      apply.dataset.bound = '1';
+      apply.addEventListener('click', () => {
+        if (window.setLanguage) window.setLanguage(select.value);
+        initLanguageSettings();
+        toast(window.t ? window.t('Language updated') : 'Language updated');
+      });
+    }
+
+    document.addEventListener('nyxie:languagechange', () => {
+      const current = window.getLanguage ? window.getLanguage() : 'en';
+      if (select) select.value = current;
+      grid.querySelectorAll('.language-option').forEach(b => b.classList.toggle('active', b.dataset.language === current));
+    });
+  }
+
   // ---- Appearance ----
   // Theme + accent are handled globally by theme.js (setTheme/setAccent/applyTheme/applyAccent),
   // shared with dashboard.html, so this page always matches whatever theme is active elsewhere.
@@ -579,6 +633,7 @@ function initSettingsView() {
   window.updateBioCounter = updateBioCounter;
   window.loadProfileForm = loadProfileForm;
   window.loadUserData = loadUserData;
+  window.initLanguageSettings = initLanguageSettings;
 
   function destroySettingsView() {
     // Nothing to tear down (no WebSocket, no timers/observers set up
