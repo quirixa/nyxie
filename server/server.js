@@ -25,6 +25,7 @@ const marketplaceRoutes = require('./routes/marketplace');
 const adminMarketplaceRoutes = require('./routes/adminMarketplace');
 const badgeRoutes = require('./routes/badges');
 const adminBadgeRoutes = require('./routes/adminBadges');
+const adminWalletRoutes = require('./routes/adminWallet');
 const { getUserDb, flush: flushUserDb } = require('./database/userDb');
 const { flush: flushMessageDb } = require('./database/messageDb');
 
@@ -187,6 +188,9 @@ app.use('/api/admin/marketplace', adminMarketplaceRoutes);
 app.use('/api/badges', badgeRoutes);
 // Badge ownership changes: requireAuth + requireAdmin inside the router.
 app.use('/api/admin/badges', adminBadgeRoutes);
+// Admin fund grants: requireAuth + requireAdmin inside the router.
+// Unlike the dev faucet below, this works in production.
+app.use('/api/admin/wallet', adminWalletRoutes);
 
 // ── Dev-only test funding — never mounted in production ──────────
 if (process.env.NODE_ENV !== 'production') {

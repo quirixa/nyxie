@@ -35,6 +35,7 @@ async function adminRequest(base, method, path, body) {
 
 function adminApi(method, path, body) { return adminRequest('/api/admin/marketplace', method, path, body); }
 function adminBadgeApi(method, path, body) { return adminRequest('/api/admin/badges', method, path, body); }
+function adminWalletApi(method, path, body) { return adminRequest('/api/admin/wallet', method, path, body); }
 
 function adminShowView(id) {
   document.querySelectorAll('#admin-panel .mp-view').forEach(el => { el.style.display = 'none'; });
@@ -85,6 +86,9 @@ async function adminSwitchTab(tab) {
   if (tab === 'badges') {
     adminShowView('admin-badges-view');
     await adminBadgesOverview();
+  } else if (tab === 'wallet') {
+    adminShowView('admin-wallet-view');
+    await adminWalletLoadLog();
   } else {
     adminShowView('admin-disputes-view');
     _adminPage = 1;
@@ -514,5 +518,55 @@ function adminOnBadgesUpdated(userId) {
   } else if (adminBadgeVisible('admin-badges-view')) {
     adminBadgeSearchNow();
     adminBadgeLoadLog();
+  }
+}
+
+// ─── Wallet tab: grant funds ──────────────────────────────────────────
+// POST /api/admin/wallet/grant, gated server-side by requireAdmin —
+// unlike the dev-only faucet (js/wallet.js / /api/dev/faucet), this
+// credits *any* user's wallet and works in production.
+async function adminSubmitGrantFunds(event) {
+  if (event) event.preventDefault();
+  const usernameEl = document.getElementById('admin-grant-username');
+  const amountEl = document.getElementById('admin-grant-amount');
+  const noteEl = document.getElementById('admin-grant-note');
+  const btn = document.getElementById('admin-grant-submit-btn');
+
+  const username = usernameEl.value.trim().replace(/^@/, '');
+  const amount = amountEl.value;
+  const note = noteEl.value.trim();
+  if (!username || !amount) return false;
+
+  btn.disabled = true;
+  try {
+    const { user, wallet } = await adminWalletApi('POST', '/grant', { username, amount, note: note || undefined });
+    toast(`Granted ${amount} NX to @${user.username} (new balance: ${wallet.balanceDisplay})`);
+    usernameEl.value = '';
+    amountEl.value = '';
+    noteEl.value = '';
+    await adminWalletLoadLog();
+  } catch (err) {
+    toast(err.message || 'Failed to grant funds', true);
+  }
+  btn.disabled = false;
+  return false;
+}
+
+async function adminWalletLoadLog() {
+  const box = document.getElementById('admin-wallet-log');
+  box.innerHTML = '<div class="mp-empty">Loading…</div>';
+  try {
+    const { entries } = await adminWalletApi('GET', '/log?limit=15');
+    box.innerHTML = entries.length ? entries.map(e => `
+      <div class="admin-log-row">
+        <span class="admin-log-text">
+          <b>${escapeHtml(e.actorUsername || 'Admin')}</b> granted
+          <b>${escapeHtml(e.amountDisplay)} NX</b> to
+          <b>@${escapeHtml(e.targetUsername || e.targetUserId || 'unknown')}</b>
+        </span>
+        <span class="admin-log-time">${new Date(e.createdAt).toLocaleString()}</span>
+      </div>`).join('') : '<div class="mp-empty">No grants yet.</div>';
+  } catch (err) {
+    box.innerHTML = '<div class="mp-empty">Couldn\'t load recent grants.</div>';
   }
 }

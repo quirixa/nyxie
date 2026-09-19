@@ -351,6 +351,61 @@ function devFaucet(db, { userId, amountSubunits, actorId }) {
   return tx;
 }
 
+// ── Admin: grant funds ───────────────────────────────────────────────
+// Unlike devFaucet (dev-only, self-serve), this is meant for the real
+// ADMIN role to credit *any* user's wallet in any environment. Same
+// ledger-safe writeTransaction path, but tagged distinctly (ADMIN_GRANT)
+// and audited with the admin's own id as actor plus the target user id,
+// so grants are traceable to who authorized them.
+function adminGrantFunds(db, { adminUserId, targetUserId, amountSubunits, note }) {
+  ensureWalletTables(db);
+  if (!Number.isInteger(amountSubunits) || amountSubunits <= 0) {
+    throw new WalletError('INVALID_AMOUNT', 'Invalid amount');
+  }
+  const wallet = getOrCreateWallet(db, targetUserId);
+  const tx = writeTransaction(db, {
+    type: 'ADMIN_GRANT',
+    status: 'COMPLETED',
+    receiverWalletDbId: wallet.id,
+    amount: amountSubunits,
+    description: note || 'Funds granted by admin',
+    metadata: { adminUserId, targetUserId },
+    legs: [{ walletDbId: wallet.id, amount: amountSubunits, direction: 'CREDIT' }],
+  });
+  audit(db, adminUserId, 'ADMIN_GRANT_FUNDS', tx.reference, { amount: amountSubunits, targetUserId });
+  return tx;
+}
+
+// Recent ADMIN_GRANT_FUNDS entries, with actor/target usernames resolved
+// for display (audit_logs only stores ids). Mirrors badges.listBadgeLog.
+function listAdminGrantLog(db, limit = 30) {
+  ensureWalletTables(db);
+  const rows = all(db, `
+    SELECT id, actor_id, action, target, metadata, created_at
+    FROM audit_logs
+    WHERE action = 'ADMIN_GRANT_FUNDS'
+    ORDER BY created_at DESC
+    LIMIT ?
+  `, [Math.min(Math.max(limit, 1), 100)]);
+  return rows.map(r => {
+    let meta = {};
+    try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { /* keep empty */ }
+    const actor = r.actor_id ? get(db, 'SELECT username FROM users WHERE id = ?', [r.actor_id]) : null;
+    const targetUser = meta.targetUserId ? get(db, 'SELECT username FROM users WHERE id = ?', [meta.targetUserId]) : null;
+    return {
+      id: r.id,
+      actorId: r.actor_id,
+      actorUsername: actor ? actor.username : null,
+      targetUserId: meta.targetUserId || null,
+      targetUsername: targetUser ? targetUser.username : null,
+      amount: meta.amount || 0,
+      amountDisplay: formatCurrency(meta.amount || 0),
+      reference: r.target,
+      createdAt: r.created_at,
+    };
+  });
+}
+
 // ── Withdrawal request — section 18 ─────────────────────────────────
 // No real money moves. We record WITHDRAWAL_REQUESTED and let an admin
 // (or, later, a real PaymentProvider) resolve it. Funds are held by
@@ -408,7 +463,7 @@ function listTransactionsForUser(db, userId, { filter = 'all', limit = 50, offse
   if (filter === 'sent') { where = 'sender_wallet_id = ?'; params.length = 0; params.push(wallet.id); }
   else if (filter === 'received') { where = 'receiver_wallet_id = ?'; params.length = 0; params.push(wallet.id); }
   else if (filter === 'marketplace') { where += " AND type IN ('MARKETPLACE_PURCHASE','MARKETPLACE_SALE')"; }
-  else if (filter === 'deposits') { where += " AND type IN ('DEPOSIT','SYSTEM_CREDIT')"; }
+  else if (filter === 'deposits') { where += " AND type IN ('DEPOSIT','SYSTEM_CREDIT','ADMIN_GRANT')"; }
   else if (filter === 'withdrawals') { where += " AND type = 'WITHDRAW'"; }
 
   const rows = all(db, `
@@ -471,6 +526,8 @@ module.exports = {
   checkRateLimits,
   transfer,
   devFaucet,
+  adminGrantFunds,
+  listAdminGrantLog,
   requestWithdrawal,
   setWalletStatus,
   listTransactionsForUser,
