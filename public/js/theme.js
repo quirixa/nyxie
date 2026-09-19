@@ -3,7 +3,7 @@
 // Apply theme on page load
 function applyTheme(theme) {
   if (!theme) {
-    theme = localStorage.getItem('theme') || 'esc';
+    theme = localStorage.getItem('theme') || 'dark';
   }
   
   // Remove any existing theme classes
@@ -72,7 +72,7 @@ function setAccent(color) {
 
 // Auto-apply theme and accent when page loads
 document.addEventListener('DOMContentLoaded', function() {
-  applyTheme(localStorage.getItem('theme') || 'esc');
+  applyTheme(localStorage.getItem('theme') || 'dark');
   applyAccent();
 });
 // SPA note: this file is loaded once, globally, for the whole app
