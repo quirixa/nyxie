@@ -22,6 +22,7 @@ const {
   outranks,
   requireServerPermission
 } = require('../services/permissions');
+const { CATEGORIES, isValidCategory } = require('../services/discoveryCategories');
 
 const MAX_SERVER_NAME = 50;
 const MAX_SERVER_DESC = 300;
@@ -40,6 +41,7 @@ function serializeServer(db, server, ctx) {
     icon: server.icon || null,
     owner_id: server.owner_id,
     created_at: server.created_at,
+    category: server.category || null,
     is_discoverable: !!server.is_discoverable,
     member_count: memberCount,
     my_role: ctx ? { id: ctx.roleId, name: ctx.roleName, position: ctx.rolePosition, permissions: ctx.permissions } : null,
@@ -79,18 +81,27 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const db = await getUserDb();
-    let { name, description, icon, is_discoverable } = req.body;
+    let { name, description, icon, is_discoverable, category } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Server name required' });
     name = name.trim().substring(0, MAX_SERVER_NAME);
     description = (description || '').toString().trim().slice(0, MAX_SERVER_DESC);
     icon = (typeof icon === 'string' && icon.startsWith('/uploads/')) ? icon : null;
     const discoverable = is_discoverable === true ? 1 : 0;
+    // Reject an unknown category outright rather than silently storing
+    // whatever the client sent — a bogus value here would never match
+    // any Discovery category tab, so the server would be undiscoverable
+    // by category (only reachable via search) while looking fine to the
+    // owner. Empty/omitted stays NULL (uncategorized).
+    if (category !== undefined && category !== null && category !== '' && !isValidCategory(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+    category = isValidCategory(category) ? category : null;
 
     const serverId = crypto.randomUUID();
     const now = Date.now();
 
-    run(db, 'INSERT INTO servers (id, name, description, icon, owner_id, created_at, is_discoverable) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [serverId, name, description, icon, req.user.id, now, discoverable]);
+    run(db, 'INSERT INTO servers (id, name, description, icon, owner_id, created_at, is_discoverable, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [serverId, name, description, icon, req.user.id, now, discoverable, category]);
 
     const roleIds = createDefaultRoles(db, serverId, now);
     run(db, 'INSERT INTO server_members (server_id, user_id, joined_at, role_id) VALUES (?, ?, ?, ?)',
@@ -114,13 +125,25 @@ router.post('/', requireAuth, async (req, res) => {
 // ─── Discover ────────────────────────────────────────────────────
 // Public server search — backend/database driven (not a filter over
 // servers already loaded into the browser). Registered before
-// '/:serverId' below so the literal path '/discover' isn't swallowed
-// by that param route.
+// '/:serverId' below so the literal paths '/discover' and
+// '/categories' aren't swallowed by that param route.
+
+// The fixed category list, for the Discovery page's top nav — kept
+// server-side (services/discoveryCategories.js) so the frontend never
+// hard-codes its own copy that could drift from what create/update
+// actually accept.
+router.get('/categories', requireAuth, async (req, res) => {
+  res.json({ categories: CATEGORIES });
+});
 
 router.get('/discover', requireAuth, async (req, res) => {
   try {
     const db = await getUserDb();
     const rawQuery = (req.query.query || req.query.q || '').toString().trim().slice(0, 100);
+    const rawCategory = (req.query.category || '').toString().trim();
+    if (rawCategory && !isValidCategory(rawCategory)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
     let page = parseInt(req.query.page, 10);
     if (!Number.isInteger(page) || page < 1) page = 1;
     let pageSize = parseInt(req.query.page_size, 10);
@@ -133,31 +156,43 @@ router.get('/discover', requireAuth, async (req, res) => {
     // on both sides keeps that true regardless of collation settings.
     // Only is_discoverable = 1 servers are ever considered here — a
     // private server's existence/membership is never exposed through
-    // this endpoint, no matter what someone searches for.
+    // this endpoint, no matter what someone searches for or which
+    // category they filter by.
     const like = `%${rawQuery.toLowerCase().replace(/[%_]/g, c => '\\' + c)}%`;
-    const where = rawQuery
-      ? `WHERE s.is_discoverable = 1 AND (lower(s.name) LIKE ? ESCAPE '\\' OR lower(s.description) LIKE ? ESCAPE '\\')`
-      : `WHERE s.is_discoverable = 1`;
-    const params = rawQuery ? [like, like] : [];
+    const conditions = ['s.is_discoverable = 1'];
+    const params = [];
+    if (rawCategory) { conditions.push('s.category = ?'); params.push(rawCategory); }
+    if (rawQuery) { conditions.push(`(lower(s.name) LIKE ? ESCAPE '\\' OR lower(s.description) LIKE ? ESCAPE '\\')`); params.push(like, like); }
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const total = get(db, `SELECT COUNT(*) AS c FROM servers s ${where}`, params)?.c || 0;
+
+    // Member counts come from a single JOIN + GROUP BY against
+    // server_members (never a client-supplied or separately cached
+    // number), and the sort/pagination happen in this one query rather
+    // than fetching every matching row and sorting/counting per-row in
+    // JS — the "N+1 COUNT(*) per server" shape the discovery endpoint
+    // used before doesn't scale past a handful of results.
     const rows = all(db, `
-      SELECT s.id, s.name, s.description, s.icon, s.created_at
+      SELECT s.id, s.name, s.description, s.icon, s.category, s.created_at,
+             COUNT(sm.user_id) AS member_count
       FROM servers s
+      LEFT JOIN server_members sm ON sm.server_id = s.id
       ${where}
-      ORDER BY s.created_at DESC
+      GROUP BY s.id
+      ORDER BY member_count DESC, s.created_at DESC
       LIMIT ? OFFSET ?
     `, [...params, pageSize, offset]);
 
     const results = rows.map(s => {
-      const memberCount = get(db, 'SELECT COUNT(*) AS c FROM server_members WHERE server_id = ?', [s.id])?.c || 0;
       const alreadyMember = !!get(db, 'SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?', [s.id, req.user.id]);
       return {
         id: s.id,
         name: s.name,
         description: s.description || '',
         icon: s.icon || null,
-        member_count: memberCount,
+        category: s.category || null,
+        member_count: s.member_count,
         already_member: alreadyMember
       };
     });
@@ -223,7 +258,7 @@ router.get('/:serverId', requireAuth, requireServerPermission(null), async (req,
 router.patch('/:serverId', requireAuth, requireServerPermission(PERMISSIONS.MANAGE_SERVER), async (req, res) => {
   try {
     const db = await getUserDb();
-    const { name, description, icon, is_discoverable } = req.body;
+    const { name, description, icon, is_discoverable, category } = req.body;
     const updates = [];
     const params = [];
     if (name !== undefined) {
@@ -239,6 +274,12 @@ router.patch('/:serverId', requireAuth, requireServerPermission(PERMISSIONS.MANA
     }
     if (is_discoverable !== undefined) {
       updates.push('is_discoverable = ?'); params.push(is_discoverable ? 1 : 0);
+    }
+    if (category !== undefined) {
+      if (category !== null && category !== '' && !isValidCategory(category)) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+      updates.push('category = ?'); params.push(isValidCategory(category) ? category : null);
     }
     if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
 

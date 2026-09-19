@@ -17,10 +17,33 @@ const USER_DB_PATH = path.join(__dirname, '..', '..', 'data', 'nyxie_users.db');
 let db = null;
 let SqlJs = null;
 
+// Persisting used to be a single fs.writeFileSync straight onto the live
+// .db path. That's not atomic: sql.js's Database.export() -> writeFileSync
+// takes a moment for a database of any size, and this file is a SQLite
+// file format, not an append-only log — a write that gets interrupted
+// partway (process killed, container restarted, host OOM, deploy) leaves
+// a *partial* file on disk, which SQLite then refuses to open at all
+// ("database disk image is malformed"). Every user/server/room query
+// then fails, which is exactly what surfaced as broken member lists and
+// profile lookups — the queries themselves were fine, the file backing
+// them wasn't.
+//
+// Fixed by writing to a temp file in the same directory and only then
+// renaming it over the real path. rename(2) on the same filesystem is
+// atomic on POSIX — the live file is either the old complete version or
+// the new complete version, never a half-written one. We also keep a
+// one-generation backup of the last known-good file (best effort) so a
+// corruption from any other cause (disk fault, etc.) has something to
+// restore from instead of losing everything.
 function persist() {
   const data = db.export();
   const buffer = Buffer.from(data);
-  fs.writeFileSync(USER_DB_PATH, buffer);
+  const tmpPath = USER_DB_PATH + '.tmp';
+  fs.writeFileSync(tmpPath, buffer);
+  try {
+    if (fs.existsSync(USER_DB_PATH)) fs.copyFileSync(USER_DB_PATH, USER_DB_PATH + '.bak');
+  } catch (e) { /* best-effort backup; never block a persist on it */ }
+  fs.renameSync(tmpPath, USER_DB_PATH);
 }
 
 async function getUserDb() {
@@ -102,6 +125,20 @@ async function getUserDb() {
   // server settings. See routes/servers.js.
   try { db.run("ALTER TABLE servers ADD COLUMN is_discoverable INTEGER NOT NULL DEFAULT 0"); } catch (e) {}
   db.run('CREATE INDEX IF NOT EXISTS idx_servers_discoverable ON servers (is_discoverable)');
+  // category: one of the fixed Discovery categories in
+  // services/discoveryCategories.js (Gaming, Music, Entertainment,
+  // Science & Tech, Education, Student Hubs), or NULL/uncategorized.
+  // Added after existing servers.db files already existed — same
+  // migration pattern as description/is_discoverable above.
+  try { db.run("ALTER TABLE servers ADD COLUMN category TEXT"); } catch (e) {}
+  db.run('CREATE INDEX IF NOT EXISTS idx_servers_category ON servers (category)');
+  // Composite index for the Discovery listing's actual query shape:
+  // WHERE is_discoverable = 1 [AND category = ?], joined against
+  // server_members and ordered by member count. This index lets that
+  // WHERE clause resolve without a full table scan as the servers table
+  // grows; the JOIN/GROUP BY still does the member-count aggregation
+  // (member counts are never cached/stale — see GET /servers/discover).
+  db.run('CREATE INDEX IF NOT EXISTS idx_servers_discoverable_category ON servers (is_discoverable, category)');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS server_members (
@@ -290,4 +327,8 @@ function run(db, sql, params = []) {
   if (!inTransaction) persist();
 }
 
-module.exports = { getUserDb, all, get, run };
+function flush() {
+  if (db) persist();
+}
+
+module.exports = { getUserDb, all, get, run, flush };

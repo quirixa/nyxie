@@ -9,10 +9,20 @@ const MESSAGE_DB_PATH = path.join(__dirname, '..', '..', 'data', 'nyxie_messages
 let db = null;
 let SqlJs = null;
 
+// See the matching comment in userDb.js's persist() — same fix here:
+// atomic temp-file-then-rename instead of a direct writeFileSync onto
+// the live path, plus a one-generation .bak, so an interrupted write
+// can't leave nyxie_messages.db as a half-written file SQLite then
+// refuses to open.
 function persist() {
   const data = db.export();
   const buffer = Buffer.from(data);
-  fs.writeFileSync(MESSAGE_DB_PATH, buffer);
+  const tmpPath = MESSAGE_DB_PATH + '.tmp';
+  fs.writeFileSync(tmpPath, buffer);
+  try {
+    if (fs.existsSync(MESSAGE_DB_PATH)) fs.copyFileSync(MESSAGE_DB_PATH, MESSAGE_DB_PATH + '.bak');
+  } catch (e) { /* best-effort backup; never block a persist on it */ }
+  fs.renameSync(tmpPath, MESSAGE_DB_PATH);
 }
 
 async function getMessageDb() {
@@ -109,4 +119,8 @@ function runMessage(db, sql, params = []) {
   persist();
 }
 
-module.exports = { getMessageDb, allMessages, getMessage, runMessage };
+function flush() {
+  if (db) persist();
+}
+
+module.exports = { getMessageDb, allMessages, getMessage, runMessage, flush };

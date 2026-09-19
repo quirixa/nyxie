@@ -23,7 +23,8 @@ const friendRoutes = require('./routes/friends');
 const walletRoutes = require('./routes/wallet');
 const marketplaceRoutes = require('./routes/marketplace');
 const adminMarketplaceRoutes = require('./routes/adminMarketplace');
-const { getUserDb } = require('./database/userDb');
+const { getUserDb, flush: flushUserDb } = require('./database/userDb');
+const { flush: flushMessageDb } = require('./database/messageDb');
 
 const app = express();
 const server = http.createServer(app);
@@ -258,10 +259,20 @@ getUserDb()
   });
 
 // ── Graceful shutdown ─────────────────────────────────────────────
+// Flush both sql.js databases to disk before exiting, so a normal
+// deploy/restart (SIGTERM) doesn't lose the last (up to) 5s of writes
+// that were only sitting in memory waiting for the next periodic
+// persist() tick. This narrows, but doesn't replace, the atomic-write
+// fix in userDb.js/messageDb.js's persist() — a hard kill (SIGKILL,
+// OOM, power loss) still can't run this handler, which is exactly why
+// persist() itself needed to become interruption-safe.
 function shutdown(signal) {
   console.log(
     `${signal} received, shutting down gracefully`
   );
+
+  try { flushUserDb(); } catch (e) { console.error('Failed to flush user db on shutdown:', e); }
+  try { flushMessageDb(); } catch (e) { console.error('Failed to flush message db on shutdown:', e); }
 
   server.close(() => {
     console.log('Server closed');
