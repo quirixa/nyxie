@@ -61,6 +61,8 @@ function isLoggedIn() {
 function clearSession() {
   token = null;
   currentUser = null;
+  // Badge caches are per-session (an admin's includes hidden badges).
+  if (typeof Badges !== 'undefined') Badges.reset();
   localStorage.removeItem('nyxie_token');
   localStorage.removeItem('nyxie_user');
   localStorage.removeItem('nyxie_status');

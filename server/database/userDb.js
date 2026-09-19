@@ -72,6 +72,7 @@ async function getUserDb() {
       banner TEXT,
       banner_color TEXT,
       bio TEXT,
+      pronouns TEXT,
       public_key TEXT,          -- E2EE: base64 encoded public key
       encrypted_private_key TEXT, -- E2EE: private key, encrypted client-side with a
                                    -- password-derived key (server never sees the
@@ -98,6 +99,10 @@ async function getUserDb() {
   try { db.run("ALTER TABLE users ADD COLUMN banner TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN banner_color TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN bio TEXT"); } catch (e) {}
+  // pronouns is free-text (like Discord's), optional, shown in the profile
+  // popout under the username — added defensively the same way as the
+  // columns above so existing DB files pick it up without a full migration.
+  try { db.run("ALTER TABLE users ADD COLUMN pronouns TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN status_updated_at INTEGER"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0"); } catch (e) {}
   // `role` also gets added defensively by walletDb.js's ensureWalletTables(),
@@ -255,6 +260,21 @@ async function getUserDb() {
       UNIQUE(user_a, user_b)
     )
   `);
+
+  // Badge OWNERSHIP (which user has which badge). Badge DEFINITIONS (name,
+  // icon, colour, order…) are not in the database — they live in
+  // server/config/badge_definitions.json; see services/badges.js. The
+  // composite primary key is what prevents duplicate badges.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_badges (
+      user_id TEXT NOT NULL,
+      badge_id TEXT NOT NULL,
+      assigned_by TEXT,
+      assigned_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, badge_id)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_user_badges_badge ON user_badges (badge_id)');
 
   // NOTE: this used to unconditionally seed a hardcoded 'nyxie-default'
   // server (owner_id 'system', a user that doesn't exist) and silently

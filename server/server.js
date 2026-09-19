@@ -11,7 +11,7 @@ const path = require('path');
 const http = require('http');
 const rateLimit = require('express-rate-limit');
 
-const { setupWebSocket } = require('./websocket');
+const { setupWebSocket, isUserConnected, broadcastPresenceChange } = require('./websocket');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roomRoutes = require('./routes/rooms');
@@ -23,6 +23,8 @@ const friendRoutes = require('./routes/friends');
 const walletRoutes = require('./routes/wallet');
 const marketplaceRoutes = require('./routes/marketplace');
 const adminMarketplaceRoutes = require('./routes/adminMarketplace');
+const badgeRoutes = require('./routes/badges');
+const adminBadgeRoutes = require('./routes/adminBadges');
 const { getUserDb, flush: flushUserDb } = require('./database/userDb');
 const { flush: flushMessageDb } = require('./database/messageDb');
 
@@ -182,6 +184,9 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/admin/marketplace', adminMarketplaceRoutes);
+app.use('/api/badges', badgeRoutes);
+// Badge ownership changes: requireAuth + requireAdmin inside the router.
+app.use('/api/admin/badges', adminBadgeRoutes);
 
 // ── Dev-only test funding — never mounted in production ──────────
 if (process.env.NODE_ENV !== 'production') {
@@ -235,10 +240,13 @@ app.use((err, req, res, next) => {
 });
 
 // ── WebSocket setup ──────────────────────────────────────────────
-const { broadcast, broadcastToUser } = setupWebSocket(server);
+const { broadcast, broadcastToUser, broadcastAll } = setupWebSocket(server);
 
 app.locals.broadcast = broadcast;
 app.locals.broadcastToUser = broadcastToUser;
+app.locals.broadcastAll = broadcastAll;
+app.locals.isUserConnected = isUserConnected;
+app.locals.broadcastPresenceChange = broadcastPresenceChange;
 
 // ── Start server ─────────────────────────────────────────────────
 getUserDb()

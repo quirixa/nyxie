@@ -1,0 +1,177 @@
+/* badges.css — user badge chips and their tooltip.
+
+   Deliberately NOT scoped under #view-app: the same chips render in the
+   dashboard (chat, member list, popouts), Settings, and the Admin panel,
+   and the tooltip lives on <body> so it can never be clipped by an
+   overflow:hidden row.
+
+   Look: a small rounded-square chip in the same family as the app's
+   existing icon buttons (5px radius, stroke icons with round caps, colours
+   from the theme palette). All five glyphs share one 24px grid and stroke
+   weight. Tier sets how much emphasis a badge gets:
+     staff    filled gradient chip, white glyph, soft glow   (Administrator, Developer)
+     special  tinted gradient chip, coloured ring, faint glow (Patron, Early Supporter)
+     common   flat tinted chip with a thin ring               (Tester)
+   Badge colours are fixed hexes from the definitions file — they do NOT
+   follow the viewer's --accent, so a badge looks the same to everyone.
+   Everything derives from --badge-color, so a new badge needs no CSS. */
+
+.nyx-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  line-height: 1;
+}
+.nyx-badges:empty { display: none; }
+.nyx-badges[data-badge-size="md"],
+.nyx-badges[data-badge-size="lg"] { gap: 5px; }
+
+.nyx-badge {
+  --badge-color: #9a9aa5;
+  --badge-fg: var(--badge-color);
+  --badge-size: 18px;
+  --badge-glow: 55%;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--badge-size);
+  height: var(--badge-size);
+  border-radius: 5px;
+  color: var(--badge-fg);
+  cursor: default;
+  outline: none;
+  /* fallbacks first, for browsers without color-mix() */
+  background: rgba(150, 150, 165, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(150, 150, 165, 0.35);
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge-color) 34%, transparent);
+}
+.nyx-badge[data-size="xs"] { --badge-size: 14px; border-radius: 4px; }
+.nyx-badge[data-size="sm"] { --badge-size: 16px; border-radius: 4px; }
+.nyx-badge[data-size="md"] { --badge-size: 20px; }
+.nyx-badge[data-size="lg"] { --badge-size: 28px; border-radius: 7px; }
+
+.nyx-badge svg {
+  display: block;
+  width: 64%;
+  height: 64%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Small chips need a slightly heavier stroke to stay legible. */
+.nyx-badge[data-size="xs"] svg,
+.nyx-badge[data-size="sm"] svg { width: 68%; height: 68%; stroke-width: 2.4; }
+
+/* ── Tiers ── */
+.nyx-badge[data-tier="staff"] {
+  --badge-fg: #ffffff;
+  background: var(--badge-color);
+  background: linear-gradient(150deg, var(--badge-color) 0%, color-mix(in srgb, var(--badge-color) 66%, #000) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+              0 0 9px -1px color-mix(in srgb, var(--badge-color) var(--badge-glow), transparent);
+}
+.nyx-badge[data-tier="special"] {
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--badge-color) 34%, transparent),
+    color-mix(in srgb, var(--badge-color) 12%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge-color) 55%, transparent),
+              0 0 8px -2px color-mix(in srgb, var(--badge-color) var(--badge-glow), transparent);
+}
+
+.nyx-badge:hover,
+.nyx-badge:focus-visible { filter: brightness(1.1); }
+.nyx-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* "+2" overflow chip when a slot has a max. */
+.nyx-badge-more {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 0 2px;
+  cursor: default;
+}
+.nyx-badges-none {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── Light-surface themes: darken tinted glyphs so amber/green keep contrast,
+      and tone the glow down (glows read as smudges on white). ── */
+body.theme-light .nyx-badge:not([data-tier="staff"]),
+body.theme-retro .nyx-badge:not([data-tier="staff"]) {
+  --badge-fg: color-mix(in srgb, var(--badge-color) 68%, #000);
+}
+body.theme-light .nyx-badge { --badge-glow: 30%; }
+body.theme-light .nyx-badge[data-tier="special"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge-color) 60%, transparent);
+}
+
+/* ── Retro (Windows 95) theme: square, bevelled, no glow — the theme forces
+      border-radius:0 and box-shadow:none on everything, so the bevel is a
+      real border. ── */
+body.theme-retro .nyx-badge {
+  background: var(--bg-input);
+  border: 1px solid;
+  border-color: var(--bevel-light) var(--bevel-dark) var(--bevel-dark) var(--bevel-light);
+}
+body.theme-retro .nyx-badge[data-tier="staff"] { background: var(--badge-color); }
+/* …and the theme also forces every <svg> to 28px !important; keep glyphs proportional to their chip. */
+body.theme-retro .nyx-badge svg {
+  width: 68% !important;
+  height: 68% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  stroke-width: 2.4px !important;
+}
+
+/* ── Tooltip ── (same look as the emoji picker's .ep-tooltip, but on body) */
+#nyx-badge-tip {
+  position: fixed;
+  z-index: 100000;
+  display: none;
+  max-width: 220px;
+  pointer-events: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  box-shadow: var(--shadow);
+}
+#nyx-badge-tip .nyx-tip-name { font-weight: 700; }
+#nyx-badge-tip .nyx-tip-desc { color: var(--text-muted); margin-top: 1px; }
+
+/* ── Placement in existing views ── */
+
+/* Chat message header: name · badges · time */
+#view-app .msg-header > .nyx-badges { align-self: center; }
+
+/* Member list + friends list names are single-line ellipsised blocks; the
+   badges sit beside them (not inside) so they never get cut off. */
+#view-app .ml-name-row,
+#view-app .fr-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+#view-app .ml-name-row .ml-name,
+#view-app .fr-name-row .fr-name { min-width: 0; flex: 0 1 auto; }
+#view-app .ml-row.offline .nyx-badges { opacity: 0.55; }
+
+/* Settings → My Account row */
+#view-settings .account-field .af-value.af-badges {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}

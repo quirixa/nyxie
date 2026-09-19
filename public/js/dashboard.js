@@ -509,7 +509,11 @@ function initDashboardView() {
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
     return colors[Math.abs(h) % colors.length];
   }
-  function pipClass(status) { return status === 'online' ? 'pip-online' : 'pip-offline'; }
+  const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
+  const PRESENCE_PIP_CLASS = { online: 'pip-online', idle: 'pip-idle', dnd: 'pip-dnd', invisible: 'pip-offline', offline: 'pip-offline' };
+  function pipClass(status) { return PRESENCE_PIP_CLASS[status] || 'pip-offline'; }
+  const PRESENCE_LABEL = { online: 'Online', idle: 'Idle', dnd: 'Do Not Disturb', invisible: 'Invisible', offline: 'Offline' };
+  function presenceLabel(status) { return PRESENCE_LABEL[status] || 'Offline'; }
   function fmtTime(ts) {
     if (!ts) return '';
     const d = new Date(ts), now = new Date();
@@ -684,7 +688,7 @@ function initDashboardView() {
           const status = udata.user.status || 'offline';
           const dot = document.getElementById('ch-status-dot');
           if (dot) dot.className = `ch-status-dot ${pipClass(status)}`;
-          const statusText = status === 'offline' ? (udata.user.last_seen ? `last seen ${fmtLastSeen(udata.user.last_seen)}` : 'offline') : 'online';
+          const statusText = status === 'offline' ? (udata.user.last_seen ? `last seen ${fmtLastSeen(udata.user.last_seen)}` : 'offline') : presenceLabel(status).toLowerCase();
           const text = document.getElementById('chat-status-text');
           if (text) text.textContent = statusText;
           const chAvatarEl = document.getElementById('ch-avatar');
@@ -840,6 +844,22 @@ function initDashboardView() {
           break;
         }
 
+        case 'badges_updated': {
+          // An admin changed someone's badges: re-fetch so every chat
+          // header / list / popout showing that user updates in place.
+          Badges.invalidate(msg.user_id);
+          if (typeof adminOnBadgesUpdated === 'function') adminOnBadgesUpdated(msg.user_id);
+          break;
+        }
+
+        case 'self_status': {
+          // One of this user's OTHER sessions changed status (or the
+          // server pushed back the persisted preference after a
+          // reconnect) — sync this session's UI without re-broadcasting.
+          applySelfStatus(msg.status);
+          break;
+        }
+
         case 'room_state': {
           if (msg.room_id === currentRoom?.id) {
             currentRoomMembers = msg.members.map(m => ({ id: m.id, username: m.username, display_name: m.display_name, avatar: m.avatar }));
@@ -938,6 +958,12 @@ function initDashboardView() {
         }
 
         case 'connected':
+          // The server is the source of truth for the manually-chosen
+          // status preference and doesn't reset it on reconnect anymore —
+          // sync it in here so a refresh can't drift this session's UI
+          // away from what's actually persisted (e.g. showing "Online"
+          // locally right after a refresh when DND was what was saved).
+          if (msg.user?.status) applySelfStatus(msg.user.status);
           break;
 
         // ─── Servers ───────────────────────────────────────
@@ -1413,7 +1439,7 @@ function initDashboardView() {
       const dot = document.getElementById('ch-status-dot');
       if (dot) dot.className = `ch-status-dot ${pipClass(status)}`;
       const text = document.getElementById('chat-status-text');
-      if (text) text.textContent = status === 'online' ? 'online' : 'offline';
+      if (text) text.textContent = status === 'offline' ? 'offline' : presenceLabel(status).toLowerCase();
     }
     const dm = dms.find(d => d._otherId === userId);
     if (dm) dm._status = status;
@@ -1827,6 +1853,7 @@ function initDashboardView() {
         <div class="msg-content-col">
           <div class="msg-header">
             <span class="msg-author" onclick="showUserProfile(event, '${msg.user_id}')">${escapeHtml(displayName)}</span>
+            ${Badges.slot(msg.user_id, { size: 'sm' })}
             <span class="msg-timestamp" title="${fullTime}">${timeStr}</span>
           </div>
           ${replyHtml}
@@ -2434,33 +2461,45 @@ function initDashboardView() {
   async function showUserProfile(event, userId) {
     if (userId === currentUser.id) { toggleProfilePopout(); return; }
     const popout = document.getElementById('user-profile-popout');
-    popout.style.display = 'block';
     _profileUserId = userId;
     const rect = event.target.getBoundingClientRect();
-    const top = rect.bottom + 8;
-    const left = rect.left;
-    const popoutWidth = 380;
-    const popoutHeight = 300;
-    let finalLeft = left, finalTop = top;
-    if (finalLeft + popoutWidth > window.innerWidth) finalLeft = window.innerWidth - popoutWidth - 16;
-    if (finalTop + popoutHeight > window.innerHeight) finalTop = rect.top - popoutHeight - 8;
-    if (finalTop < 16) finalTop = 16;
+    const popoutWidth = 300;
+    const popoutHeight = 360; // rough estimate; clamped against viewport below
+    let finalLeft = rect.left;
+    let finalTop = rect.bottom + 8;
+    if (finalLeft + popoutWidth > window.innerWidth - 16) finalLeft = window.innerWidth - popoutWidth - 16;
+    if (finalTop + popoutHeight > window.innerHeight - 16) {
+      // Not enough room below — try opening upward from the trigger instead.
+      const above = rect.top - popoutHeight - 8;
+      finalTop = above >= 16 ? above : Math.max(16, window.innerHeight - popoutHeight - 16);
+    }
     if (finalLeft < 16) finalLeft = 16;
     popout.style.left = finalLeft + 'px';
     popout.style.top = finalTop + 'px';
+    popout.style.display = 'block';
+    popout.classList.remove('pp-open'); void popout.offsetWidth; popout.classList.add('pp-open');
     document.getElementById('up-name-display').textContent = 'Loading…';
     document.getElementById('up-username-display').textContent = '';
-    document.getElementById('up-bio-display').textContent = '';
+    document.getElementById('up-bio-display').style.display = 'none';
+    document.getElementById('up-pronouns-display').style.display = 'none';
+    document.getElementById('up-badges-display').style.display = 'none';
     const avatarEl = document.getElementById('up-avatar-large');
     avatarEl.innerHTML = '…';
     avatarEl.style.background = '#fd6671';
     try {
       const data = await api('GET', `/users/${userId}`);
-      if (!data?.user) { toast('User not found'); popout.style.display = 'none'; return; }
+      if (!data?.user) { toast('User not found'); closeUserProfilePopout(); return; }
       const user = data.user;
       document.getElementById('up-name-display').textContent = user.display_name || user.username;
       document.getElementById('up-username-display').textContent = '@' + user.username;
-      document.getElementById('up-bio-display').textContent = user.bio || '';
+      const bioEl = document.getElementById('up-bio-display');
+      if (user.bio) { bioEl.textContent = user.bio; bioEl.style.display = 'block'; } else { bioEl.style.display = 'none'; bioEl.textContent = ''; }
+      const pronounsEl = document.getElementById('up-pronouns-display');
+      if (user.pronouns) { pronounsEl.textContent = user.pronouns; pronounsEl.style.display = 'inline'; } else { pronounsEl.style.display = 'none'; pronounsEl.textContent = ''; }
+      renderProfileBadges(document.getElementById('up-badges-display'), user);
+      Badges.refresh(user.id); // always current when a profile is opened
+      // Cosmetic only — the /api/admin/badges endpoints enforce admin server-side.
+      document.getElementById('up-manage-badges-btn').style.display = currentUser.role === 'ADMIN' ? '' : 'none';
       const bannerEl = document.getElementById('up-banner');
       if (user.banner) bannerEl.style.background = `url("${versionedMediaUrl(user.banner)}") center/cover no-repeat`;
       else if (user.banner_color) bannerEl.style.background = user.banner_color;
@@ -2475,12 +2514,14 @@ function initDashboardView() {
       }
       const status = user.status || 'offline';
       const pip = document.getElementById('up-status-pip-display');
-      pip.className = 'up-status-pip ' + pipClass(status);
-      document.getElementById('up-status-text-display').textContent = status === 'online' ? 'Online' : 'Offline';
-    } catch (err) { toast('Failed to load profile'); popout.style.display = 'none'; }
+      pip.className = 'up-avatar-status ' + pipClass(status);
+      pip.setAttribute('aria-label', presenceLabel(status));
+    } catch (err) { toast('Failed to load profile'); closeUserProfilePopout(); }
   }
   function closeUserProfilePopout() {
-    document.getElementById('user-profile-popout').style.display = 'none';
+    const popout = document.getElementById('user-profile-popout');
+    popout.style.display = 'none';
+    popout.classList.remove('pp-open');
     _profileUserId = null;
   }
   function startDMFromProfile() {
@@ -2503,31 +2544,90 @@ function initDashboardView() {
       closeUserProfilePopout();
     }
   });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const up = document.getElementById('user-profile-popout');
+    if (up.style.display === 'block') { closeUserProfilePopout(); return; }
+    const pp = document.getElementById('profile-popout');
+    if (pp.style.display === 'block') {
+      const sub = document.getElementById('pp-status-submenu');
+      if (sub.style.display === 'block') { toggleStatusMenu(); return; }
+      toggleProfilePopout();
+    }
+  });
+
+  // Profile badge row (self + other-user popouts). Ownership and appearance
+  // both come from the badge system (js/badges.js ← /api/badges/*), which is
+  // server-controlled — nothing about who has which badge is decided here.
+  // The row collapses when the user has none, as before.
+  function renderProfileBadges(container, user) {
+    Badges.renderInto(container, user.id, { size: 'md', container: true });
+  }
 
   // ─── SELF PROFILE, STATUS, EDIT PROFILE ──────────────────
-  const STATUS_LABELS = { online: 'Online', offline: 'Invisible' };
-  const STATUS_PIP_REAL = { online: 'pip-online', offline: 'pip-offline' };
+  // Keeps the bottom-left user panel in sync with the chosen status: the pip
+  // on the avatar plus a text label under the name, so you can see your
+  // status without opening the profile popout.
+  function updateUserPanelStatus(status) {
+    const pip = document.getElementById('up-status-pip');
+    if (pip) { pip.className = pipClass(status); pip.setAttribute('aria-label', presenceLabel(status)); }
+    const tag = document.getElementById('up-tag');
+    if (tag) tag.textContent = presenceLabel(status);
+    const info = document.getElementById('up-info');
+    if (info && currentUser) info.title = '@' + currentUser.username;
+  }
   async function setStatus(status) {
     document.getElementById('pp-status-submenu').style.display = 'none';
-    document.querySelectorAll('.pp-sub-btn').forEach(b => b.classList.toggle('active', b.dataset.status === status));
+    document.getElementById('pp-status-menu-row').setAttribute('aria-expanded', 'false');
+    document.querySelectorAll('.pp-sub-btn').forEach(b => {
+      const active = b.dataset.status === status;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-checked', String(active));
+    });
     const curDot = document.getElementById('pp-cur-dot');
-    if (curDot) curDot.className = `pp-dot ${STATUS_PIP_REAL[status]||'pip-offline'}`;
-    document.getElementById('pp-cur-label').textContent = STATUS_LABELS[status] || 'Invisible';
-    document.getElementById('up-status-pip').className = `${pipClass(status)}`;
+    if (curDot) curDot.className = `pp-dot ${pipClass(status)}`;
+    document.getElementById('pp-cur-label').textContent = presenceLabel(status);
+    updateUserPanelStatus(status);
     document.getElementById('pp-avatar-status').className = `pp-avatar-status ${pipClass(status)}`;
     localStorage.setItem('nyxie_status', status);
     currentUser._status = status;
+    currentUser.status = status;
     await api('PATCH', '/users/status', { status });
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'set_status', status }));
     toast('Status updated');
   }
+  // Applies a status change that arrived from elsewhere — another one of
+  // this user's own open tabs/devices, via the 'self_status' WS message —
+  // without re-sending it back out. Keeps this session's UI in sync
+  // (showing "Invisible" rather than the "offline" other people see)
+  // without a refresh.
+  function applySelfStatus(status) {
+    currentUser._status = status;
+    currentUser.status = status;
+    localStorage.setItem('nyxie_status', status);
+    const curDot = document.getElementById('pp-cur-dot');
+    if (curDot) curDot.className = `pp-dot ${pipClass(status)}`;
+    const curLabel = document.getElementById('pp-cur-label');
+    if (curLabel) curLabel.textContent = presenceLabel(status);
+    document.querySelectorAll('.pp-sub-btn').forEach(b => {
+      const active = b.dataset.status === status;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-checked', String(active));
+    });
+    updateUserPanelStatus(status);
+    const ppAvatarStatus = document.getElementById('pp-avatar-status');
+    if (ppAvatarStatus) ppAvatarStatus.className = `pp-avatar-status ${pipClass(status)}`;
+  }
   function toggleStatusMenu() {
     const sub = document.getElementById('pp-status-submenu');
-    sub.style.display = sub.style.display === 'none' ? 'block' : 'none';
+    const row = document.getElementById('pp-status-menu-row');
+    const open = sub.style.display !== 'block';
+    sub.style.display = open ? 'flex' : 'none';
+    row.setAttribute('aria-expanded', String(open));
   }
   function toggleProfilePopout() {
     const pp = document.getElementById('profile-popout');
-    if (pp.style.display === 'block') { pp.style.display = 'none'; return; }
+    if (pp.style.display === 'block') { pp.style.display = 'none'; pp.classList.remove('pp-open'); return; }
     const name = currentUser.display_name || currentUser.username;
     const letter = name[0].toUpperCase();
     const color = hashColor(name);
@@ -2538,25 +2638,53 @@ function initDashboardView() {
     else { avEl.innerHTML = letter; avEl.style.background = color; }
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent = '@' + currentUser.username;
-    document.getElementById('pp-bio').textContent = currentUser.bio || '';
-    document.getElementById('pp-banner').style.background = `linear-gradient(135deg, ${hashColor(currentUser.username)}, #fd6671)`;
+    const pronounsEl = document.getElementById('pp-pronouns');
+    if (currentUser.pronouns) { pronounsEl.textContent = currentUser.pronouns; pronounsEl.style.display = 'inline'; } else { pronounsEl.style.display = 'none'; pronounsEl.textContent = ''; }
+    renderProfileBadges(document.getElementById('pp-badges'), currentUser);
+    const bioEl = document.getElementById('pp-bio');
+    if (currentUser.bio) { bioEl.textContent = currentUser.bio; bioEl.style.display = 'block'; } else { bioEl.style.display = 'none'; bioEl.textContent = ''; }
+    const bannerEl = document.getElementById('pp-banner');
+    if (currentUser.banner) bannerEl.style.background = `url("${versionedMediaUrl(currentUser.banner)}") center/cover no-repeat`;
+    else if (currentUser.banner_color) bannerEl.style.background = currentUser.banner_color;
+    else bannerEl.style.background = `linear-gradient(135deg, ${hashColor(currentUser.username)}, #fd6671)`;
     const curStatus = currentUser._status || currentUser.status || 'online';
     const curDot = document.getElementById('pp-cur-dot');
-    if (curDot) curDot.className = `pp-dot ${STATUS_PIP_REAL[curStatus]||'pip-offline'}`;
-    document.getElementById('pp-cur-label').textContent = STATUS_LABELS[curStatus] || 'Invisible';
-    document.querySelectorAll('.pp-sub-btn').forEach(b => b.classList.toggle('active', b.dataset.status === curStatus));
+    if (curDot) curDot.className = `pp-dot ${pipClass(curStatus)}`;
+    document.getElementById('pp-cur-label').textContent = presenceLabel(curStatus);
+    document.querySelectorAll('.pp-sub-btn').forEach(b => {
+      const active = b.dataset.status === curStatus;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-checked', String(active));
+    });
     document.getElementById('pp-avatar-status').className = `pp-avatar-status ${pipClass(curStatus)}`;
     document.getElementById('pp-status-submenu').style.display = 'none';
+    document.getElementById('pp-status-menu-row').setAttribute('aria-expanded', 'false');
     pp.style.display = 'block';
+    pp.classList.remove('pp-open'); void pp.offsetWidth; pp.classList.add('pp-open');
   }
-  function copyUserId() {
-    navigator.clipboard.writeText(currentUser.id).then(() => toast('User ID copied!'));
+  function copyUserId(id) {
+    navigator.clipboard.writeText(id || currentUser.id).then(() => toast('User ID copied!'));
+  }
+  // Inline onclick attributes run in global scope and can't see
+  // _profileUserId (a closure-scoped variable in this IIFE), so the
+  // "Copy User ID" button on another user's popout goes through this
+  // small wrapper instead of referencing _profileUserId directly.
+  function copyProfileUserId() { copyUserId(_profileUserId); }
+  // Admin shortcut: profile → Manage Badges. Opens the Admin panel's Badges
+  // tab with this user already selected (see initAdminPanel in admin.js).
+  function manageBadgesFromProfile() {
+    if (!_profileUserId || currentUser.role !== 'ADMIN') return;
+    window._adminInitialTab = 'badges';
+    window._adminInitialBadgeUser = _profileUserId;
+    closeUserProfilePopout();
+    navigateTo('admin');
   }
   function openEditProfileModal() {
     const modal = document.getElementById('edit-profile-modal');
     modal.style.display = 'flex';
     document.getElementById('edit-username').value = currentUser.username || '';
     document.getElementById('edit-displayname').value = currentUser.display_name || '';
+    document.getElementById('edit-pronouns').value = currentUser.pronouns || '';
     document.getElementById('edit-bio').value = currentUser.bio || '';
     const preview = document.getElementById('edit-avatar-preview');
     if (currentUser.avatar) { preview.src = versionedMediaUrl(currentUser.avatar); preview.style.display = 'block'; }
@@ -2593,12 +2721,14 @@ function initDashboardView() {
     e.preventDefault();
     const username = document.getElementById('edit-username').value.trim();
     const display_name = document.getElementById('edit-displayname').value.trim();
+    const pronouns = document.getElementById('edit-pronouns').value.trim();
     const bio = document.getElementById('edit-bio').value.trim();
     const current_password = document.getElementById('edit-current-password').value;
     const new_password = document.getElementById('edit-new-password').value;
     const confirm_password = document.getElementById('edit-confirm-password').value;
     if (!username || username.length < 3 || username.length > 30 || !/^[a-zA-Z0-9_-]+$/.test(username)) { toast('Invalid username'); return; }
     if (display_name && display_name.length > 64) { toast('Display name too long'); return; }
+    if (pronouns && pronouns.length > 40) { toast('Pronouns too long (max 40 chars)'); return; }
     if (bio && bio.length > 500) { toast('Bio too long'); return; }
     if (new_password && new_password !== confirm_password) { toast('Passwords do not match'); return; }
     if (new_password && new_password.length < 8) { toast('New password must be at least 8 characters'); return; }
@@ -2606,6 +2736,7 @@ function initDashboardView() {
     const payload = {};
     if (username !== currentUser.username) payload.username = username;
     if (display_name !== currentUser.display_name) payload.display_name = display_name;
+    if (pronouns !== (currentUser.pronouns || '')) payload.pronouns = pronouns;
     if (bio !== (currentUser.bio || '')) payload.bio = bio;
     if (new_password) { payload.current_password = current_password; payload.new_password = new_password; }
     if (Object.keys(payload).length === 0) { toast('No changes made'); return; }
@@ -2622,10 +2753,11 @@ function initDashboardView() {
       if (data.user) {
         currentUser.username = data.user.username;
         currentUser.display_name = data.user.display_name;
+        currentUser.pronouns = data.user.pronouns;
         currentUser.bio = data.user.bio;
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
         document.getElementById('up-name').textContent = currentUser.display_name || currentUser.username;
-        document.getElementById('up-tag').textContent = '@' + currentUser.username;
+        updateUserPanelStatus(currentUser._status || currentUser.status || 'online');
         refreshOwnDisplayNameEverywhere();
         toast('Profile updated');
         closeEditProfileModal();
@@ -2820,7 +2952,12 @@ function initDashboardView() {
       return;
     }
     let list = [...friends];
-    if (currentFriendsTab === 'online') list = list.filter(f => f.status === 'online');
+    // "Online" means visible/available — everyone who isn't Invisible (or
+    // truly disconnected). The server already masks a friend's status to
+    // 'offline' in exactly those two cases (see effectiveStatus in
+    // server/services/presence.js), so Idle and DND friends correctly
+    // stay in this tab; only literally-offline/invisible friends drop out.
+    if (currentFriendsTab === 'online') list = list.filter(f => (f.status || 'offline') !== 'offline');
     if (!list.length) { el.innerHTML = `<div class="friends-empty">${currentFriendsTab === 'online' ? 'No friends online' : 'No friends yet'}</div>`; return; }
     el.innerHTML = list.map(f => {
       const name = f.display_name || f.username;
@@ -2832,8 +2969,11 @@ function initDashboardView() {
           <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-secondary)"></div>
         </div>
         <div class="fr-info">
-          <div class="fr-name">${escapeHtml(name)}</div>
-          <div class="fr-sub">@${escapeHtml(f.username)} · ${f.status||'offline'}</div>
+          <div class="fr-name-row">
+            <div class="fr-name">${escapeHtml(name)}</div>
+            ${Badges.slot(f.id, { size: 'xs', max: 3 })}
+          </div>
+          <div class="fr-sub">@${escapeHtml(f.username)} · ${presenceLabel(f.status||'offline').toLowerCase()}</div>
         </div>
         <div class="fr-actions">
           <button class="fr-btn" onclick="event.stopPropagation();messageFriend('${f.id}','${escapeJs(name)}')">
@@ -2999,18 +3139,21 @@ function initDashboardView() {
       if (!me?.user) { logout(); return; }
       currentUser = me.user;
       localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
-      const saved = localStorage.getItem('nyxie_status');
-      if (saved && ['online', 'offline'].includes(saved)) currentUser._status = saved;
-      else { currentUser._status = 'online'; localStorage.setItem('nyxie_status', 'online'); }
+      // The server's persisted preference is authoritative (see
+      // server/services/presence.js) — trust it over whatever's cached in
+      // localStorage, which was only ever meant as an optimistic local
+      // copy. This is what lets a manually-picked DND/Idle/Invisible
+      // survive a page refresh instead of quietly reverting to Online.
+      currentUser._status = STATUSES.includes(currentUser.status) ? currentUser.status : 'online';
+      localStorage.setItem('nyxie_status', currentUser._status);
       const name = currentUser.display_name || currentUser.username;
       const letter = name[0].toUpperCase();
       const color = hashColor(name);
       const upAvatar = document.getElementById('up-avatar');
       if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       else { upAvatar.textContent = letter; upAvatar.style.background = color; }
-      document.getElementById('up-status-pip').className = pipClass(currentUser._status);
       document.getElementById('up-name').textContent = name;
-      document.getElementById('up-tag').textContent = '@' + currentUser.username;
+      updateUserPanelStatus(currentUser._status);
       // Cosmetic only — hides the nav link for non-admins so it doesn't
       // invite clicks that just bounce back (see router.js's 'admin'
       // auth guard and navigateTo('admin') above for the actual gate).
@@ -3155,6 +3298,13 @@ function initDashboardView() {
   window.setStatus = setStatus;
   window.toggleProfilePopout = toggleProfilePopout;
   window.copyUserId = copyUserId;
+  window.copyProfileUserId = copyProfileUserId;
+  window.manageBadgesFromProfile = manageBadgesFromProfile;
+  // Lets notifications.js (a separate, non-module script that has no
+  // access to this IIFE's closure) check the current manually-picked
+  // status without duplicating any state — used to mute the one-shot
+  // notification sound while Do Not Disturb is selected.
+  window.getCurrentUserStatus = function() { return (currentUser && (currentUser._status || currentUser.status)) || 'online'; };
   window.openEditProfileModal = openEditProfileModal;
   window.closeEditProfileModal = closeEditProfileModal;
   window.uploadAvatarFromEdit = uploadAvatarFromEdit;
@@ -3751,7 +3901,10 @@ function initDashboardView() {
           <span class="ml-status-dot pip-${isOffline ? 'offline' : 'online'}"></span>
         </div>
         <div class="ml-info">
-          <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ownerCrownSvg() : ''}</div>
+          <div class="ml-name-row">
+            <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ownerCrownSvg() : ''}</div>
+            ${Badges.slot(m.id, { size: 'xs', max: 3 })}
+          </div>
           <div class="ml-sub">${escapeHtml(m.role?.name || 'Member')}</div>
         </div>
       </div>`;

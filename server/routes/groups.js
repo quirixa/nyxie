@@ -14,6 +14,7 @@ const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
 const { isBlocked } = require('../services/blocks');
+const { effectiveStatus } = require('../services/presence');
 const roomHandlers = require('./rooms');
 
 const MAX_GROUP_NAME = 50;
@@ -36,13 +37,22 @@ async function loadGroup(req, res, next) {
   next();
 }
 
-function serializeGroup(db, group) {
+function serializeGroup(db, group, isUserConnected) {
   const members = all(db, `
     SELECT rm.user_id, rm.joined_at, u.username, u.display_name, u.avatar, u.status
     FROM room_members rm JOIN users u ON u.id = rm.user_id
     WHERE rm.room_id = ?
     ORDER BY rm.joined_at ASC
   `, [group.id]);
+  // This one serialized payload gets broadcast to every member at once
+  // (see the callers below), so it can't be masked differently per
+  // recipient — always mask as "someone else's" view (isSelf: false).
+  // The one place a user's own status needs to read as "invisible"
+  // rather than "offline" is their own profile popout, which fetches
+  // fresh via GET /users/:id and is self-aware there.
+  members.forEach(m => {
+    m.status = effectiveStatus(m.status, { connected: (isUserConnected || (() => false))(m.user_id), isSelf: false });
+  });
   return {
     id: group.id,
     name: group.name,
@@ -62,7 +72,7 @@ router.get('/', requireAuth, async (req, res) => {
     WHERE r.is_dm = 1 AND r.is_group = 1 AND rm.user_id = ?
     ORDER BY r.created_at DESC
   `, [req.user.id]);
-  res.json({ groups: groups.map(g => serializeGroup(db, g)) });
+  res.json({ groups: groups.map(g => serializeGroup(db, g, req.app.locals.isUserConnected)) });
 });
 
 router.post('/', requireAuth, async (req, res) => {
@@ -100,7 +110,7 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     const group = get(db, 'SELECT * FROM rooms WHERE id = ?', [groupId]);
-    const serialized = serializeGroup(db, group);
+    const serialized = serializeGroup(db, group, req.app.locals.isUserConnected);
     [req.user.id, ...uniqueIds].forEach(uid => req.app.locals.broadcastToUser(uid, { type: 'group_created', group: serialized }));
 
     res.status(201).json({ group: serialized });
@@ -112,7 +122,7 @@ router.post('/', requireAuth, async (req, res) => {
 
 router.get('/:groupId', requireAuth, loadGroup, async (req, res) => {
   const db = await getUserDb();
-  res.json({ group: serializeGroup(db, req.group) });
+  res.json({ group: serializeGroup(db, req.group, req.app.locals.isUserConnected) });
 });
 
 router.patch('/:groupId', requireAuth, loadGroup, async (req, res) => {
@@ -134,7 +144,7 @@ router.patch('/:groupId', requireAuth, loadGroup, async (req, res) => {
   run(db, `UPDATE rooms SET ${updates.join(', ')} WHERE id = ?`, params);
 
   const updated = get(db, 'SELECT * FROM rooms WHERE id = ?', [req.params.groupId]);
-  const serialized = serializeGroup(db, updated);
+  const serialized = serializeGroup(db, updated, req.app.locals.isUserConnected);
   serialized.members.forEach(m => req.app.locals.broadcastToUser(m.user_id, { type: 'group_updated', group: serialized }));
   res.json({ group: serialized });
 });
@@ -179,7 +189,7 @@ router.post('/:groupId/members', requireAuth, loadGroup, async (req, res) => {
     }
 
     const group = get(db, 'SELECT * FROM rooms WHERE id = ?', [req.params.groupId]);
-    const serialized = serializeGroup(db, group);
+    const serialized = serializeGroup(db, group, req.app.locals.isUserConnected);
     serialized.members.forEach(m => req.app.locals.broadcastToUser(m.user_id, { type: 'group_member_added', group_id: req.params.groupId, added: uniqueIds, group: serialized }));
 
     res.status(201).json({ group: serialized });

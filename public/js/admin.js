@@ -8,13 +8,16 @@
 // navigateTo('admin') and router.js's 'admin' auth guard already keep a
 // non-admin from getting here in the first place); every request this
 // file makes is re-checked server-side regardless.
+//
+// The panel has two tabs: marketplace disputes (above) and Badges (bottom
+// of this file), which talks to /api/admin/badges — gated the same way.
 
 let _adminPage = 1;
 let _adminHasNextPage = false;
 let _adminCurrentDispute = null; // { dispute, order } most recently loaded
 
-async function adminApi(method, path, body) {
-  const res = await fetch('/api/admin/marketplace' + path, {
+async function adminRequest(base, method, path, body) {
+  const res = await fetch(base + path, {
     method,
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -29,6 +32,9 @@ async function adminApi(method, path, body) {
   }
   return data;
 }
+
+function adminApi(method, path, body) { return adminRequest('/api/admin/marketplace', method, path, body); }
+function adminBadgeApi(method, path, body) { return adminRequest('/api/admin/badges', method, path, body); }
 
 function adminShowView(id) {
   document.querySelectorAll('#admin-panel .mp-view').forEach(el => { el.style.display = 'none'; });
@@ -60,9 +66,30 @@ function adminReasonLabel(reason) {
 // ─── Panel entry point ──────────────────────────────────────────────
 async function initAdminPanel() {
   if (!currentUser || currentUser.role !== 'ADMIN') return; // see header comment
-  adminShowView('admin-disputes-view');
-  _adminPage = 1;
-  await adminReloadDisputes();
+  const tab = window._adminInitialTab;
+  const badgeUser = window._adminInitialBadgeUser;
+  window._adminInitialTab = null;
+  window._adminInitialBadgeUser = null;
+  if (tab === 'badges') {
+    await adminSwitchTab('badges');
+    if (badgeUser) await adminOpenBadgeUser(badgeUser);
+    return;
+  }
+  await adminSwitchTab('disputes');
+}
+
+async function adminSwitchTab(tab) {
+  document.querySelectorAll('#admin-panel .admin-tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  if (tab === 'badges') {
+    adminShowView('admin-badges-view');
+    await adminBadgesOverview();
+  } else {
+    adminShowView('admin-disputes-view');
+    _adminPage = 1;
+    await adminReloadDisputes();
+  }
 }
 
 // ─── Disputes list ──────────────────────────────────────────────────
@@ -247,4 +274,245 @@ async function adminSubmitResolve(event, disputeId) {
     btn.disabled = false;
   }
   return false;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Badges tab
+// Flow: search user → open → Add / Remove. Buttons here are convenience;
+// POST/DELETE /api/admin/badges/... independently verify the caller is an
+// administrator, so nothing in this file is a security boundary.
+// Chips are drawn by js/badges.js (Badges.chip) from the server-supplied
+// definitions — this file has no per-badge knowledge.
+// ═══════════════════════════════════════════════════════════════════
+
+let _adminBadgeDefs = null;    // [{ id, name, description, icon, color, tier, order, hidden, assignable, derived }]
+let _adminBadgeUser = null;    // user currently open in the detail view
+let _adminBadgeSearchSeq = 0;  // drops out-of-order search responses
+
+async function adminLoadBadgeDefs() {
+  if (!_adminBadgeDefs) _adminBadgeDefs = (await adminBadgeApi('GET', '/definitions')).badges;
+  return _adminBadgeDefs;
+}
+const adminBadgeDef = id => (_adminBadgeDefs || []).find(d => d.id === id);
+
+function adminBadgeVisible(viewId) {
+  const el = document.getElementById(viewId);
+  return !!el && el.style.display !== 'none';
+}
+
+async function adminBadgesOverview() {
+  try {
+    await adminLoadBadgeDefs();
+  } catch (err) {
+    toast(err.message, true);
+    return;
+  }
+  document.getElementById('admin-badge-types').innerHTML = _adminBadgeDefs.map(d => `
+    <div class="admin-badge-type">
+      ${Badges.chip(d, { size: 'md' })}
+      <div class="mp-row-main">
+        <div class="mp-row-title">${escapeHtml(d.name)}</div>
+        <div class="mp-row-sub">${escapeHtml(d.description || '')}</div>
+      </div>
+      ${d.derived ? '<span class="admin-flag" title="Awarded automatically from the user\'s role">Automatic</span>' : ''}
+      ${d.hidden ? '<span class="admin-flag" title="Only administrators can see this badge">Hidden</span>' : ''}
+    </div>
+  `).join('') || '<div class="mp-empty">No badges are defined.</div>';
+  adminBadgeRenderResults(); // re-run any current search so chips are fresh
+  adminBadgeSearchNow();
+  adminBadgeLoadLog();
+}
+
+// ── Search ──────────────────────────────────────────────────────────
+const adminBadgeSearchInput = debounce(() => adminBadgeSearchNow(), 250);
+let _adminBadgeResults = [];
+
+async function adminBadgeSearchNow() {
+  const q = document.getElementById('admin-badge-search').value.trim();
+  const seq = ++_adminBadgeSearchSeq;
+  if (!q) { _adminBadgeResults = []; adminBadgeRenderResults(); return; }
+  try {
+    const data = await adminBadgeApi('GET', '/users?q=' + encodeURIComponent(q));
+    if (seq !== _adminBadgeSearchSeq) return;
+    _adminBadgeResults = data.users;
+    adminBadgeRenderResults(q);
+  } catch (err) {
+    if (seq === _adminBadgeSearchSeq) toast(err.message, true);
+  }
+}
+
+function adminBadgeThumb(u) {
+  const letter = escapeHtml((u.display_name || u.username || '?').charAt(0).toUpperCase());
+  return u.avatar
+    ? `<div class="mp-row-thumb"><img src="${escapeHtml(versionedMediaUrl(u.avatar))}" alt="" class="admin-badge-avatar" /></div>`
+    : `<div class="mp-row-thumb">${letter}</div>`;
+}
+
+function adminBadgeChips(ids) {
+  return ids.map(id => Badges.chip(adminBadgeDef(id), { size: 'md' })).join('');
+}
+
+function adminBadgeRenderResults(q) {
+  const box = document.getElementById('admin-badge-results');
+  const typed = document.getElementById('admin-badge-search').value.trim();
+  if (!typed) { box.innerHTML = ''; return; }
+  if (!_adminBadgeResults.length) {
+    box.innerHTML = q ? '<div class="mp-empty">No users match that search.</div>' : '';
+    return;
+  }
+  box.innerHTML = '<div class="admin-section-label">Users</div>' + _adminBadgeResults.map(u => `
+    <div class="mp-order-row" data-id="${escapeHtml(u.id)}" onclick="adminOpenBadgeUser(this.dataset.id)">
+      ${adminBadgeThumb(u)}
+      <div class="mp-row-main">
+        <div class="mp-row-title">${escapeHtml(u.display_name || u.username)}</div>
+        <div class="mp-row-sub">@${escapeHtml(u.username)}${u.disabled ? ' · disabled' : ''}</div>
+      </div>
+      <div class="admin-badge-chips">${adminBadgeChips(u.badges) || '<span class="admin-muted">No badges</span>'}</div>
+    </div>
+  `).join('');
+}
+
+// ── Audit log ───────────────────────────────────────────────────────
+async function adminBadgeLoadLog() {
+  const box = document.getElementById('admin-badge-log');
+  try {
+    const { entries } = await adminBadgeApi('GET', '/log?limit=15');
+    box.innerHTML = entries.length ? entries.map(e => `
+      <div class="admin-log-row">
+        <span class="admin-log-text">
+          <b>${escapeHtml(e.actorName || 'Admin')}</b> ${e.action === 'added' ? 'added' : 'removed'}
+          <b>${escapeHtml(e.badgeName)}</b> ${e.action === 'added' ? 'to' : 'from'}
+          <b>@${escapeHtml(e.targetName || e.targetId)}</b>
+        </span>
+        <span class="admin-log-time">${new Date(e.createdAt).toLocaleString()}</span>
+      </div>`).join('') : '<div class="mp-empty">No badge changes yet.</div>';
+  } catch (err) {
+    box.innerHTML = '<div class="mp-empty">Couldn\'t load recent changes.</div>';
+  }
+}
+
+// ── One user ────────────────────────────────────────────────────────
+async function adminOpenBadgeUser(userId) {
+  try {
+    await adminLoadBadgeDefs();
+    const { user } = await adminBadgeApi('GET', '/users/' + encodeURIComponent(userId));
+    _adminBadgeUser = user;
+    adminShowView('admin-badge-user-view');
+    adminRenderBadgeUser();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+function adminBackToBadges() {
+  _adminBadgeUser = null;
+  adminShowView('admin-badges-view');
+  adminBadgesOverview();
+}
+
+function adminRenderBadgeUser(errorMsg) {
+  const u = _adminBadgeUser;
+  if (!u) return;
+  const body = document.getElementById('admin-badge-user-body');
+  const owned = u.badges.map(adminBadgeDef).filter(Boolean);
+  const available = _adminBadgeDefs.filter(d => d.assignable && !u.badges.includes(d.id));
+
+  const ownedRows = owned.length ? owned.map(d => `
+    <div class="admin-badge-row">
+      ${Badges.chip(d, { size: 'md' })}
+      <div class="mp-row-main">
+        <div class="mp-row-title">${escapeHtml(d.name)}${d.hidden ? ' <span class="admin-flag">Hidden</span>' : ''}</div>
+        <div class="mp-row-sub">${escapeHtml(d.description || '')}</div>
+      </div>
+      ${d.assignable
+        ? `<button type="button" class="btn-cancel admin-badge-remove" data-badge="${escapeHtml(d.id)}" onclick="adminRemoveBadge(this.dataset.badge)">Remove</button>`
+        : '<span class="admin-flag" title="Awarded automatically from the user\'s role">Automatic</span>'}
+    </div>`).join('') : '<div class="mp-empty" style="padding:18px 0;">No badges yet.</div>';
+
+  const addForm = available.length ? `
+    <form class="mp-form" onsubmit="return adminAddBadge(event)">
+      <div>
+        <label for="admin-badge-add-select">Badge</label>
+        <select id="admin-badge-add-select">
+          ${available.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button type="submit" class="btn-primary" id="admin-badge-add-btn">Add badge</button>
+      </div>
+    </form>`
+    : '<div class="mp-empty" style="padding:18px 0;">This user already has every assignable badge.</div>';
+
+  body.innerHTML = `
+    <div class="admin-badge-user">
+      ${adminBadgeThumb(u)}
+      <div class="mp-row-main">
+        <div class="mp-row-title">${escapeHtml(u.display_name || u.username)}</div>
+        <div class="mp-row-sub">@${escapeHtml(u.username)} · <span class="admin-badge-id">${escapeHtml(u.id)}</span></div>
+      </div>
+    </div>
+    ${errorMsg ? `<div class="admin-badge-error" role="alert">${escapeHtml(errorMsg)}</div>` : ''}
+    <div class="admin-section-label">Current badges</div>
+    ${ownedRows}
+    <div class="admin-section-label">Add a badge</div>
+    ${addForm}
+  `;
+}
+
+async function adminAddBadge(event) {
+  if (event) event.preventDefault();
+  const u = _adminBadgeUser;
+  const select = document.getElementById('admin-badge-add-select');
+  if (!u || !select) return false;
+  const btn = document.getElementById('admin-badge-add-btn');
+  btn.disabled = true;
+  try {
+    const { user } = await adminBadgeApi('POST', '/users/' + encodeURIComponent(u.id) + '/badges', { badge_id: select.value });
+    _adminBadgeUser = user;
+    Badges.invalidate(user.id);
+    toast(`${adminBadgeDef(select.value).name} badge added`);
+    adminRenderBadgeUser();
+  } catch (err) {
+    // e.g. 409 if another admin just added the same badge → resync
+    await adminReloadBadgeUser(err.message);
+  }
+  return false;
+}
+
+async function adminRemoveBadge(badgeId) {
+  const u = _adminBadgeUser;
+  const def = adminBadgeDef(badgeId);
+  if (!u || !def) return;
+  if (!confirm(`Remove the ${def.name} badge from @${u.username}?`)) return;
+  try {
+    const { user } = await adminBadgeApi('DELETE', '/users/' + encodeURIComponent(u.id) + '/badges/' + encodeURIComponent(badgeId));
+    _adminBadgeUser = user;
+    Badges.invalidate(user.id);
+    toast(`${def.name} badge removed`);
+    adminRenderBadgeUser();
+  } catch (err) {
+    await adminReloadBadgeUser(err.message);
+  }
+}
+
+async function adminReloadBadgeUser(errorMsg) {
+  if (!_adminBadgeUser) return;
+  try {
+    const { user } = await adminBadgeApi('GET', '/users/' + encodeURIComponent(_adminBadgeUser.id));
+    _adminBadgeUser = user;
+  } catch (_) { /* keep what we have */ }
+  adminRenderBadgeUser(errorMsg);
+}
+
+// Called from dashboard.js on the 'badges_updated' WebSocket event so a
+// second admin's change shows up without reopening the screen.
+function adminOnBadgesUpdated(userId) {
+  if (!currentUser || currentUser.role !== 'ADMIN') return;
+  if (_adminBadgeUser && _adminBadgeUser.id === userId && adminBadgeVisible('admin-badge-user-view')) {
+    adminReloadBadgeUser();
+  } else if (adminBadgeVisible('admin-badges-view')) {
+    adminBadgeSearchNow();
+    adminBadgeLoadLog();
+  }
 }

@@ -27,6 +27,18 @@ const NotifSound = (() => {
     return localStorage.getItem('switch-toggle-notif-sound') === 'false';
   }
 
+  // Do Not Disturb mutes the notification sound itself — same as the
+  // manual mute toggle — while unread badges, the message itself, and
+  // toasts keep working normally. Idle and Invisible still get the
+  // sound; only DND means "please don't make noise at me". Ringtone
+  // (below) deliberately does NOT check this — an incoming call still
+  // rings through DND, same as Discord.
+  // window.getCurrentUserStatus is set up in dashboard.js; guarded here
+  // in case this script somehow loads before that.
+  function isDndSilenced() {
+    return typeof window.getCurrentUserStatus === 'function' && window.getCurrentUserStatus() === 'dnd';
+  }
+
   // Browsers block audio playback before the user has interacted with
   // the page at all. There's no way around that (nor should there be),
   // so the first click/keydown anywhere just primes it — this fires long
@@ -44,7 +56,7 @@ const NotifSound = (() => {
   document.addEventListener('keydown', unlock, { once: true, capture: true });
 
   function play() {
-    if (isMuted()) return;
+    if (isMuted() || isDndSilenced()) return;
     try {
       const a = getAudio();
       a.currentTime = 0;

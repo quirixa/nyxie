@@ -56,6 +56,7 @@
 <link rel="stylesheet" href="/css/wallet.css">
 <link rel="stylesheet" href="/css/marketplace.css">
 <link rel="stylesheet" href="/css/admin.css">
+<link rel="stylesheet" href="/css/badges.css">
 
 <style>
     /* ─── Cropper Overlay ──────────────────────────────────── */
@@ -787,10 +788,14 @@ __    __  __      __  __    __  ______  ________
                     <!-- Disputes list sub-view -->
                     <div id="admin-disputes-view" class="mp-view">
                         <div class="mp-header">
-                            <span class="mp-title">Marketplace Disputes</span>
+                            <span class="mp-title">Admin</span>
                             <button class="icon-btn" onclick="navigateTo('home')" title="Close">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab admin-tab-btn active" data-tab="disputes" onclick="adminSwitchTab('disputes')">Marketplace Disputes</button>
+                            <button class="mp-tab admin-tab-btn" data-tab="badges" onclick="adminSwitchTab('badges')">Badges</button>
                         </div>
                         <div class="mp-toolbar">
                             <select class="mp-select" id="admin-status-select" onchange="adminReloadDisputes()">
@@ -824,6 +829,46 @@ __    __  __      __  __    __  ______  ________
                             <span style="width:32px;"></span>
                         </div>
                         <div class="mp-body" id="admin-dispute-body"></div>
+                    </div>
+
+                    <!-- Badges: find a user, manage their badges (badge-admin UI in admin.js;
+                         every action is re-authorised server-side by /api/admin/badges). -->
+                    <div id="admin-badges-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <span class="mp-title">Admin</span>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab admin-tab-btn" data-tab="disputes" onclick="adminSwitchTab('disputes')">Marketplace Disputes</button>
+                            <button class="mp-tab admin-tab-btn active" data-tab="badges" onclick="adminSwitchTab('badges')">Badges</button>
+                        </div>
+                        <div class="mp-toolbar">
+                            <div class="mp-search-wrap">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="admin-badge-search" placeholder="Search users by name or ID…" oninput="adminBadgeSearchInput()" autocomplete="off" />
+                            </div>
+                        </div>
+                        <div class="mp-body">
+                            <div id="admin-badge-results"></div>
+                            <div class="admin-section-label">Badge types</div>
+                            <div id="admin-badge-types"></div>
+                            <div class="admin-section-label">Recent changes</div>
+                            <div id="admin-badge-log"></div>
+                        </div>
+                    </div>
+
+                    <!-- One user's badges: current list (remove) + add -->
+                    <div id="admin-badge-user-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="adminBackToBadges()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Manage badges</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="admin-badge-user-body"></div>
                     </div>
                 </div>
 
@@ -1095,20 +1140,22 @@ __    __  __      __  __    __  ______  ________
         </div>
 
         <!-- Profile Popout (self) -->
-        <div id="profile-popout">
+        <div id="profile-popout" role="dialog" aria-label="Your profile">
             <div class="pp-banner" id="pp-banner"></div>
-            <div class="pp-header-row">
-                <div class="pp-avatar-wrap">
-                    <div class="pp-avatar" id="pp-avatar-letter">U</div>
-                    <div class="pp-avatar-status pip-online" id="pp-avatar-status"></div>
-                </div>
+            <div class="pp-avatar-wrap">
+                <div class="pp-avatar" id="pp-avatar-letter">U</div>
+                <div class="pp-avatar-status pip-online" id="pp-avatar-status" aria-hidden="true"></div>
             </div>
             <div class="pp-body">
                 <div class="pp-name" id="pp-name"></div>
-                <div class="pp-tag" id="pp-tag"></div>
-                <div class="pp-bio" id="pp-bio"></div>
+                <div class="pp-meta-row">
+                    <span class="pp-tag" id="pp-tag"></span>
+                    <span class="pp-pronouns" id="pp-pronouns" style="display:none"></span>
+                </div>
+                <div class="pp-badges" id="pp-badges" style="display:none"></div>
+                <div class="pp-bio" id="pp-bio" style="display:none"></div>
                 <div class="pp-divider"></div>
-                <div class="pp-menu-item" onclick="openEditProfileModal()">
+                <button type="button" class="pp-menu-item" onclick="openEditProfileModal()">
                     <span class="pp-menu-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 20h9"/>
@@ -1116,17 +1163,31 @@ __    __  __      __  __    __  ______  ________
                         </svg>
                     </span>
                     <span>Edit Profile</span>
-                </div>
-                <div class="pp-menu-item" id="pp-status-menu-row" onclick="toggleStatusMenu()">
+                </button>
+                <button type="button" class="pp-menu-item" id="pp-status-menu-row" onclick="toggleStatusMenu()" aria-haspopup="true" aria-expanded="false" aria-controls="pp-status-submenu">
                     <span class="pp-menu-icon"><span class="pp-dot" id="pp-cur-dot"></span></span>
                     <span id="pp-cur-label">Online</span>
                     <span class="pp-menu-arrow">›</span>
+                </button>
+                <div id="pp-status-submenu" style="display:none" role="menu" aria-label="Set status">
+                    <button class="pp-sub-btn" data-status="online" onclick="setStatus('online')" role="menuitemradio" aria-checked="true">
+                        <span class="pp-dot pip-online"></span>Online
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="pp-sub-btn" data-status="idle" onclick="setStatus('idle')" role="menuitemradio" aria-checked="false">
+                        <span class="pp-dot pip-idle"></span>Idle
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="pp-sub-btn" data-status="dnd" onclick="setStatus('dnd')" role="menuitemradio" aria-checked="false">
+                        <span class="pp-dot pip-dnd"></span>Do Not Disturb
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="pp-sub-btn" data-status="invisible" onclick="setStatus('invisible')" role="menuitemradio" aria-checked="false">
+                        <span class="pp-dot pip-offline"></span>Invisible
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
                 </div>
-                <div id="pp-status-submenu" style="display:none">
-                    <button class="pp-sub-btn" data-status="online" onclick="setStatus('online')"><span class="pp-dot pip-online"></span>Online</button>
-                    <button class="pp-sub-btn" data-status="offline" onclick="setStatus('offline')"><span class="pp-dot pip-offline"></span>Invisible</button>
-                </div>
-                <div class="pp-menu-item" onclick="copyUserId()">
+                <button type="button" class="pp-menu-item" onclick="copyUserId()">
                     <span class="pp-menu-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -1134,9 +1195,9 @@ __    __  __      __  __    __  ______  ________
                         </svg>
                     </span>
                     <span>Copy User ID</span>
-                </div>
+                </button>
                 <div class="pp-divider"></div>
-                <div class="pp-menu-item danger" onclick="logout()">
+                <button type="button" class="pp-menu-item danger" onclick="logout()">
                     <span class="pp-menu-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -1145,9 +1206,10 @@ __    __  __      __  __    __  ______  ________
                         </svg>
                     </span>
                     <span>Log Out</span>
-                </div>
+                </button>
             </div>
         </div>
+
 
         <!-- Edit Profile Modal -->
         <div class="overlay" id="edit-profile-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
@@ -1157,6 +1219,8 @@ __    __  __      __  __    __  ______  ________
                 <form id="editProfileForm" onsubmit="return false;">
                     <label>Display Name</label>
                     <input type="text" id="edit-displayname" placeholder="Display name" />
+                    <label>Pronouns</label>
+                    <input type="text" id="edit-pronouns" placeholder="e.g. she/her (optional)" maxlength="40" />
                     <label>Username</label>
                     <input type="text" id="edit-username" placeholder="Username" />
                     <label>Bio</label>
@@ -1388,25 +1452,50 @@ __    __  __      __  __    __  ______  ________
         </div>
 
         <!-- User Profile Popout (others) -->
-        <div id="user-profile-popout">
+        <div id="user-profile-popout" role="dialog" aria-label="User profile">
             <div class="up-banner" id="up-banner"></div>
-            <div class="up-header">
+            <div class="up-avatar-wrap">
                 <div class="up-avatar-large" id="up-avatar-large">?</div>
-                <div>
-                    <div class="up-name" id="up-name-display">Name</div>
-                    <div class="up-username" id="up-username-display">@username</div>
+                <div class="up-avatar-status pip-offline" id="up-status-pip-display" aria-hidden="true"></div>
+            </div>
+            <div class="up-body">
+                <div class="up-name" id="up-name-display">Name</div>
+                <div class="up-meta-row">
+                    <span class="up-username" id="up-username-display">@username</span>
+                    <span class="up-pronouns" id="up-pronouns-display" style="display:none"></span>
                 </div>
-            </div>
-            <div class="up-bio" id="up-bio-display"></div>
-            <div class="up-status-row">
-                <span class="up-status-pip" id="up-status-pip-display"></span>
-                <span id="up-status-text-display" style="color:var(--text-muted);font-size:0.85rem;">Status</span>
-            </div>
-            <div class="up-actions">
-                <button class="btn-cancel" onclick="closeUserProfilePopout()">Close</button>
-                <button class="btn-primary" onclick="startDMFromProfile()">Message</button>
+                <div class="up-badges" id="up-badges-display" style="display:none"></div>
+                <div class="up-bio" id="up-bio-display" style="display:none"></div>
+                <div class="pp-divider"></div>
+                <button type="button" class="pp-menu-item" onclick="startDMFromProfile()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                        </svg>
+                    </span>
+                    <span>Message</span>
+                </button>
+                <button type="button" class="pp-menu-item" id="up-manage-badges-btn" style="display:none" onclick="manageBadgesFromProfile()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="9" r="6"/>
+                            <path d="M8.5 14 7 21l5-3 5 3-1.5-7"/>
+                        </svg>
+                    </span>
+                    <span>Manage Badges</span>
+                </button>
+                <button type="button" class="pp-menu-item" id="up-copy-id-btn" onclick="copyProfileUserId()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                    </span>
+                    <span>Copy User ID</span>
+                </button>
             </div>
         </div>
+
 
         <!-- Context Menu -->
         <div id="ctx-menu">
@@ -1614,6 +1703,11 @@ __    __  __      __  __    __  ______  ________
                         <span class="af-label">Username</span>
                         <span class="af-value" id="settings-username">@username</span>
                         <button class="af-action" onclick="openChangeUsername()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 21l5-3 5 3-1.5-7"/></svg></div>
+                        <span class="af-label">Badges</span>
+                        <span class="af-value af-badges" id="settings-badges"></span>
                     </div>
                     <div class="account-field">
                         <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
@@ -2226,6 +2320,7 @@ __    __  __      __  __    __  ______  ________
 
 <script src="/js/utils.js"></script>
 <script src="/js/state.js"></script>
+<script src="/js/badges.js"></script>
 <script src="/js/theme.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/router.js"></script>

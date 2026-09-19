@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const { getUserDb, get, run } = require('../database/userDb');
 const { signToken, verifyToken } = require('../services/jwt');
 const { isReservedUsername } = require('../services/reservedUsernames');
+const { STATUSES } = require('../services/presence');
 
 const SALT_ROUNDS = 10;
 
@@ -119,6 +120,7 @@ router.post('/login', async (req, res) => {
         banner: user.banner || null,
         banner_color: user.banner_color || null,
         bio: user.bio || null,
+        pronouns: user.pronouns || null,
         status: user.status || 'online',
         public_key: user.public_key || null,
         encrypted_private_key: user.encrypted_private_key || null,
@@ -151,7 +153,7 @@ router.get('/me', async (req, res) => {
     // response above) — dashboard.js refreshes currentUser from this
     // endpoint on every app load, so it's the other place the client's
     // cached role can go stale without this.
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     res.json({ user });
   } catch (err) {
@@ -168,8 +170,7 @@ router.patch('/status', async (req, res) => {
     const token = authHeader.slice(7);
     const payload = verifyToken(token);
     const { status } = req.body;
-    const allowed = ['online', 'offline'];
-    if (!status || !allowed.includes(status)) {
+    if (!status || !STATUSES.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
     const db = await getUserDb();

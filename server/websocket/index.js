@@ -2,10 +2,58 @@ const WebSocket = require('ws');
 const { verifyToken } = require('../services/jwt');
 const { getUserDb, get, run, all } = require('../database/userDb');
 const { isBlocked } = require('../services/blocks');
+const { STATUSES, effectiveStatus } = require('../services/presence');
 
 const roomClients = new Map();
 const clientMeta = new Map();
 const userConnections = new Map();
+
+// Whether a user has at least one live socket open right now. This is the
+// "connected" half of effectiveStatus() — the DB `status` column is only
+// ever the user's manually-chosen preference (see presence.js), never
+// touched here, so it can't be used on its own to tell whether someone is
+// actually reachable. REST routes reach this via app.locals.isUserConnected
+// (wired up in server.js) since they don't have direct access to this
+// module-local map.
+function isUserConnected(userId) {
+  const conns = userConnections.get(userId);
+  return !!conns && conns.size > 0;
+}
+
+// Pushes a presence_update straight to every accepted friend of `userId`,
+// independent of shared rooms. Room-scoped broadcastPresence() below only
+// reaches people who share (and have actively joined) a room with this
+// user, which misses friends they've never DMed — this is what makes the
+// Friends page update live for everyone on the friends list, the same way
+// friend_request/friend_accepted already reach people via broadcastToUser
+// regardless of shared rooms.
+async function broadcastPresenceToFriends(userId, publicStatus, displayName, avatar) {
+  const db = await getUserDb();
+  const friendIds = all(db, `
+    SELECT CASE WHEN user_a = ? THEN user_b ELSE user_a END AS friend_id
+    FROM friends WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+  `, [userId, userId, userId]).map(r => r.friend_id);
+  const payload = { type: 'presence_update', user_id: userId, status: publicStatus, display_name: displayName || null, avatar: avatar || null };
+  for (const fid of friendIds) broadcastToUser(fid, payload);
+}
+
+// Used by the REST fallback in routes/users.js PATCH /status (the primary
+// path is the 'set_status' WS message below, which also calls this).
+function broadcastPresenceChange(userId, rawStatus) {
+  const meta = [...clientMeta.values()].find(m => m.userId === userId);
+  const displayName = meta?.display_name;
+  const avatar = meta?.avatar;
+  const connected = isUserConnected(userId);
+  const publicStatus = effectiveStatus(rawStatus, { connected, isSelf: false });
+  if (meta) {
+    for (const roomId of meta.rooms) {
+      broadcast(roomId, { type: 'presence_update', user_id: userId, status: publicStatus, display_name: displayName, avatar });
+    }
+  }
+  broadcastPresenceToFriends(userId, publicStatus, displayName, avatar);
+  // Let the user's own other sessions know their real (unmasked) status too.
+  broadcastToUser(userId, { type: 'self_status', status: rawStatus });
+}
 
 // Voice-call signaling state. The server only ever relays opaque SDP/ICE
 // payloads between the two participants — it never sees call audio (that
@@ -38,6 +86,19 @@ function broadcast(roomId, data) {
   const payload = JSON.stringify(data);
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  }
+}
+
+// Sends to every connected socket (all users). Used for events that are
+// safe for everyone to hear about and cheap to act on — e.g. 'badges_updated'
+// carries only a user id, and each client re-fetches through the normal
+// visibility-filtered endpoint.
+function broadcastAll(data) {
+  const payload = JSON.stringify(data);
+  for (const conns of userConnections.values()) {
+    for (const ws of conns) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+    }
   }
 }
 
@@ -91,7 +152,9 @@ async function cleanupClient(ws) {
       clients.delete(ws);
       if (clients.size === 0) roomClients.delete(roomId);
     }
-    broadcastPresence(roomId, meta.userId, 'offline', meta.display_name, meta.avatar);
+    // Only tell the room "offline" once every one of this user's sessions
+    // is gone — with a second tab/device still open they're still here.
+    if (isLastConnection) broadcastPresence(roomId, meta.userId, 'offline', meta.display_name, meta.avatar);
   }
 
   const conns = userConnections.get(meta.userId);
@@ -102,7 +165,14 @@ async function cleanupClient(ws) {
 
   clientMeta.delete(ws);
   const db = await getUserDb();
-  run(db, 'UPDATE users SET status = ?, last_seen = ? WHERE id = ?', ['offline', Date.now(), meta.userId]);
+  // last_seen only — `status` is the user's manually-chosen preference
+  // (online/idle/dnd/invisible) and must survive a dropped connection or
+  // page refresh unchanged. Losing connectivity is represented purely by
+  // isUserConnected() returning false, which effectiveStatus() already
+  // turns into "offline" for anyone looking, without needing to touch
+  // (and thereby forget) what the user actually picked.
+  run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), meta.userId]);
+  if (isLastConnection) broadcastPresenceToFriends(meta.userId, 'offline', meta.display_name, meta.avatar);
 }
 
 function setupWebSocket(server) {
@@ -126,24 +196,33 @@ function setupWebSocket(server) {
     }
 
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name, avatar FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, display_name, avatar, status FROM users WHERE id = ?', [payload.sub]);
     if (!user) {
       ws.close(4001);
       return;
     }
 
-    run(db, 'UPDATE users SET status = ?, last_seen = ? WHERE id = ?', ['online', Date.now(), user.id]);
+    // Reconnecting (a page refresh, a dropped socket coming back, opening
+    // a second tab) must NOT reset a manually-chosen status back to
+    // Online — that was the bug where picking Do Not Disturb and then
+    // refreshing silently flipped you back to Online. Only fall back to
+    // 'online' if the column has never been set at all (brand new user).
+    const rawStatus = STATUSES.includes(user.status) ? user.status : 'online';
+    if (rawStatus !== user.status) run(db, 'UPDATE users SET status = ? WHERE id = ?', [rawStatus, user.id]);
+    run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
 
     clientMeta.set(ws, { userId: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, rooms: new Set() });
     if (!userConnections.has(user.id)) userConnections.set(user.id, new Set());
     userConnections.get(user.id).add(ws);
 
+    const publicStatus = effectiveStatus(rawStatus, { connected: true, isSelf: false });
     const userRooms = all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [user.id]);
     for (const row of userRooms) {
-      broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: 'online', display_name: user.display_name, avatar: user.avatar });
+      broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: publicStatus, display_name: user.display_name, avatar: user.avatar });
     }
+    broadcastPresenceToFriends(user.id, publicStatus, user.display_name, user.avatar);
 
-    ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar } }));
+    ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, status: rawStatus } }));
 
     ws.on('message', async (raw) => {
       let msg;
@@ -162,7 +241,8 @@ function setupWebSocket(server) {
             break;
           }
           joinRoom(ws, room_id);
-          broadcastPresence(room_id, meta.userId, 'online', meta.display_name, meta.avatar);
+          const myRow = get(db2, 'SELECT status FROM users WHERE id = ?', [meta.userId]);
+          broadcastPresence(room_id, meta.userId, effectiveStatus(myRow?.status, { connected: true, isSelf: false }), meta.display_name, meta.avatar);
 
           const members = all(db2, `
             SELECT u.id, u.username, u.display_name, u.avatar, u.status
@@ -178,7 +258,7 @@ function setupWebSocket(server) {
               username: m.username,
               display_name: m.display_name,
               avatar: m.avatar || null,
-              status: m.status || 'offline'
+              status: effectiveStatus(m.status, { connected: isUserConnected(m.id), isSelf: m.id === meta.userId })
             }))
           }));
 
@@ -209,14 +289,24 @@ function setupWebSocket(server) {
           break;
         }
         case 'set_status': {
+          // This is the ONLY place status changes: a manual pick from the
+          // status submenu. There is deliberately no inactivity timer, no
+          // mouse/keyboard tracking, and nothing here that changes status
+          // on its own — the status stays exactly what was last picked
+          // until the user picks something else.
           const { status } = msg;
-          const allowed = ['online', 'offline'];
-          if (!allowed.includes(status)) break;
+          if (!STATUSES.includes(status)) break;
           const db2 = await getUserDb();
           run(db2, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?', [status, Date.now(), meta.userId]);
+          const publicStatus = effectiveStatus(status, { connected: true, isSelf: false });
           for (const roomId of meta.rooms) {
-            broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status, display_name: meta.display_name, avatar: meta.avatar });
+            broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status: publicStatus, display_name: meta.display_name, avatar: meta.avatar });
           }
+          broadcastPresenceToFriends(meta.userId, publicStatus, meta.display_name, meta.avatar);
+          // Sync the real (unmasked) status to this user's own other
+          // sessions — e.g. another open tab — so their own UI shows
+          // "Invisible" rather than the "offline" everyone else sees.
+          broadcastToUser(meta.userId, { type: 'self_status', status });
           break;
         }
         case 'ping':
@@ -319,7 +409,7 @@ function setupWebSocket(server) {
     ws.on('error', () => cleanupClient(ws));
   });
 
-  return { wss, broadcast, broadcastToUser };
+  return { wss, broadcast, broadcastToUser, broadcastAll };
 }
 
-module.exports = { setupWebSocket, broadcast, broadcastToUser };
+module.exports = { setupWebSocket, broadcast, broadcastToUser, isUserConnected, broadcastPresenceChange };

@@ -9,6 +9,7 @@ const { getMessageDb, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
 const { hasBlocked } = require('../services/blocks');
 const { isReservedUsername } = require('../services/reservedUsernames');
+const { STATUSES, effectiveStatus } = require('../services/presence');
 
 // ─── Paths ──────────────────────────────────────────────────
 const PROJECT_ROOT = path.resolve(__dirname, '../..'); // because this file is in server/routes/
@@ -65,11 +66,13 @@ router.get('/search', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   const users = all(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, public_key, last_seen, status
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, role, public_key, last_seen, status
     FROM users
     WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?
     LIMIT 20
   `, [`%${q}%`, `%${q}%`, req.user.id]);
+  const isUserConnected = req.app.locals.isUserConnected || (() => false);
+  users.forEach(u => { u.status = effectiveStatus(u.status, { connected: isUserConnected(u.id), isSelf: false }); });
   res.json({ users });
 });
 
@@ -77,13 +80,16 @@ router.get('/search', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const user = get(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, public_key, status, created_at, last_seen
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, role, public_key, status, created_at, last_seen
     FROM users WHERE id = ?
   `, [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });
   // Only reveal that *I* blocked them, never whether they blocked me —
   // Discord-style, so blocking someone doesn't tip them off.
   user.is_blocked = hasBlocked(db, req.user.id, req.params.id);
+  const isSelf = req.params.id === req.user.id;
+  const isUserConnected = req.app.locals.isUserConnected || (() => false);
+  user.status = effectiveStatus(user.status, { connected: isUserConnected(user.id), isSelf });
   res.json({ user });
 });
 
@@ -154,7 +160,7 @@ router.delete('/banner', requireAuth, async (req, res) => {
 // ─── UPDATE PROFILE (PATCH /me) ────────────────────────────
 router.patch('/me', requireAuth, async (req, res) => {
   const db = await getUserDb();
-  const { username, email, display_name, bio, banner_color, public_key, encrypted_private_key, key_salt, key_nonce, current_password, new_password } = req.body;
+  const { username, email, display_name, bio, pronouns, banner_color, public_key, encrypted_private_key, key_salt, key_nonce, current_password, new_password } = req.body;
   const userId = req.user.id;
 
   const updates = [];
@@ -200,6 +206,16 @@ router.patch('/me', requireAuth, async (req, res) => {
     const trimmed = bio.trim();
     if (trimmed.length > 500) return res.status(400).json({ error: 'Bio too long (max 500 chars)' });
     updates.push('bio = ?');
+    params.push(trimmed || null);
+  }
+
+  // Pronouns — free text like Discord's, optional, shown under the
+  // username in the profile popout. No fixed list: people fill in
+  // whatever they want here.
+  if (pronouns !== undefined) {
+    const trimmed = pronouns.trim();
+    if (trimmed.length > 40) return res.status(400).json({ error: 'Pronouns too long (max 40 chars)' });
+    updates.push('pronouns = ?');
     params.push(trimmed || null);
   }
 
@@ -293,7 +309,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
   run(db, sql, params);
 
-  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
+  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
   res.json({ ok: true, user: updated });
 });
 
@@ -301,10 +317,17 @@ router.patch('/me', requireAuth, async (req, res) => {
 router.patch('/status', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const { status } = req.body;
-  const allowed = ['online', 'offline'];
-  if (!status || !allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  if (!status || !STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
   run(db, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?',
       [status, Date.now(), req.user.id]);
+  // The client also pushes this over the WebSocket (see set_status in
+  // server/websocket/index.js), which is what actually reaches other
+  // connected clients in real time — this broadcast is just a fallback
+  // for the (rare) case where this REST call lands without a live socket,
+  // so a friend polling the REST endpoints isn't stuck with a stale value.
+  if (typeof req.app.locals.broadcastPresenceChange === 'function') {
+    req.app.locals.broadcastPresenceChange(req.user.id, status);
+  }
   res.json({ ok: true, status });
 });
 
@@ -363,6 +386,7 @@ router.delete('/me', requireAuth, async (req, res) => {
   run(db, 'DELETE FROM server_members WHERE user_id = ?', [userId]);
   run(db, 'DELETE FROM friends WHERE user_a = ? OR user_b = ?', [userId, userId]);
   run(db, 'DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?', [userId, userId]);
+  run(db, 'DELETE FROM user_badges WHERE user_id = ?', [userId]);
 
   // Finally delete the user
   run(db, 'DELETE FROM users WHERE id = ?', [userId]);

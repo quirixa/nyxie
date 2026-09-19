@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getUserDb, all, get, run } = require('../database/userDb');
 const { requireAuth } = require('../middleware/auth');
 const { ensureBlocksTable, isBlocked, listBlocked } = require('../services/blocks');
+const { effectiveStatus } = require('../services/presence');
 
 // GET /api/friends — list accepted friends (with avatars)
 // Blocked users are excluded defensively even though blocking already
@@ -21,6 +22,12 @@ router.get('/', requireAuth, async (req, res) => {
         WHERE (b.blocker_id = ? AND b.blocked_id = u.id) OR (b.blocker_id = u.id AND b.blocked_id = ?)
       )
   `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
+  // Mask each friend's status the same way any other viewer would see it —
+  // an Invisible friend must show as offline here too, and "Online" in the
+  // Friends tab means "status !== offline" once this masking is applied
+  // (see the tab filter in dashboard.js's renderFriendsList).
+  const isUserConnected = req.app.locals.isUserConnected || (() => false);
+  friends.forEach(f => { f.status = effectiveStatus(f.status, { connected: isUserConnected(f.id), isSelf: false }); });
   res.json({ friends });
 });
 
@@ -129,6 +136,7 @@ router.post('/request', requireAuth, async (req, res) => {
           [friendId, req.user.id, to_id, Date.now()]);
       // Fetch the friend's full profile (including avatar)
       const me = get(db, 'SELECT id, username, display_name, avatar, status, last_seen FROM users WHERE id = ?', [req.user.id]);
+      me.status = effectiveStatus(me.status, { connected: (req.app.locals.isUserConnected || (() => false))(me.id), isSelf: false });
       req.app.locals.broadcastToUser(to_id, { type: 'friend_accepted', request_id: pending.id, friend: me });
       return res.json({ ok: true, auto_accepted: true });
     }
@@ -168,6 +176,7 @@ router.post('/requests/:id/accept', requireAuth, async (req, res) => {
       [friendId, fr.from_id, fr.to_id, Date.now()]);
 
   const me = get(db, 'SELECT id, username, display_name, avatar, status, last_seen FROM users WHERE id = ?', [req.user.id]);
+  me.status = effectiveStatus(me.status, { connected: (req.app.locals.isUserConnected || (() => false))(me.id), isSelf: false });
   req.app.locals.broadcastToUser(fr.from_id, { type: 'friend_accepted', request_id: fr.id, friend: me });
   res.json({ ok: true });
 });

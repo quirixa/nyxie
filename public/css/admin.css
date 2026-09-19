@@ -35,3 +35,88 @@
   margin: 18px 0 8px;
 }
 #view-app .admin-section-label:first-child { margin-top: 0; }
+
+/* ── Badges tab ─────────────────────────────────────────────────────
+   Reuses the .mp-* row/tab/form chrome; chips come from badges.css. */
+
+/* The admin panel's views sit directly in a column-flex panel (unlike the
+   marketplace, whose views are absolutely positioned), so give them the
+   full height and let .mp-body scroll inside it. */
+#view-app #admin-panel .mp-view { flex: 1; min-height: 0; flex-direction: column; }
+
+#view-app .admin-badge-type,
+#view-app .admin-badge-row,
+#view-app .admin-badge-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+#view-app .admin-badge-user { margin-bottom: 4px; }
+#view-app .admin-badge-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  max-width: 45%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+#view-app .admin-badge-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+#view-app .admin-badge-id {
+  font-family: monospace;
+  font-size: 0.7rem;
+  user-select: all;
+}
+#view-app .admin-muted { font-size: 0.75rem; color: var(--text-muted); }
+#view-app .admin-flag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+#view-app .admin-badge-error {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  color: var(--danger);
+  background: rgba(237, 66, 69, 0.1);
+  border: 1px solid rgba(237, 66, 69, 0.35);
+}
+#view-app .admin-badge-remove {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+}
+#view-app .admin-badge-remove:hover { color: var(--danger); border-color: var(--danger); }
+
+#view-app .admin-log-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 2px;
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--border-color);
+}
+#view-app .admin-log-row:last-child { border-bottom: none; }
+#view-app .admin-log-text { min-width: 0; overflow-wrap: anywhere; }
+#view-app .admin-log-time { font-size: 0.72rem; color: var(--text-muted); flex-shrink: 0; }

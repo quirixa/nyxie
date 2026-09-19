@@ -23,6 +23,7 @@ const {
   requireServerPermission
 } = require('../services/permissions');
 const { CATEGORIES, isValidCategory } = require('../services/discoveryCategories');
+const { effectiveStatus } = require('../services/presence');
 
 const MAX_SERVER_NAME = 50;
 const MAX_SERVER_DESC = 300;
@@ -361,6 +362,7 @@ router.get('/:serverId/members', requireAuth, requireServerPermission(null), asy
     ORDER BY COALESCE(sr.position, -1) DESC, u.username ASC
   `, [req.params.serverId]);
 
+  const isUserConnected = req.app.locals.isUserConnected || (() => false);
   res.json({
     members: members.map(m => ({
       id: m.user_id,
@@ -368,7 +370,7 @@ router.get('/:serverId/members', requireAuth, requireServerPermission(null), asy
       display_name: m.nickname || m.display_name,
       global_display_name: m.display_name,
       avatar: m.avatar,
-      status: m.status,
+      status: effectiveStatus(m.status, { connected: isUserConnected(m.user_id), isSelf: m.user_id === req.user.id }),
       nickname: m.nickname,
       muted: !!m.muted,
       joined_at: m.joined_at,

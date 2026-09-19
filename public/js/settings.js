@@ -288,6 +288,7 @@ function initSettingsView() {
       localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
     }
     document.getElementById('settings-username').textContent = '@' + currentUser.username;
+    Badges.renderInto(document.getElementById('settings-badges'), currentUser.id, { size: 'md', empty: 'None yet' });
     emailVisible = false;
     document.getElementById('settings-email').textContent = '••••••••';
     if (document.getElementById('tab-profile').style.display !== 'none') {
