@@ -50,10 +50,20 @@ router.post('/register', async (req, res) => {
     const userId = crypto.randomUUID();
     const now = Date.now();
 
+    // Whoever registers the username "admin" gets the site-wide ADMIN
+    // role automatically (everyone else defaults to 'USER' via the
+    // column default). This is a deliberate first-come-first-served
+    // shortcut requested for this app; it means "admin" is effectively
+    // a race — whoever signs up with that exact username owns the
+    // account with full ADMIN privileges (see requireAdmin in
+    // middleware/auth.js). It is not reserved/blocked like other names
+    // specifically so this registration can happen.
+    const role = trimmedUsername.toLowerCase() === 'admin' ? 'ADMIN' : 'USER';
+
     run(db,
-      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, banner, banner_color, bio, status, created_at, last_seen)
-       VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'online', ?, ?)`,
-      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now]
+      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, banner, banner_color, bio, status, created_at, last_seen, role)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'online', ?, ?, ?)`,
+      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now, role]
     );
 
     // New users start in zero servers. Servers are opt-in: create one
