@@ -71,6 +71,13 @@ const router = (() => {
     // openChannel() read on mount.
     { path: '/servers/:serverId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialServerId = params.serverId; window._initialChannelId = null; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     { path: '/servers/:serverId/channels/:channelId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialServerId = params.serverId; window._initialChannelId = params.channelId; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Same '/wallets'-style pattern for the dedicated Discovery page:
+    // '/discover' and '/discover/:category' are both real, refreshable/
+    // shareable URLs (see section 8 of the servers spec) — the category,
+    // if any, is read from window._initialDiscoverCategory once the
+    // dashboard mounts (showDiscoverView() in dashboard.js).
+    { path: '/discover', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'discover'; window._initialDiscoverCategory = null; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    { path: '/discover/:category', template: 'tpl-app', auth: 'required', init: (params) => { window._initialSection = 'discover'; window._initialDiscoverCategory = params.category; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     { path: '/settings', template: 'tpl-settings', auth: 'required', init: () => initSettingsView(), destroy: () => { if (typeof destroySettingsView === 'function') destroySettingsView(); } }
   ];
 

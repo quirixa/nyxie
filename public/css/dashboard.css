@@ -310,6 +310,18 @@ body.select-mode #view-app .dm-checkbox {
 #view-app #user-panel {
   height: 60px;
   flex-shrink: 0;
+  /* Pins user-panel to the bottom of #sidebar's flex column on its
+     own, instead of relying on #dm-section or #server-panel (both
+     flex:1) to fill the remaining space and push it down. Those are
+     the two panels that normally do that, but showDiscoverView()
+     hides both of them (along with everything else in #sidebar's
+     content area) with nothing else in #sidebar taking flex:1 in
+     their place — without this, #user-panel collapsed upward to sit
+     right under the nav items while Discover was open. margin-top:
+     auto has the same effect regardless of which sibling(s) end up
+     hidden, so it doesn't need updating every time a new view is
+     added here. */
+  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2321,7 +2333,8 @@ body.select-mode #view-app .dm-checkbox {
   width: 100%;
 }
 
-/* Discover Servers tab (Add Server modal) */
+/* Shared bits reused by the Discovery page (search box, join button,
+   empty/status states) — the page itself is styled further down. */
 #view-app .checkbox-row {
   display: flex;
   align-items: center;
@@ -2331,50 +2344,13 @@ body.select-mode #view-app .dm-checkbox {
   margin: 10px 0 2px;
   cursor: pointer;
 }
-#view-app #discover-search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-input);
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: 8px 10px;
-  margin-bottom: 10px;
-}
-#view-app #discover-search-wrap svg {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-#view-app #discover-search-input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: none;
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  outline: none;
-}
-#view-app #discover-results {
-  max-height: 340px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-#view-app .discover-empty,
-#view-app .discover-status {
-  padding: 24px 10px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
 #view-app .discover-join-btn {
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 5px 12px;
-  font-size: 0.78rem;
+  padding: 7px 14px;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -2388,8 +2364,333 @@ body.select-mode #view-app .dm-checkbox {
   color: var(--text-muted);
   cursor: default;
 }
+#view-app .discover-empty,
+#view-app .discover-status {
+  padding: 24px 10px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Server Discovery — full dedicated page, opened from the
+   server rail's own "Discover" pill (never the Add Server modal).
+   ───────────────────────────────────────────────────────── */
+
+#view-app .server-pill-discover {
+  background: transparent;
+  border: 1.5px solid var(--bg-hover);
+  color: var(--text-muted);
+}
+#view-app .server-pill-discover:hover,
+#view-app .server-pill-discover.active {
+  border-radius: 16px;
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+#view-app #discover-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+#view-app #discover-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+#view-app #discover-hero {
+  position: relative;
+  padding: 48px 32px 28px;
+  background: linear-gradient(135deg, var(--accent-subtle), var(--bg-secondary));
+  border-bottom: 1px solid var(--bg-hover);
+}
+#view-app .discover-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: var(--bg-hover);
+  border: none;
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+#view-app .discover-close-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+#view-app #discover-hero-text h1 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+#view-app #discover-hero-text p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  max-width: 520px;
+  margin: 0 0 20px;
+}
+#view-app #discover-hero #discover-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color, var(--bg-hover));
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  max-width: 420px;
+}
+#view-app #discover-search-wrap svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+#view-app #discover-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+}
+
+#view-app #discover-category-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--bg-hover);
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  z-index: 2;
+}
+#view-app .discover-cat-tab {
+  background: var(--bg-input);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#view-app .discover-cat-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+#view-app .discover-cat-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+#view-app #discover-body {
+  padding: 24px 32px 48px;
+}
+#view-app #discover-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+#view-app #discover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+#view-app .discover-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
+}
+#view-app .discover-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+#view-app .discover-card-banner {
+  height: 80px;
+  width: 100%;
+  opacity: 0.85;
+}
+#view-app .discover-card-body {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+#view-app .discover-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -22px;
+}
+#view-app .discover-card-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--bg-input);
+  border: 4px solid var(--bg-secondary);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#view-app .discover-card-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+#view-app .discover-card-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 20px;
+}
+#view-app .discover-card-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.2em;
+}
+#view-app .discover-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+#view-app .discover-card-members {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+#view-app .discover-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+#view-app .discover-dot.online {
+  background: var(--online);
+}
+#view-app .discover-card-category {
+  background: var(--bg-input);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+#view-app .discover-card .discover-join-btn {
+  width: 100%;
+  margin-top: 2px;
+}
+#view-app .discover-card.joined .discover-join-btn {
+  cursor: default;
+}
+
+#view-app .discover-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+#view-app .discover-skeleton-card {
+  height: 190px;
+  border-radius: var(--radius);
+  background: linear-gradient(100deg, var(--bg-secondary) 30%, var(--bg-hover) 50%, var(--bg-secondary) 70%);
+  background-size: 200% 100%;
+  animation: discover-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes discover-shimmer {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+
+#view-app .discover-empty-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#view-app .discover-empty-sub {
+  color: var(--text-muted);
+}
+#view-app .discover-error {
+  color: var(--danger);
+}
+#view-app .discover-retry-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 4px;
+}
+#view-app #discover-load-more {
+  display: block;
+  margin: 24px auto 0;
+  background: var(--bg-input);
+  border: 1px solid var(--bg-hover);
+  color: var(--text-primary);
+  padding: 9px 22px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+#view-app #discover-load-more:hover {
+  background: var(--bg-hover);
+}
+#view-app #discover-load-more:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+@media (max-width: 768px) {
+  #view-app #discover-hero {
+    padding: 32px 18px 20px;
+  }
+  #view-app #discover-hero-text h1 {
+    font-size: 1.4rem;
+  }
+  #view-app #discover-category-tabs,
+  #view-app #discover-body {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+  #view-app #discover-grid,
+  #view-app .discover-skeleton-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Generic scrollable list used for member/friend/invite pickers */
+
 #view-app .picker-list {
   max-height: 320px;
   overflow-y: auto;

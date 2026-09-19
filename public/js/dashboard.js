@@ -403,6 +403,17 @@ function initDashboardView() {
   let serverChannels = [];       // channels of currentServerId, from GET /servers/:id/channels
   let currentServerRoles = [];   // roles of currentServerId, cached for the members/role picker
   let joinPreviewInvite = null;  // last invite preview shown in the "Join a Server" tab
+  // ─── Server Discovery state ────────────────────────────────
+  let discoverCategories = [];       // cached from GET /servers/categories
+  let discoverCategoriesLoaded = false;
+  let discoverActiveCategory = '';   // '' = Home (all categories)
+  let discoverActiveQuery = '';
+  let discoverPage = 1;
+  let discoverHasMore = false;
+  let discoverResults = [];          // accumulated across "Load more" pages
+  let inDiscoverView = false;
+  let _discoverLoadToken = 0;
+  let _discoverDebounceTimer = null;
   // Dedupes the notification sound when the same message reaches us
   // through both the room broadcast ('new_message') and the dedicated
   // ('mention') ping — see both handlers below. Capped and trimmed so it
@@ -529,6 +540,8 @@ function initDashboardView() {
 
   async function navigateTo(section) {
     currentNav = section;
+    inDiscoverView = false;
+    document.getElementById('discover-panel').style.display = 'none';
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById('nav-' + section)?.classList.add('active');
     document.getElementById('welcome-view').style.display = 'none';
@@ -537,6 +550,7 @@ function initDashboardView() {
     document.getElementById('marketplace-panel').style.display = 'none';
     document.getElementById('admin-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'none';
+    renderServerRail();
     if (section === 'home') {
       document.getElementById('welcome-view').style.display = 'flex';
       showMobileList();
@@ -585,13 +599,14 @@ function initDashboardView() {
     const onAdminUrl = path === '/admin/disputes';
     const onRoomUrl = path.startsWith('/app/rooms/');
     const onServerUrl = path.startsWith('/servers/');
+    const onDiscoverUrl = path.startsWith('/discover');
     if (section === 'wallet' && !onWalletUrl) {
       window.history.replaceState({}, '', '/wallets');
     } else if (section === 'marketplace' && !onMarketplaceUrl) {
       window.history.replaceState({}, '', '/marketplace');
     } else if (section === 'admin' && !onAdminUrl) {
       window.history.replaceState({}, '', '/admin/disputes');
-    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onRoomUrl || onServerUrl)) {
+    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onRoomUrl || onServerUrl || onDiscoverUrl)) {
       window.history.replaceState({}, '', '/app');
     }
   }
@@ -3043,8 +3058,15 @@ function initDashboardView() {
           navigateTo('home');
         }
       } else {
-        navigateTo(window._initialSection || 'home');
-        window._initialSection = null;
+        if (window._initialSection === 'discover') {
+          const cat = window._initialDiscoverCategory;
+          window._initialDiscoverCategory = null;
+          window._initialSection = null;
+          showDiscoverView({ fromRoute: true, category: cat });
+        } else {
+          navigateTo(window._initialSection || 'home');
+          window._initialSection = null;
+        }
       }
       _dashboardPollTimer = setInterval(async () => {
         const data = await api('GET', '/rooms');
@@ -3184,12 +3206,15 @@ function initDashboardView() {
       return `<div class="server-pill${currentServerId === s.id ? ' active' : ''}" data-server-id="${s.id}"
         onclick="selectServer('${s.id}')" title="${escapeHtml(s.name)}">${inner}</div>`;
     }).join('');
-    document.getElementById('server-pill-home').classList.toggle('active', !currentServerId);
+    document.getElementById('server-pill-home').classList.toggle('active', !currentServerId && !inDiscoverView);
+    document.getElementById('server-pill-discover')?.classList.toggle('active', inDiscoverView);
   }
 
   function showDMView() {
     currentServerId = null;
     currentRoom = null;
+    inDiscoverView = false;
+    document.getElementById('discover-panel').style.display = 'none';
     document.getElementById('server-panel').classList.add('hidden');
     document.getElementById('conv-header').classList.remove('hidden');
     document.getElementById('search-wrap').classList.remove('hidden');
@@ -3200,7 +3225,7 @@ function initDashboardView() {
     // rule in dashboard.css.
     document.getElementById('sidebar').classList.remove('in-server-view');
     renderServerRail();
-    if (window.location.pathname.startsWith('/servers/')) {
+    if (window.location.pathname.startsWith('/servers/') || window.location.pathname.startsWith('/discover')) {
       window.history.replaceState({}, '', '/app');
     }
     navigateTo('home');
@@ -3214,6 +3239,8 @@ function initDashboardView() {
   // real navigation and should push its own URL, same pattern as
   // openRoom()'s fromRoute for DMs.
   async function selectServer(serverId, { fromRoute = false, initialChannelId = null } = {}) {
+    inDiscoverView = false;
+    document.getElementById('discover-panel').style.display = 'none';
     currentServerId = serverId;
     currentRoom = null;
     document.getElementById('welcome-view').style.display = 'none';
@@ -3362,86 +3389,33 @@ function initDashboardView() {
 
   function showAddServerModal() {
     document.getElementById('add-server-modal').style.display = 'flex';
-    _discoverLoadedOnce = false;
+    ensureDiscoverCategoriesLoaded().then(populateCategorySelects);
     switchAddServerTab('create');
   }
 
   function switchAddServerTab(tab) {
     document.getElementById('as-tab-create').classList.toggle('active', tab === 'create');
     document.getElementById('as-tab-join').classList.toggle('active', tab === 'join');
-    document.getElementById('as-tab-discover').classList.toggle('active', tab === 'discover');
     document.getElementById('as-pane-create').style.display = tab === 'create' ? '' : 'none';
     document.getElementById('as-pane-join').style.display = tab === 'join' ? '' : 'none';
-    document.getElementById('as-pane-discover').style.display = tab === 'discover' ? '' : 'none';
-    if (tab === 'discover' && !_discoverLoadedOnce) {
-      _discoverLoadedOnce = true;
-      searchDiscoverServers('');
-    }
   }
 
   async function submitCreateServer() {
     const name = document.getElementById('create-server-name').value.trim();
     const description = document.getElementById('create-server-desc').value.trim();
+    const category = document.getElementById('create-server-category').value || null;
     const isDiscoverable = document.getElementById('create-server-discoverable').checked;
     if (!name) return toast('Server name required');
-    const data = await api('POST', '/servers', { name, description, is_discoverable: isDiscoverable });
+    const data = await api('POST', '/servers', { name, description, category, is_discoverable: isDiscoverable });
     if (!data?.server) return toast(data?.error || 'Failed to create server');
     document.getElementById('add-server-modal').style.display = 'none';
     document.getElementById('create-server-name').value = '';
     document.getElementById('create-server-desc').value = '';
+    document.getElementById('create-server-category').value = '';
     document.getElementById('create-server-discoverable').checked = false;
     await loadServers();
     selectServer(data.server.id);
     toast(`Server "${data.server.name}" created`);
-  }
-
-  // ─── Discover Servers ────────────────────────────────────────
-  // Backend/database-driven search (GET /servers/discover) — never a
-  // client-side filter over servers already loaded in the browser.
-  let _discoverLoadedOnce = false;
-  let _discoverSearchToken = 0;
-  let _discoverDebounceTimer = null;
-
-  function onDiscoverSearchInput(value) {
-    clearTimeout(_discoverDebounceTimer);
-    _discoverDebounceTimer = setTimeout(() => searchDiscoverServers(value.trim()), 300);
-  }
-
-  async function searchDiscoverServers(query) {
-    const container = document.getElementById('discover-results');
-    const token = ++_discoverSearchToken;
-    container.innerHTML = `<div class="discover-status">Searching…</div>`;
-    let data;
-    try {
-      data = await api('GET', `/servers/discover?query=${encodeURIComponent(query || '')}`);
-    } catch (e) {
-      data = null;
-    }
-    if (token !== _discoverSearchToken) return; // a newer search superseded this one
-    if (!data) {
-      container.innerHTML = `<div class="discover-status">Couldn't load servers. Try again.</div>`;
-      return;
-    }
-    const results = data.servers || [];
-    if (!results.length) {
-      container.innerHTML = `<div class="discover-empty">${query ? `No servers found for “${escapeHtml(query)}”` : 'No public servers to discover yet'}</div>`;
-      return;
-    }
-    container.innerHTML = results.map(s => {
-      const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-      const avatarHtml = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
-      const joinBtn = s.already_member
-        ? `<button class="discover-join-btn" disabled>Joined</button>`
-        : `<button class="discover-join-btn" onclick="joinDiscoveredServer('${s.id}', this)">Join</button>`;
-      return `<div class="picker-row">
-        <div class="picker-avatar">${avatarHtml}</div>
-        <div class="picker-info">
-          <div class="picker-name">${escapeHtml(s.name)}</div>
-          <div class="picker-sub">${escapeHtml(s.description || '')}${s.description ? ' · ' : ''}${s.member_count} member${s.member_count === 1 ? '' : 's'}</div>
-        </div>
-        ${joinBtn}
-      </div>`;
-    }).join('');
   }
 
   async function joinDiscoveredServer(serverId, btnEl) {
@@ -3454,9 +3428,195 @@ function initDashboardView() {
     }
     if (btnEl) btnEl.textContent = 'Joined';
     await loadServers();
-    document.getElementById('add-server-modal').style.display = 'none';
-    selectServer(serverId);
+    const card = btnEl?.closest('.discover-card');
+    if (card) card.classList.add('joined');
     toast('Joined server');
+    selectServer(serverId);
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  SERVER DISCOVERY — its own rail button + dedicated page.
+  //  Everything here is backend/database-driven (GET /servers/discover,
+  //  GET /servers/categories) — never a client-side filter/sort over
+  //  servers already sitting in the browser.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  async function ensureDiscoverCategoriesLoaded() {
+    if (discoverCategoriesLoaded) return discoverCategories;
+    const data = await api('GET', '/servers/categories');
+    discoverCategories = data?.categories || [];
+    discoverCategoriesLoaded = true;
+    return discoverCategories;
+  }
+
+  // Fills the two <select> elements (create-server modal + server
+  // settings overview) with the canonical category list, preserving
+  // whatever value was already selected.
+  function populateCategorySelects() {
+    ['create-server-category', 'ss-category-input'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const current = el.value;
+      el.innerHTML = `<option value="">No category</option>` +
+        discoverCategories.map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('');
+      el.value = current;
+    });
+  }
+
+  function renderDiscoverCategoryTabs() {
+    const wrap = document.getElementById('discover-category-tabs');
+    if (!wrap) return;
+    const tabs = [{ key: '', label: 'Home' }, ...discoverCategories];
+    wrap.innerHTML = tabs.map(c => `
+      <button class="discover-cat-tab${discoverActiveCategory === c.key ? ' active' : ''}" onclick="switchDiscoverCategory('${c.key}')">${escapeHtml(c.label)}</button>
+    `).join('');
+  }
+
+  function switchDiscoverCategory(key) {
+    if (discoverActiveCategory === key) return;
+    discoverActiveCategory = key;
+    renderDiscoverCategoryTabs();
+    const path = key ? `/discover/${key}` : '/discover';
+    if (window.location.pathname !== path) window.history.replaceState({}, '', path);
+    loadDiscoverResults({ reset: true });
+  }
+
+  function onDiscoverSearchInput(value) {
+    clearTimeout(_discoverDebounceTimer);
+    _discoverDebounceTimer = setTimeout(() => {
+      discoverActiveQuery = value.trim();
+      loadDiscoverResults({ reset: true });
+    }, 300);
+  }
+
+  function discoverCardHtml(s) {
+    const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+    const iconHtml = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
+    // No banner image support yet (see server settings) — fall back to a
+    // deterministic gradient derived from the server name, same idea as
+    // the initials-avatar fallback, so every card still looks intentional
+    // instead of leaving a blank rectangle.
+    const bannerColor = hashColor(s.name || s.id);
+    const categoryLabel = discoverCategories.find(c => c.key === s.category)?.label;
+    const joinBtn = s.already_member
+      ? `<button class="discover-join-btn" disabled>Joined</button>`
+      : `<button class="discover-join-btn" onclick="event.stopPropagation();joinDiscoveredServer('${s.id}', this)">Join</button>`;
+    return `<div class="discover-card${s.already_member ? ' joined' : ''}" onclick="if(${s.already_member ? 'true' : 'false'})selectServer('${s.id}')">
+      <div class="discover-card-banner" style="background:${bannerColor}"></div>
+      <div class="discover-card-body">
+        <div class="discover-card-head">
+          <div class="discover-card-icon">${iconHtml}</div>
+          <div class="discover-card-name">${escapeHtml(s.name)}</div>
+        </div>
+        ${s.description ? `<div class="discover-card-desc">${escapeHtml(s.description)}</div>` : ''}
+        <div class="discover-card-meta">
+          <span class="discover-card-members"><span class="discover-dot online"></span>${s.member_count.toLocaleString()} member${s.member_count === 1 ? '' : 's'}</span>
+          ${categoryLabel ? `<span class="discover-card-category">${escapeHtml(categoryLabel)}</span>` : ''}
+        </div>
+        ${joinBtn}
+      </div>
+    </div>`;
+  }
+
+  async function loadDiscoverResults({ reset = false } = {}) {
+    const grid = document.getElementById('discover-grid');
+    const statusArea = document.getElementById('discover-status-area');
+    const loadMoreBtn = document.getElementById('discover-load-more');
+    const token = ++_discoverLoadToken;
+    if (reset) {
+      discoverPage = 1;
+      discoverResults = [];
+      grid.innerHTML = `<div class="discover-skeleton-grid">${'<div class="discover-skeleton-card"></div>'.repeat(6)}</div>`;
+      statusArea.innerHTML = '';
+      loadMoreBtn.style.display = 'none';
+    } else {
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading…';
+    }
+
+    let data;
+    try {
+      const params = new URLSearchParams({ page: String(discoverPage), page_size: '20' });
+      if (discoverActiveCategory) params.set('category', discoverActiveCategory);
+      if (discoverActiveQuery) params.set('query', discoverActiveQuery);
+      data = await api('GET', `/servers/discover?${params.toString()}`);
+    } catch (e) {
+      data = null;
+    }
+    if (token !== _discoverLoadToken) return; // a newer load superseded this one
+
+    if (!data) {
+      grid.innerHTML = '';
+      statusArea.innerHTML = `<div class="discover-status discover-error">Couldn't load servers. <button class="discover-retry-btn" onclick="loadDiscoverResults({reset:true})">Try again</button></div>`;
+      loadMoreBtn.style.display = 'none';
+      return;
+    }
+
+    const results = data.servers || [];
+    discoverResults = reset ? results : discoverResults.concat(results);
+    discoverHasMore = !!data.has_more;
+
+    if (!discoverResults.length) {
+      grid.innerHTML = '';
+      statusArea.innerHTML = `<div class="discover-empty">
+        <div class="discover-empty-title">No communities found.</div>
+        <div class="discover-empty-sub">Try another search or category.</div>
+      </div>`;
+      loadMoreBtn.style.display = 'none';
+      return;
+    }
+
+    grid.innerHTML = discoverResults.map(discoverCardHtml).join('');
+    statusArea.innerHTML = '';
+    loadMoreBtn.style.display = discoverHasMore ? '' : 'none';
+    loadMoreBtn.disabled = false;
+    loadMoreBtn.textContent = 'Load more';
+  }
+
+  function loadMoreDiscoverResults() {
+    if (!discoverHasMore) return;
+    discoverPage += 1;
+    loadDiscoverResults({ reset: false });
+  }
+
+  // Opens the dedicated Discovery page — the server rail's own
+  // "Discover" pill, never a modal tab, and never accidentally selects
+  // one of the user's existing servers.
+  async function showDiscoverView({ fromRoute = false, category = null } = {}) {
+    inDiscoverView = true;
+    currentServerId = null;
+    currentRoom = null;
+    document.getElementById('server-panel').classList.add('hidden');
+    document.getElementById('conv-header').classList.add('hidden');
+    document.getElementById('search-wrap').classList.add('hidden');
+    document.getElementById('dm-section').style.display = 'none';
+    document.getElementById('chat-view').style.display = 'none';
+    document.getElementById('welcome-view').style.display = 'none';
+    document.getElementById('friends-panel').style.display = 'none';
+    document.getElementById('wallet-panel').style.display = 'none';
+    document.getElementById('marketplace-panel').style.display = 'none';
+    document.getElementById('admin-panel')?.style && (document.getElementById('admin-panel').style.display = 'none');
+    document.getElementById('notifications-panel').style.display = 'none';
+    document.getElementById('discover-panel').style.display = 'flex';
+    document.getElementById('sidebar').classList.remove('in-server-view');
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    renderServerRail();
+    showMobileDetail();
+
+    const validCategory = await ensureDiscoverCategoriesLoaded().then(cats =>
+      category && cats.some(c => c.key === category) ? category : ''
+    );
+    discoverActiveCategory = validCategory;
+    document.getElementById('discover-search-input').value = '';
+    discoverActiveQuery = '';
+    renderDiscoverCategoryTabs();
+    populateCategorySelects();
+
+    const path = discoverActiveCategory ? `/discover/${discoverActiveCategory}` : '/discover';
+    if (!fromRoute && window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    loadDiscoverResults({ reset: true });
   }
 
   function extractInviteCode(input) {
@@ -3534,6 +3694,10 @@ function initDashboardView() {
     document.getElementById('ss-server-name').textContent = server.name;
     document.getElementById('ss-name-input').value = server.name;
     document.getElementById('ss-desc-input').value = server.description || '';
+    await ensureDiscoverCategoriesLoaded();
+    populateCategorySelects();
+    document.getElementById('ss-category-input').value = server.category || '';
+    document.getElementById('ss-discoverable-input').checked = !!server.is_discoverable;
     document.getElementById('ss-delete-btn').style.display = server.is_owner ? '' : 'none';
     document.getElementById('ss-leave-btn').style.display = server.is_owner ? 'none' : '';
     document.getElementById('server-settings-modal').style.display = 'flex';
@@ -3712,8 +3876,10 @@ function initDashboardView() {
   async function submitServerOverview() {
     const name = document.getElementById('ss-name-input').value.trim();
     const description = document.getElementById('ss-desc-input').value.trim();
+    const category = document.getElementById('ss-category-input').value || null;
+    const is_discoverable = document.getElementById('ss-discoverable-input').checked;
     if (!name) return toast('Server name required');
-    const data = await api('PATCH', `/servers/${currentServerId}`, { name, description });
+    const data = await api('PATCH', `/servers/${currentServerId}`, { name, description, category, is_discoverable });
     if (!data?.server) return toast(data?.error || 'Failed to update server');
     await loadServers();
     document.getElementById('server-panel-name').textContent = data.server.name;
@@ -3880,6 +4046,11 @@ function initDashboardView() {
   window.showAddServerModal = showAddServerModal;
   window.switchAddServerTab = switchAddServerTab;
   window.submitCreateServer = submitCreateServer;
+  window.joinDiscoveredServer = joinDiscoveredServer;
+  window.showDiscoverView = showDiscoverView;
+  window.switchDiscoverCategory = switchDiscoverCategory;
+  window.onDiscoverSearchInput = onDiscoverSearchInput;
+  window.loadMoreDiscoverResults = loadMoreDiscoverResults;
   window.onJoinCodeInput = onJoinCodeInput;
   window.submitJoinServer = submitJoinServer;
   window.showCreateChannelModal = showCreateChannelModal;

@@ -479,8 +479,15 @@ __    __  __      __  __    __  ______  ________
                 </div>
                 <div class="server-rail-divider"></div>
                 <div id="server-rail-list"></div>
+                <div class="server-rail-divider"></div>
                 <div class="server-pill server-pill-add" id="server-pill-add" onclick="showAddServerModal()" title="Add a server">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </div>
+                <!-- Own rail entry, deliberately separate from server-pill-add: clicking
+                     it must never select/open one of the user's existing servers, and it
+                     must not live as a tab inside the Add Server modal. -->
+                <div class="server-pill server-pill-discover" id="server-pill-discover" onclick="showDiscoverView()" title="Discover Servers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
                 </div>
             </div>
             <!-- Sidebar -->
@@ -899,6 +906,32 @@ __    __  __      __  __    __  ______  ________
                             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                         </svg>
                         <span>No notifications yet.</span>
+                    </div>
+                </div>
+
+                <!-- Server Discovery -->
+                <div id="discover-panel" style="display:none;">
+                    <div id="discover-scroll">
+                        <div id="discover-hero">
+                            <button class="fh-icon-btn discover-close-btn" onclick="showDMView()" title="Back to chats">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                            <div id="discover-hero-text">
+                                <h1>FIND YOUR COMMUNITY<br/>ON NYXIE</h1>
+                                <p>From gaming, music, learning, development, and more — there's a place for you.</p>
+                            </div>
+                            <div id="discover-search-wrap">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="discover-search-input" placeholder="Search servers" autocomplete="off" oninput="onDiscoverSearchInput(this.value)" />
+                            </div>
+                        </div>
+                        <div id="discover-category-tabs"></div>
+                        <div id="discover-body">
+                            <div id="discover-section-title">Featured Servers</div>
+                            <div id="discover-grid"></div>
+                            <div id="discover-status-area"></div>
+                            <button id="discover-load-more" style="display:none" onclick="loadMoreDiscoverResults()">Load more</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1421,16 +1454,19 @@ __    __  __      __  __    __  ______  ________
                 <div class="modal-tabs">
                     <button class="modal-tab active" id="as-tab-create" onclick="switchAddServerTab('create')">Create a Server</button>
                     <button class="modal-tab" id="as-tab-join" onclick="switchAddServerTab('join')">Join a Server</button>
-                    <button class="modal-tab" id="as-tab-discover" onclick="switchAddServerTab('discover')">Discover</button>
                 </div>
                 <div id="as-pane-create">
                     <label>Server Name</label>
                     <input type="text" id="create-server-name" placeholder="My Awesome Server" autocomplete="off" maxlength="50" />
                     <label>Description (optional)</label>
                     <textarea id="create-server-desc" placeholder="What's this server about?" maxlength="300"></textarea>
+                    <label>Category (optional)</label>
+                    <select id="create-server-category">
+                        <option value="">No category</option>
+                    </select>
                     <label class="checkbox-row">
                         <input type="checkbox" id="create-server-discoverable" style="width:auto;margin:0;" />
-                        <span>Make this server discoverable in search</span>
+                        <span>Show this server in Discover</span>
                     </label>
                     <div class="modal-actions">
                         <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Cancel</button>
@@ -1444,16 +1480,6 @@ __    __  __      __  __    __  ______  ________
                     <div class="modal-actions">
                         <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Cancel</button>
                         <button class="btn-primary" onclick="submitJoinServer()">Join Server</button>
-                    </div>
-                </div>
-                <div id="as-pane-discover" style="display:none">
-                    <div id="discover-search-wrap">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" id="discover-search-input" placeholder="Search public servers" autocomplete="off" oninput="onDiscoverSearchInput(this.value)" />
-                    </div>
-                    <div id="discover-results"></div>
-                    <div class="modal-actions">
-                        <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Close</button>
                     </div>
                 </div>
             </div>
@@ -1515,6 +1541,14 @@ __    __  __      __  __    __  ______  ________
                     <input type="text" id="ss-name-input" maxlength="50" />
                     <label>Description</label>
                     <textarea id="ss-desc-input" maxlength="300"></textarea>
+                    <label>Category</label>
+                    <select id="ss-category-input">
+                        <option value="">No category</option>
+                    </select>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="ss-discoverable-input" style="width:auto;margin:0;" />
+                        <span>Show this server in Discover</span>
+                    </label>
                     <div class="modal-actions" style="justify-content:space-between">
                         <button class="btn-cancel btn-danger" id="ss-delete-btn" onclick="confirmDeleteServer()">Delete Server</button>
                         <button class="btn-primary" onclick="submitServerOverview()">Save Changes</button>
