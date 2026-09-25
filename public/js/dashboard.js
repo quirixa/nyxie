@@ -1952,6 +1952,18 @@ function initDashboardView() {
     if (e.key === 'Escape') closeImageLightbox();
   });
 
+  // Image attachments must NEVER navigate the browser, even if an ancestor
+  // or browser-level <base target> tries to make links open in a new tab.
+  // Capture phase intercepts the click before any ancestor/default navigation.
+  document.addEventListener('click', e => {
+    const img = e.target && e.target.closest ? e.target.closest('.msg-attachments img') : null;
+    if (!img) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    openImageLightbox(img.currentSrc || img.src, img.alt || 'Image');
+  }, true);
+
   function buildAttachmentsHtml(msg) {
     if (msg.deleted || !msg.attachments || !msg.attachments.length) return '';
     let html = '<div class="msg-attachments" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">';
