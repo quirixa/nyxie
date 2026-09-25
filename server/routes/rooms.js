@@ -202,6 +202,7 @@ async function listMessages(req, res) {
     SELECT id, room_id, user_id, content, nonce, msg_type, duration, mime_type, attachments, mentions, reply_to_id, created_at, edited_at, deleted
     FROM messages
     WHERE room_id = ? AND created_at < ?
+      AND (deleted = 0 OR EXISTS (SELECT 1 FROM messages r WHERE r.reply_to_id = messages.id))
     ORDER BY created_at DESC
     LIMIT ?
   `, [req.params.id, before, limit]);
@@ -431,9 +432,41 @@ async function deleteMessage(req, res) {
     }
   }
 
-  runMessage(msgDb, 'UPDATE messages SET deleted = 1, content = \'[deleted]\' WHERE id = ?', [msg.id]);
-  req.app.locals.broadcast(req.params.id, { type: 'message_deleted', message_id: msg.id });
-  res.json({ ok: true });
+  const replyCountRow = getMessage(msgDb, 'SELECT COUNT(*) AS count FROM messages WHERE reply_to_id = ?', [msg.id]);
+  const hasReplies = Number(replyCountRow?.count || 0) > 0;
+
+  // Remove uploaded attachments from disk when this message is deleted.
+  // Only remove a file if no other message still references the same URL.
+  if (msg.attachments) {
+    try {
+      const attachments = JSON.parse(msg.attachments);
+      const fs = require('fs');
+      const path = require('path');
+      const uploadDir = path.join(__dirname, '..', '..', 'data', 'uploads');
+      for (const attachment of Array.isArray(attachments) ? attachments : []) {
+        const url = typeof attachment?.url === 'string' ? attachment.url : '';
+        if (!url.startsWith('/uploads/')) continue;
+        const filename = path.basename(url);
+        const refs = getMessage(msgDb, 'SELECT COUNT(*) AS count FROM messages WHERE id != ? AND attachments LIKE ?', [msg.id, `%${url}%`]);
+        if (Number(refs?.count || 0) === 0) {
+          try { fs.unlinkSync(path.join(uploadDir, filename)); } catch (e) { /* already gone */ }
+        }
+      }
+    } catch (e) {
+      console.warn('[Message delete] attachment cleanup failed:', e.message);
+    }
+  }
+
+  // Preserve only a minimal tombstone when another message replies to this
+  // message. The encrypted content and attachments must never remain
+  // available through a deleted-message placeholder.
+  runMessage(msgDb, 'UPDATE messages SET deleted = 1, content = \'[deleted]\', nonce = NULL, attachments = NULL WHERE id = ?', [msg.id]);
+  req.app.locals.broadcast(req.params.id, {
+    type: 'message_deleted',
+    message_id: msg.id,
+    keep_placeholder: hasReplies
+  });
+  res.json({ ok: true, keep_placeholder: hasReplies });
 }
 
 router.get('/:id/messages', requireAuth, listMessages);

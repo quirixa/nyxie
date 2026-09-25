@@ -824,10 +824,37 @@ function initDashboardView() {
         }
 
         case 'message_deleted': {
-          const textEl = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
-          if (textEl) { textEl.innerHTML = 'Message deleted'; textEl.classList.add('deleted'); }
-          const acts = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-actions`);
-          if (acts) acts.remove();
+          const row = document.querySelector(`[data-msg-id="${msg.message_id}"]`);
+          const cached = window._messagesById.get(msg.message_id);
+          const keepPlaceholder = !!msg.keep_placeholder;
+          if (cached) {
+            cached.deleted = true;
+            cached.content = '[deleted]';
+            cached.nonce = null;
+            cached.attachments = null;
+          }
+          if (row) {
+            const container = document.getElementById('messages-container');
+            const wasNearBottom = container ? isNearBottom(container) : false;
+            if (keepPlaceholder) {
+              const textEl = row.querySelector('.msg-text');
+              if (textEl) { textEl.textContent = 'Message deleted'; textEl.classList.add('deleted'); }
+              const attachments = row.querySelector('.msg-attachments');
+              if (attachments) attachments.remove();
+              const acts = row.querySelector('.msg-actions');
+              if (acts) acts.remove();
+              row.classList.add('deleted');
+            } else {
+              row.remove();
+              window._messagesById.delete(msg.message_id);
+              if (container && wasNearBottom) scrollToBottom();
+              if (container && !container.querySelector('.msg-row')) {
+                const otherName = currentRoom?.display_name || currentRoom?.name || 'Unknown';
+                container.innerHTML = `<div class="conversation-start"><div class="start-header"><h3>This is the start of your legendary conversation with</h3><h1>@${escapeHtml(otherName)}.</h1></div></div>`;
+                _roomHasMessages = false;
+              }
+            }
+          }
           break;
         }
 
@@ -1745,8 +1772,47 @@ function initDashboardView() {
     return html;
   }
 
+  function openImageLightbox(src, alt = 'Image') {
+    if (!src) return;
+    let modal = document.getElementById('nyxie-image-lightbox');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'nyxie-image-lightbox';
+      modal.className = 'nyxie-image-lightbox';
+      modal.innerHTML = `
+        <button class="nyxie-image-lightbox-close" type="button" aria-label="Close image">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <div class="nyxie-image-lightbox-backdrop"></div>
+        <img class="nyxie-image-lightbox-img" alt="" />`;
+      document.body.appendChild(modal);
+      const close = () => {
+        modal.classList.remove('open');
+        document.body.classList.remove('image-lightbox-open');
+      };
+      modal.querySelector('.nyxie-image-lightbox-close').addEventListener('click', close);
+      modal.querySelector('.nyxie-image-lightbox-backdrop').addEventListener('click', close);
+      modal.querySelector('.nyxie-image-lightbox-img').addEventListener('click', e => e.stopPropagation());
+      modal._close = close;
+    }
+    const image = modal.querySelector('.nyxie-image-lightbox-img');
+    image.src = src;
+    image.alt = alt || 'Image';
+    modal.classList.add('open');
+    document.body.classList.add('image-lightbox-open');
+  }
+
+  function closeImageLightbox() {
+    const modal = document.getElementById('nyxie-image-lightbox');
+    if (modal?._close) modal._close();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeImageLightbox();
+  });
+
   function buildAttachmentsHtml(msg) {
-    if (!msg.attachments || !msg.attachments.length) return '';
+    if (msg.deleted || !msg.attachments || !msg.attachments.length) return '';
     let html = '<div class="msg-attachments" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">';
     for (const a of msg.attachments) {
       if (a.type && a.type.startsWith('image/')) {
@@ -1755,7 +1821,7 @@ function initDashboardView() {
         // the pop-in is smaller; handleMsgImageSettled/handleMsgImageError
         // (defined next to scrollToBottom) keep the view pinned to the
         // bottom through that pop-in for anyone who was already there.
-        html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="window.open(this.src,'_blank')" />`;
+        html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="openImageLightbox(this.src, this.alt); event.stopPropagation();" />`;
       } else {
         html += `<a href="${escapeHtml(a.url)}" target="_blank" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 1 1 4.24 4.24L9.41 17.41a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
       }
@@ -4228,6 +4294,8 @@ function initDashboardView() {
   window.toggleSelectMode = toggleSelectMode;
   window.filterSidebar = filterSidebar;
   window.handleFileUpload = handleFileUpload;
+  window.openImageLightbox = openImageLightbox;
+  window.closeImageLightbox = closeImageLightbox;
   window.logout = logout;
   window.destroyDashboardView = destroyDashboardView;
   window.navigateTo = navigateTo;

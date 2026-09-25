@@ -3076,3 +3076,92 @@ body.select-mode #view-app .dm-checkbox {
     display: none !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────
+   Bottom-anchored message timeline
+   The first timeline item gets an auto top margin. In a short
+   conversation the margin consumes the spare viewport height,
+   placing the messages at the bottom. Once the timeline is taller
+   than the viewport the auto margin collapses to zero and normal
+   scrolling takes over. The DOM order remains oldest -> newest.
+   ───────────────────────────────────────────────────────── */
+#view-app #messages-container > :first-child {
+  margin-top: auto !important;
+}
+#view-app #messages-container > .msg-row,
+#view-app #messages-container > .msg-date-divider {
+  flex-shrink: 0;
+}
+
+/* In-app image viewer */
+body.image-lightbox-open {
+  overflow: hidden;
+}
+.nyxie-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+.nyxie-image-lightbox.open {
+  display: flex;
+}
+.nyxie-image-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .82);
+  backdrop-filter: blur(6px);
+}
+.nyxie-image-lightbox-img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  max-width: min(94vw, 1400px);
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+  user-select: none;
+}
+.nyxie-image-lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 50%;
+  background: rgba(20,20,24,.78);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+.nyxie-image-lightbox-close:hover {
+  background: rgba(40,40,46,.95);
+}
+.nyxie-image-lightbox-close svg {
+  width: 20px;
+  height: 20px;
+}
+@media (max-width: 600px) {
+  .nyxie-image-lightbox {
+    padding: 16px;
+  }
+  .nyxie-image-lightbox-img {
+    max-width: 96vw;
+    max-height: 84vh;
+    border-radius: 8px;
+  }
+  .nyxie-image-lightbox-close {
+    top: 12px;
+    right: 12px;
+  }
+}
