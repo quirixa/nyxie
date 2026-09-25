@@ -2966,7 +2966,8 @@ function initDashboardView() {
     sub.style.display = open ? 'flex' : 'none';
     row.setAttribute('aria-expanded', String(open));
   }
-  function toggleProfilePopout() {
+  function toggleProfilePopout(event) {
+  if (event) event.stopPropagation();
     const pp = document.getElementById('profile-popout');
     if (pp.style.display === 'block') { pp.style.display = 'none'; pp.classList.remove('pp-open'); return; }
     const name = currentUser.display_name || currentUser.username;
