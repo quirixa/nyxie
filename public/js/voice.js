@@ -123,7 +123,7 @@ function initVoiceFeatures() {
     return '';
   }
 
-  // Derive shared key for a room (same as dashboard.html)
+  // Legacy 1-to-1 shared key, retained only for decrypting older voice messages.
   async function getVoiceSharedKey(roomId) {
     const dm = dms.find(d => d.id === roomId);
     const otherId = dm ? dm._otherId : null;
@@ -134,6 +134,74 @@ function initVoiceFeatures() {
     const otherPubBytes = b64ToBytes(otherPub);
     const myPrivBytes = b64ToBytes(myPriv);
     return nacl.box.before(otherPubBytes, myPrivBytes);
+  }
+
+  async function getVoiceRoomMembers(roomId) {
+    if (typeof window.nyxieGetRoomEncryptionMembers === 'function') {
+      return window.nyxieGetRoomEncryptionMembers(roomId);
+    }
+    const room = dms.find(d => d.id === roomId);
+    if (room?.is_group) {
+      const data = await api('GET', `/groups/${roomId}`);
+      return data?.group?.members || [];
+    }
+    if (room?._otherId) {
+      const u = await api('GET', `/users/${room._otherId}`);
+      return u?.user ? [{ id: u.user.id, public_key: u.user.public_key }] : [];
+    }
+    return [];
+  }
+
+  async function createVoiceKeyEnvelopes(roomId, key) {
+    const members = await getVoiceRoomMembers(roomId);
+    const myPriv = b64ToBytes(myPrivateKey());
+    if (!myPriv) throw new Error('your encryption key is unavailable');
+    const envelopes = {};
+    for (const member of members) {
+      if (!member.public_key) throw new Error('a recipient does not have an encryption key');
+      const shared = nacl.box.before(b64ToBytes(member.public_key), myPriv);
+      const wrapNonce = nacl.randomBytes(24);
+      const wrapped = nacl.secretbox(key, wrapNonce, shared);
+      envelopes[member.id] = { ciphertext: bytesToB64(wrapped), nonce: bytesToB64(wrapNonce) };
+    }
+    if (!envelopes[currentUser.id]) {
+      const myPub = localStorage.getItem('nyxie_public_key_' + currentUser.id);
+      if (!myPub) throw new Error('your public encryption key is unavailable');
+      const shared = nacl.box.before(b64ToBytes(myPub), myPriv);
+      const wrapNonce = nacl.randomBytes(24);
+      const wrapped = nacl.secretbox(key, wrapNonce, shared);
+      envelopes[currentUser.id] = { ciphertext: bytesToB64(wrapped), nonce: bytesToB64(wrapNonce) };
+    }
+    return envelopes;
+  }
+
+  async function unwrapVoiceKey(msg) {
+    const env = msg.key_envelopes?.[currentUser.id];
+    if (env?.ciphertext && env?.nonce) {
+      const myPriv = b64ToBytes(myPrivateKey());
+      let senderPub = null;
+      if (typeof window.nyxieGetRoomEncryptionMembers === 'function') {
+        const members = await window.nyxieGetRoomEncryptionMembers(msg.room_id);
+        senderPub = members.find(m => m.id === msg.user_id)?.public_key || null;
+      }
+      if (!senderPub) {
+        const dm = dms.find(d => d.id === msg.room_id);
+        if (dm?.is_group) {
+          const data = await api('GET', `/groups/${msg.room_id}`);
+          senderPub = data?.group?.members?.find(m => m.id === msg.user_id)?.public_key || null;
+        } else if (dm?._otherId === msg.user_id) {
+          senderPub = (await getPublicKey(msg.user_id)) || null;
+        } else if (msg.user_id === currentUser.id) {
+          senderPub = localStorage.getItem('nyxie_public_key_' + currentUser.id);
+        }
+      }
+      if (myPriv && senderPub) {
+        const shared = nacl.box.before(b64ToBytes(senderPub), myPriv);
+        const key = nacl.secretbox.open(b64ToBytes(env.ciphertext), b64ToBytes(env.nonce), shared);
+        if (key) return key;
+      }
+    }
+    return getVoiceSharedKey(msg.room_id);
   }
 
   function encryptBinary(bytes, sharedKey) {
@@ -419,16 +487,16 @@ function initVoiceFeatures() {
     const blob = new Blob(recordedChunks, { type: actualMimeType });
     const bytes = new Uint8Array(await blob.arrayBuffer());
 
-    const otherId = currentDmOtherId();
-    const recipientPub = await getPublicKey(otherId);
-    const myPriv = myPrivateKey();
-    if (!recipientPub || !myPriv) { toast('🔒 Cannot send voice message — encryption keys unavailable'); return; }
-
-    const sharedKey = await getVoiceSharedKey(currentRoom.id);
-    if (!sharedKey) { toast('🔒 Cannot send voice message — encryption keys unavailable'); return; }
-    const { ciphertext, nonce } = encryptBinary(bytes, sharedKey);
+    const voiceKey = nacl.randomBytes(32);
+    const nonceBytes = nacl.randomBytes(24);
+    const ciphertextBytes = nacl.secretbox(bytes, nonceBytes, voiceKey);
+    let key_envelopes;
+    try { key_envelopes = await createVoiceKeyEnvelopes(currentRoom.id, voiceKey); }
+    catch (e) { toast('🔒 Cannot send voice message — ' + (e.message || 'encryption keys unavailable')); return; }
+    const ciphertext = bytesToB64(ciphertextBytes);
+    const nonce = bytesToB64(nonceBytes);
     const res = await api('POST', `/rooms/${currentRoom.id}/messages`, {
-      type: 'voice', ciphertext, nonce, duration: Math.round(durationSec), mimeType: actualMimeType
+      type: 'voice', ciphertext, nonce, key_envelopes, duration: Math.round(durationSec), mimeType: actualMimeType
     });
     if (!res || res.error) { toast(res?.error || 'Failed to send voice message'); return; }
 
@@ -462,7 +530,7 @@ function initVoiceFeatures() {
 
     let entry = voiceAudioCache.get(msgId);
     if (!entry) {
-      const sharedKey = await getVoiceSharedKey(msg.room_id);
+      const sharedKey = await unwrapVoiceKey(msg);
       if (!sharedKey) { toast('🔒 Cannot decrypt voice message — keys unavailable'); return; }
       const bytes = decryptBinary(msg.content, msg.nonce, sharedKey);
       if (!bytes) { toast('🔒 Failed to decrypt voice message'); return; }

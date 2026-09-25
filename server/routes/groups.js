@@ -39,7 +39,7 @@ async function loadGroup(req, res, next) {
 
 function serializeGroup(db, group, isUserConnected) {
   const members = all(db, `
-    SELECT rm.user_id, rm.joined_at, u.username, u.display_name, u.avatar, u.status
+    SELECT rm.user_id, rm.joined_at, u.username, u.display_name, u.avatar, u.status, u.public_key
     FROM room_members rm JOIN users u ON u.id = rm.user_id
     WHERE rm.room_id = ?
     ORDER BY rm.joined_at ASC

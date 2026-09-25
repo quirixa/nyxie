@@ -801,7 +801,7 @@ function initDashboardView() {
               (async () => {
                 let preview = m.msg_type === 'voice'
                   ? 'Voice message'
-                  : await decryptDmPreview(m.content, m.nonce, dm._otherId);
+                  : await decryptDmPreview(m.content, m.nonce, dm._otherId, null, dm.id, m.key_envelopes, m.user_id);
                 if (!preview && m.attachments && m.attachments.length) {
                   preview = 'Attachment';
                 }
@@ -818,15 +818,27 @@ function initDashboardView() {
         }
 
         case 'message_edited': {
-          const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
-          if (el) el.innerHTML = escapeHtml(msg.content) + '<span class="edited-tag">(edited)</span>';
+          const cached = window._messagesById.get(msg.message_id);
+          const apply = async () => {
+            let plaintext = msg.content;
+            if (msg.nonce) {
+              const opened = await decryptRoomText(msg.content, msg.nonce, msg.key_envelopes, msg.room_id, msg.user_id);
+              plaintext = opened !== null ? opened : '🔒 Failed to decrypt';
+            }
+            if (cached) { cached.content = plaintext; cached.nonce = msg.nonce; cached.key_envelopes = msg.key_envelopes; cached.edited_at = msg.edited_at; }
+            const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
+            if (el) el.innerHTML = escapeHtml(plaintext) + '<span class="edited-tag">(edited)</span>';
+          };
+          apply().catch(() => {});
           break;
         }
 
         case 'message_deleted': {
           const row = document.querySelector(`[data-msg-id="${msg.message_id}"]`);
           const cached = window._messagesById.get(msg.message_id);
-          const keepPlaceholder = !!msg.keep_placeholder;
+          // Attachment/image messages are always removed completely. The
+          // server only sends keep_placeholder for text messages that have replies.
+          const keepPlaceholder = !!msg.keep_placeholder && !(cached?.attachments?.length);
           if (cached) {
             cached.deleted = true;
             cached.content = '[deleted]';
@@ -845,6 +857,7 @@ function initDashboardView() {
               if (acts) acts.remove();
               row.classList.add('deleted');
             } else {
+              revokeRowObjectUrls(row);
               row.remove();
               window._messagesById.delete(msg.message_id);
               if (container && wasNearBottom) scrollToBottom();
@@ -889,7 +902,8 @@ function initDashboardView() {
 
         case 'room_state': {
           if (msg.room_id === currentRoom?.id) {
-            currentRoomMembers = msg.members.map(m => ({ id: m.id, username: m.username, display_name: m.display_name, avatar: m.avatar }));
+            currentRoomMembers = msg.members.map(m => ({ id: m.id, username: m.username, display_name: m.display_name, avatar: m.avatar, public_key: m.public_key || null }));
+          if (currentRoom?.id === msg.room_id) { _roomMembersCache.delete(msg.room_id); document.querySelectorAll('#messages-container [data-msg-id]').forEach(row => { const cached = window._messagesById.get(row.dataset.msgId); if (cached?.attachments?.some(a => a.encrypted)) decryptAttachmentForRow(cached, row).catch(() => {}); }); }
             msg.members.forEach(m => {
               if (m.id !== currentUser.id) {
                 updatePresence(m.id, m.status);
@@ -1089,6 +1103,8 @@ function initDashboardView() {
             renderDMList();
           }
           if (currentRoom?.id === msg.group.id) {
+            _roomMembersCache.delete(msg.group.id);
+            wsJoin(msg.group.id);
             document.getElementById('chat-room-name-text').textContent = msg.group.name;
           }
           break;
@@ -1096,6 +1112,8 @@ function initDashboardView() {
         case 'group_member_added':
         case 'group_member_removed':
         case 'group_member_left': {
+          _roomMembersCache.delete(msg.group_id);
+          if (currentRoom?.id === msg.group_id) wsJoin(msg.group_id);
           if (msg.type !== 'group_member_added' && msg.user_id === currentUser.id) {
             dms = dms.filter(d => d.id !== msg.group_id);
             renderDMList();
@@ -1167,8 +1185,99 @@ function initDashboardView() {
   }
 
   const _sharedKeyCache = new Map();
+  const _roomMembersCache = new Map();
 
-  async function getSharedKeyForRoom(roomId) {
+  async function getRoomEncryptionMembers(roomId) {
+    if (_roomMembersCache.has(roomId)) return _roomMembersCache.get(roomId);
+    let members = [];
+    if (currentRoom?.id === roomId && currentRoomMembers.length) {
+      members = currentRoomMembers.slice();
+    } else {
+      const room = dms.find(d => d.id === roomId);
+      if (room?.is_group) {
+        const data = await api('GET', `/groups/${roomId}`);
+        members = data?.group?.members || [];
+      } else if (room?._otherId) {
+        const u = await api('GET', `/users/${room._otherId}`);
+        members = u?.user ? [{ id: u.user.id, username: u.user.username, display_name: u.user.display_name, avatar: u.user.avatar, public_key: u.user.public_key }] : [];
+      }
+    }
+    const myPublic = localStorage.getItem('nyxie_public_key_' + currentUser.id);
+    const normalized = members.map(m => ({ ...m, public_key: m.public_key || null }));
+    if (!normalized.some(m => m.id === currentUser.id)) {
+      normalized.push({ id: currentUser.id, username: currentUser.username, display_name: currentUser.display_name, public_key: myPublic });
+    } else {
+      const mine = normalized.find(m => m.id === currentUser.id);
+      if (mine && !mine.public_key) mine.public_key = myPublic;
+    }
+    _roomMembersCache.set(roomId, normalized);
+    return normalized;
+  }
+
+  function getEnvelopeForUser(envelopes, userId) {
+    const env = envelopes && typeof envelopes === 'object' ? envelopes[userId] : null;
+    if (!env?.ciphertext || !env?.nonce) return null;
+    return env;
+  }
+
+  async function createKeyEnvelopes(roomId, secretKeyBytes) {
+    const members = await getRoomEncryptionMembers(roomId);
+    const myPrivB64 = localStorage.getItem('nyxie_private_key_' + currentUser.id);
+    if (!myPrivB64) throw new Error('Your encryption key is unavailable on this device');
+    const myPriv = base64ToUint8Array(myPrivB64);
+    if (!myPriv) throw new Error('Your encryption key is invalid');
+    const envelopes = {};
+    for (const member of members) {
+      if (!member.public_key) throw new Error(`Encryption key unavailable for ${member.display_name || member.username || 'a group member'}`);
+      const pub = base64ToUint8Array(member.public_key);
+      if (!pub) throw new Error('A recipient has an invalid encryption key');
+      const shared = nacl.box.before(pub, myPriv);
+      const nonce = nacl.randomBytes(24);
+      const wrapped = nacl.secretbox(secretKeyBytes, nonce, shared);
+      envelopes[member.id] = { ciphertext: uint8ArrayToBase64(wrapped), nonce: uint8ArrayToBase64(nonce) };
+    }
+    return envelopes;
+  }
+
+  async function unwrapRoomKey(roomId, envelopes, senderId = currentUser.id) {
+    const env = getEnvelopeForUser(envelopes, currentUser.id);
+    if (!env) return null;
+    const myPrivB64 = localStorage.getItem('nyxie_private_key_' + currentUser.id);
+    if (!myPrivB64) return null;
+    const myPriv = base64ToUint8Array(myPrivB64);
+    const members = await getRoomEncryptionMembers(roomId);
+    const sender = members.find(m => m.id === senderId) || members.find(m => m.id === currentUser.id);
+    if (!sender?.public_key) return null;
+    const senderPub = base64ToUint8Array(sender.public_key);
+    if (!senderPub || !myPriv) return null;
+    const shared = deriveSharedKey(senderPub, myPriv);
+    return nacl.secretbox.open(base64ToUint8Array(env.ciphertext), base64ToUint8Array(env.nonce), shared) || null;
+  }
+
+  async function encryptRoomText(plaintext, roomId) {
+    const key = nacl.randomBytes(32);
+    const nonce = nacl.randomBytes(24);
+    const encrypted = nacl.secretbox(nacl.util.decodeUTF8(plaintext), nonce, key);
+    const key_envelopes = await createKeyEnvelopes(roomId, key);
+    return { ciphertext: uint8ArrayToBase64(encrypted), nonce: uint8ArrayToBase64(nonce), key_envelopes };
+  }
+
+  async function decryptRoomText(ciphertextB64, nonceB64, keyEnvelopes, roomId, senderId = currentUser.id) {
+    if (!ciphertextB64 || !nonceB64) return null;
+    if (keyEnvelopes) {
+      const key = await unwrapRoomKey(roomId, keyEnvelopes, senderId);
+      if (key) {
+        const opened = nacl.secretbox.open(base64ToUint8Array(ciphertextB64), base64ToUint8Array(nonceB64), key);
+        if (opened) return nacl.util.encodeUTF8(opened);
+      }
+    }
+    // Backward compatibility for older 1-to-1 messages that used the
+    // original static Diffie-Hellman room key scheme.
+    const sharedKey = await getSharedKeyForRoomLegacy(roomId);
+    return sharedKey ? decryptMessage(ciphertextB64, nonceB64, sharedKey) : null;
+  }
+
+  async function getSharedKeyForRoomLegacy(roomId) {
     if (_sharedKeyCache.has(roomId)) return _sharedKeyCache.get(roomId);
     const dm = dms.find(d => d.id === roomId);
     const otherId = dm ? dm._otherId : null;
@@ -1180,6 +1289,11 @@ function initDashboardView() {
     if (key) _sharedKeyCache.set(roomId, key);
     return key;
   }
+
+  async function getSharedKeyForRoom(roomId) {
+    return getSharedKeyForRoomLegacy(roomId);
+  }
+  window.nyxieGetRoomEncryptionMembers = getRoomEncryptionMembers;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  KEY MANAGEMENT (wrap/unwrap, ensureE2EEKeys, etc.)
@@ -1334,8 +1448,14 @@ function initDashboardView() {
   //  DECRYPT DM PREVIEW, LOAD DMs, RENDER DM LIST
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  async function decryptDmPreview(content, nonce, otherId, otherPublicKey) {
+  async function decryptDmPreview(content, nonce, otherId, otherPublicKey, roomId, keyEnvelopes, senderId) {
+    if (!content) return '';
     if (!nonce) return content;
+    const roomIdToUse = roomId || currentRoom?.id;
+    if (keyEnvelopes && roomIdToUse) {
+      const decrypted = await decryptRoomText(content, nonce, keyEnvelopes, roomIdToUse, senderId || otherId || currentUser.id);
+      if (decrypted !== null) return decrypted;
+    }
     const pub = otherPublicKey || (otherId ? await getPublicKey(otherId) : null);
     const priv = localStorage.getItem('nyxie_private_key_' + currentUser.id);
     if (!pub || !priv) return 'Encrypted message';
@@ -1360,7 +1480,7 @@ function initDashboardView() {
         dm._avatar = dm.icon || null;
       }
       if (dm.last_message_nonce) {
-        let preview = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey);
+        let preview = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey, dm.id, dm.last_message_key_envelopes, dm.last_message_user_id);
         if (!preview) preview = 'Attachment';
         dm.last_message = preview;
       } else if (dm.last_message_at) {
@@ -1650,45 +1770,59 @@ function initDashboardView() {
 
     input.value = '';
 
-    // ─── Upload pending files ──────────────────────────────────
-    const uploadedFiles = [];
-    console.log('[Upload] Starting upload of', pendingFiles.length, 'files');
-    for (const file of pendingFiles) {
-      const formData = new FormData();
-      formData.append('file', file);
+    // Encrypt the text first so a missing recipient key cannot leave
+    // orphaned encrypted uploads on the server.
+    let payload = {};
+    if (plaintext) {
       try {
-        console.log('[Upload] Uploading:', file.name);
+        payload = await encryptRoomText(plaintext, currentRoom.id);
+      } catch (e) {
+        toast(`Encryption failed: ${e.message || 'recipient key unavailable'}`);
+        input.value = plaintext;
+        return;
+      }
+    }
+
+    // ─── Encrypt and upload pending files ─────────────────────
+    // Private DMs/groups and server channels all upload ciphertext. The
+    // file key is random per attachment and wrapped separately for every
+    // current room member. The upload endpoint therefore never receives
+    // the original file bytes.
+    const uploadedFiles = [];
+    for (const file of pendingFiles) {
+      try {
+        const raw = new Uint8Array(await file.arrayBuffer());
+        const fileKey = nacl.randomBytes(32);
+        const fileNonce = nacl.randomBytes(24);
+        const encryptedBytes = nacl.secretbox(raw, fileNonce, fileKey);
+        const key_envelopes = await createKeyEnvelopes(currentRoom.id, fileKey);
+        const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
+        const formData = new FormData();
+        formData.append('file', encryptedBlob, `${file.name}.nx`);
         const res = await fetch('/api/upload', {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + token },
           body: formData
         });
         const data = await res.json();
-        console.log('[Upload] Response:', data);
-        if (data.url) {
-          uploadedFiles.push({ name: file.name, url: data.url, type: file.type });
-        } else {
-          toast('Upload failed for ' + file.name);
-        }
+        if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed');
+        uploadedFiles.push({
+          name: file.name,
+          url: data.url,
+          type: file.type || 'application/octet-stream',
+          encrypted: true,
+          nonce: uint8ArrayToBase64(fileNonce),
+          key_envelopes
+        });
       } catch (e) {
-        console.error('[Upload] Error:', e);
-        toast('Upload error for ' + file.name);
+        console.error('[E2EE upload] Error:', e);
+        toast(`Encrypted upload failed for ${file.name}: ${e.message || 'unknown error'}`);
       }
     }
     pendingFiles = [];
     renderAttachmentPreviews();
 
     // ─── Build message payload ──────────────────────────────────
-    let payload = {};
-    const sharedKey = await getSharedKeyForRoom(currentRoom.id);
-    if (plaintext) {
-      if (sharedKey) {
-        const { ciphertext, nonce } = encryptMessage(plaintext, sharedKey);
-        payload = { ciphertext, nonce };
-      } else {
-        payload = { content: plaintext };
-      }
-    }
     if (uploadedFiles.length) payload.attachments = uploadedFiles;
 
     // Resolved from the plaintext we just encrypted (or the plain content,
@@ -1814,20 +1948,73 @@ function initDashboardView() {
   function buildAttachmentsHtml(msg) {
     if (msg.deleted || !msg.attachments || !msg.attachments.length) return '';
     let html = '<div class="msg-attachments" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">';
-    for (const a of msg.attachments) {
+    msg.attachments.forEach((a, i) => {
+      if (a.encrypted) {
+        html += `<div class="msg-attachment-e2ee" data-attachment-index="${i}" style="min-height:48px;display:flex;align-items:center;color:var(--text-muted);font-size:.85rem;">Decrypting encrypted attachment…</div>`;
+        return;
+      }
       if (a.type && a.type.startsWith('image/')) {
-        // min-height gives the bubble *some* footprint before the image
-        // has actually loaded (its real size is unknown until then), so
-        // the pop-in is smaller; handleMsgImageSettled/handleMsgImageError
-        // (defined next to scrollToBottom) keep the view pinned to the
-        // bottom through that pop-in for anyone who was already there.
         html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="openImageLightbox(this.src, this.alt); event.stopPropagation();" />`;
       } else {
-        html += `<a href="${escapeHtml(a.url)}" target="_blank" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 1 1 4.24 4.24L9.41 17.41a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
+        html += `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 1 0 4.24 4.24L9.41 17.41a1 1 0 1 0-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
       }
-    }
+    });
     html += '</div>';
     return html;
+  }
+
+  async function decryptAttachmentForRow(msg, row) {
+    if (!msg.attachments?.length || msg.deleted) return;
+    const holder = row.querySelector('.msg-attachments');
+    if (!holder) return;
+    row._objectUrls = row._objectUrls || [];
+    for (let i = 0; i < msg.attachments.length; i++) {
+      const a = msg.attachments[i];
+      if (!a.encrypted) continue;
+      const slot = holder.querySelector(`[data-attachment-index="${i}"]`);
+      if (!slot) continue;
+      try {
+        const key = await unwrapRoomKey(msg.room_id, a.key_envelopes, msg.user_id);
+        if (!key) throw new Error('key unavailable');
+        const response = await fetch(a.url, { cache: 'force-cache' });
+        if (!response.ok) throw new Error('download failed');
+        const ciphertext = new Uint8Array(await response.arrayBuffer());
+        const plaintext = nacl.secretbox.open(ciphertext, base64ToUint8Array(a.nonce), key);
+        if (!plaintext) throw new Error('decrypt failed');
+        const blob = new Blob([plaintext], { type: a.type || 'application/octet-stream' });
+        const objectUrl = URL.createObjectURL(blob);
+        row._objectUrls.push(objectUrl);
+        if (a.type?.startsWith('image/')) {
+          const img = document.createElement('img');
+          img.src = objectUrl;
+          img.alt = a.name || 'Image';
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          img.style.cssText = 'max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;';
+          img.addEventListener('load', () => handleMsgImageSettled(img));
+          img.addEventListener('error', () => handleMsgImageError(img));
+          img.addEventListener('click', e => { e.stopPropagation(); openImageLightbox(objectUrl, a.name || 'Image'); });
+          slot.replaceWith(img);
+        } else {
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = a.name || 'Download attachment';
+          link.style.cssText = 'color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;';
+          slot.replaceWith(link);
+        }
+      } catch (e) {
+        slot.textContent = 'Unable to decrypt attachment';
+        slot.style.color = 'var(--text-muted)';
+      }
+    }
+  }
+
+  function revokeRowObjectUrls(row) {
+    if (!row?._objectUrls) return;
+    for (const url of row._objectUrls) URL.revokeObjectURL(url);
+    row._objectUrls = [];
   }
 
   function buildMsgActionsHtml(msg, isOwn) {
@@ -1960,7 +2147,9 @@ function initDashboardView() {
     const compact = msg.user_id === window._lastMsgUserId && (now - window._lastMsgTime) < 5 * 60 * 1000 && !msg.reply_to_id;
     window._lastMsgUserId = msg.user_id;
     window._lastMsgTime = now;
-    container.appendChild(buildMessageRowEl(msg, compact));
+    const row = buildMessageRowEl(msg, compact);
+    container.appendChild(row);
+    decryptAttachmentForRow(msg, row).catch(() => {});
   }
 
   // ─── APPEND MESSAGE E2EE WRAPPER ──────────────────────────
@@ -1988,19 +2177,13 @@ function initDashboardView() {
   async function decryptMsgForDisplay(msg, retry = false) {
     let displayContent = msg.content;
     if (msg.nonce) {
-      const sharedKey = await getSharedKeyForRoom(msg.room_id);
-      if (sharedKey) {
-        const decrypted = decryptMessage(msg.content, msg.nonce, sharedKey);
-        if (decrypted !== null) displayContent = decrypted;
-        else if (!retry) {
-          await new Promise(r => setTimeout(r, 300));
-          const sharedKey2 = await getSharedKeyForRoom(msg.room_id);
-          if (sharedKey2) {
-            const decrypted2 = decryptMessage(msg.content, msg.nonce, sharedKey2);
-            displayContent = decrypted2 !== null ? decrypted2 : '🔒 Failed to decrypt';
-          } else displayContent = '🔒 Shared key unavailable';
-        } else displayContent = '🔒 Failed to decrypt';
-      } else displayContent = '🔒 Shared key unavailable';
+      const decrypted = await decryptRoomText(msg.content, msg.nonce, msg.key_envelopes, msg.room_id, msg.user_id);
+      if (decrypted !== null) displayContent = decrypted;
+      else if (!retry) {
+        await new Promise(r => setTimeout(r, 300));
+        const decrypted2 = await decryptRoomText(msg.content, msg.nonce, msg.key_envelopes, msg.room_id, msg.user_id);
+        displayContent = decrypted2 !== null ? decrypted2 : '🔒 Failed to decrypt';
+      } else displayContent = '🔒 Failed to decrypt';
     }
     // Leave msg.content set to the decrypted plaintext (don't revert to
     // ciphertext) — the message object is stored by reference in
@@ -2016,8 +2199,7 @@ function initDashboardView() {
     // msg.reply_to.content like any other decrypted message, whether or
     // not the original happens to already be in window._messagesById.
     if (msg.reply_to && msg.reply_to.nonce) {
-      const replyKey = await getSharedKeyForRoom(msg.room_id);
-      const replyDecrypted = replyKey ? decryptMessage(msg.reply_to.content, msg.reply_to.nonce, replyKey) : null;
+      const replyDecrypted = await decryptRoomText(msg.reply_to.content, msg.reply_to.nonce, msg.reply_to.key_envelopes, msg.room_id, msg.reply_to.user_id);
       msg.reply_to.content = replyDecrypted !== null ? replyDecrypted : '🔒 Failed to decrypt';
     }
     // Cache a stub for the replied-to message so jumpToMessage has a
@@ -2071,7 +2253,9 @@ function initDashboardView() {
       const compact = msg.user_id === lastUserId && (msg.created_at - lastTime) < 5 * 60 * 1000 && !msg.reply_to_id;
       lastUserId = msg.user_id;
       lastTime = msg.created_at;
-      frag.appendChild(buildMessageRowEl(msg, compact));
+      const row = buildMessageRowEl(msg, compact);
+      frag.appendChild(row);
+      decryptAttachmentForRow(msg, row).catch(() => {});
       window._messagesById.set(msg.id, msg);
     }
     // Preserve scroll position: without this, inserting content above the
@@ -2109,12 +2293,14 @@ function initDashboardView() {
     const finish = async (save) => {
       const newContent = textarea.value.trim();
       if (save && newContent && newContent !== original) {
-        if (msg) msg.content = newContent;
+        let patchPayload = { content: newContent };
+        try { patchPayload = await encryptRoomText(newContent, currentRoom.id); } catch (e) { toast(`Encryption failed: ${e.message || 'recipient key unavailable'}`); return; }
+        if (msg) { msg.content = newContent; msg.nonce = patchPayload.nonce; msg.key_envelopes = patchPayload.key_envelopes; }
         const span = document.createElement('span');
         span.className = 'msg-text';
         span.innerHTML = `${escapeHtml(newContent)}<span class="edited-tag">(edited)</span>`;
         wrapper.replaceWith(span);
-        await api('PATCH', `/rooms/${currentRoom.id}/messages/${msgId}`, { content: newContent });
+        await api('PATCH', `/rooms/${currentRoom.id}/messages/${msgId}`, patchPayload);
       } else {
         const span = document.createElement('span');
         span.className = 'msg-text' + (msg?.deleted ? ' deleted' : '');
@@ -3291,7 +3477,7 @@ function initDashboardView() {
               dm._avatar = udata?.user?.avatar || null;
               otherPublicKey = udata?.user?.public_key || null;
             }
-            if (dm.last_message_nonce) dm.last_message = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey);
+            if (dm.last_message_nonce) dm.last_message = await decryptDmPreview(dm.last_message, dm.last_message_nonce, dm._otherId, otherPublicKey, dm.id, dm.last_message_key_envelopes, dm.last_message_user_id);
           }));
           dms = [...newOnes, ...dms];
           renderDMList();

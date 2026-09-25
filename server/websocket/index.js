@@ -245,7 +245,7 @@ function setupWebSocket(server) {
           broadcastPresence(room_id, meta.userId, effectiveStatus(myRow?.status, { connected: true, isSelf: false }), meta.display_name, meta.avatar);
 
           const members = all(db2, `
-            SELECT u.id, u.username, u.display_name, u.avatar, u.status
+            SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.public_key
             FROM room_members rm
             JOIN users u ON u.id = rm.user_id
             WHERE rm.room_id = ?
@@ -258,6 +258,7 @@ function setupWebSocket(server) {
               username: m.username,
               display_name: m.display_name,
               avatar: m.avatar || null,
+              public_key: m.public_key || null,
               status: effectiveStatus(m.status, { connected: isUserConnected(m.id), isSelf: m.id === meta.userId })
             }))
           }));

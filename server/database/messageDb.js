@@ -82,6 +82,9 @@ async function getMessageDb() {
   // E2EE message content). Used to highlight the mention and to notify
   // the mentioned users over the websocket.
   try { db.run("ALTER TABLE messages ADD COLUMN mentions TEXT"); } catch (e) {}
+  // key_envelopes: JSON map of recipient user_id -> encrypted per-message key.
+  // The server stores only wrapped keys; private/group message plaintext stays client-side.
+  try { db.run("ALTER TABLE messages ADD COLUMN key_envelopes TEXT"); } catch (e) {}
   // reply_to_id: id of the message this one is replying to (or NULL).
   // Only the id is stored — the referenced message's author/content are
   // resolved at read time (see GET /:id/messages) so a reply always

@@ -31,5 +31,6 @@ pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS nonce TEXT`).catch(() 
 pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_type TEXT DEFAULT 'text'`).catch(() => {});
 pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS duration INTEGER`).catch(() => {});
 pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS mime_type TEXT`).catch(() => {});
+pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS key_envelopes TEXT`).catch(() => {});
 
 module.exports = pool;

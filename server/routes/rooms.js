@@ -24,6 +24,7 @@ function resolveReplyTo(msgDb, userDb, roomId, replyToId) {
     display_name: author?.display_name || author?.username || 'Unknown',
     content: original.deleted ? null : original.content,
     nonce: original.deleted ? null : original.nonce,
+    key_envelopes: original.deleted ? null : (original.key_envelopes ? JSON.parse(original.key_envelopes) : null),
     msg_type: original.msg_type,
     // created_at travels with the reply preview even when the original
     // message itself hasn't been paginated into the client yet — the
@@ -38,7 +39,7 @@ async function getLatestMessages(roomIds) {
   if (!roomIds.length) return {};
   const msgDb = await getMessageDb();
   const rows = allMessages(msgDb, `
-    SELECT m.room_id, m.content, m.nonce, m.msg_type, m.created_at
+    SELECT m.room_id, m.user_id, m.content, m.nonce, m.key_envelopes, m.msg_type, m.created_at
     FROM messages m
     WHERE m.deleted = 0
       AND m.created_at = (
@@ -57,7 +58,7 @@ async function getLatestMessages(roomIds) {
     // `nonce` is passed through as-is: when set, `content` is E2EE
     // ciphertext and the client is expected to decrypt it client-side
     // (it has the keys, the server never does) before displaying it.
-    map[row.room_id] = { content: preview, nonce: row.msg_type === 'voice' ? null : row.nonce, msg_type: row.msg_type, created_at: row.created_at };
+    map[row.room_id] = { content: preview, nonce: row.msg_type === 'voice' ? null : row.nonce, key_envelopes: row.msg_type === 'voice' ? null : (row.key_envelopes ? JSON.parse(row.key_envelopes) : null), msg_type: row.msg_type, created_at: row.created_at, user_id: row.user_id };
   });
   return map;
 }
@@ -133,6 +134,8 @@ router.get('/', requireAuth, async (req, res) => {
     const latest = latestMap[room.id];
     room.last_message = latest ? latest.content : null;
     room.last_message_nonce = latest ? latest.nonce : null;
+    room.last_message_key_envelopes = latest ? latest.key_envelopes : null;
+    room.last_message_user_id = latest ? latest.user_id : null;
     room.last_message_type = latest ? latest.msg_type : null;
     room.last_message_at = latest ? latest.created_at : null;
   }
@@ -199,7 +202,7 @@ async function listMessages(req, res) {
   const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
 
   const messages = allMessages(msgDb, `
-    SELECT id, room_id, user_id, content, nonce, msg_type, duration, mime_type, attachments, mentions, reply_to_id, created_at, edited_at, deleted
+    SELECT id, room_id, user_id, content, nonce, msg_type, duration, mime_type, attachments, mentions, key_envelopes, reply_to_id, created_at, edited_at, deleted
     FROM messages
     WHERE room_id = ? AND created_at < ?
       AND (deleted = 0 OR EXISTS (SELECT 1 FROM messages r WHERE r.reply_to_id = messages.id))
@@ -218,6 +221,7 @@ async function listMessages(req, res) {
   const enriched = messages.map(m => ({
     ...m,
     attachments: m.attachments ? JSON.parse(m.attachments) : null,
+    key_envelopes: m.key_envelopes ? JSON.parse(m.key_envelopes) : null,
     mentions: m.mentions ? JSON.parse(m.mentions) : null,
     username: userMap[m.user_id]?.username || 'unknown',
     display_name: userMap[m.user_id]?.display_name || userMap[m.user_id]?.username || 'Unknown',
@@ -245,7 +249,7 @@ async function postMessage(req, res) {
     }
   }
 
-  const { content, ciphertext, nonce, type, duration, mimeType, attachments, reply_to_id } = req.body;
+  const { content, ciphertext, nonce, key_envelopes, type, duration, mimeType, attachments, reply_to_id } = req.body;
   const msgType = type === 'voice' ? 'voice' : 'text';
   const msgDb = await getMessageDb();
 
@@ -256,6 +260,30 @@ async function postMessage(req, res) {
   const replyTarget = reply_to_id ? getMessage(msgDb, 'SELECT id FROM messages WHERE id = ? AND room_id = ?', [reply_to_id, req.params.id]) : null;
   const cleanReplyToId = replyTarget ? replyTarget.id : null;
 
+  // E2EE key envelopes are opaque client-generated values. Keep them bounded and
+  // structurally valid so they cannot be used as an unbounded JSON storage vector.
+  let cleanKeyEnvelopes = null;
+  if (key_envelopes !== undefined && key_envelopes !== null) {
+    if (!key_envelopes || typeof key_envelopes !== 'object' || Array.isArray(key_envelopes) || Object.keys(key_envelopes).length > 50) {
+      return res.status(400).json({ error: 'Invalid encryption key envelopes' });
+    }
+    cleanKeyEnvelopes = {};
+    for (const [uid, env] of Object.entries(key_envelopes)) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(uid) || !env || typeof env !== 'object') continue;
+      if (typeof env.ciphertext !== 'string' || typeof env.nonce !== 'string' || env.ciphertext.length > 2048 || env.nonce.length > 128) continue;
+      cleanKeyEnvelopes[uid] = { ciphertext: env.ciphertext, nonce: env.nonce };
+    }
+    if (!Object.keys(cleanKeyEnvelopes).length) cleanKeyEnvelopes = null;
+  }
+
+  // Private group chats are E2EE-only for new text messages. The server
+  // never receives a plaintext fallback for a group message.
+  if (room.is_group && (content || ciphertext)) {
+    if (!ciphertext || !nonce || !cleanKeyEnvelopes || !cleanKeyEnvelopes[req.user.id]) {
+      return res.status(400).json({ error: 'Group messages must be end-to-end encrypted' });
+    }
+  }
+
   // Attachments come from POST /api/upload as [{ name, url, type }, ...].
   // Validate shape defensively since this is client-controlled JSON that
   // gets stored and later re-rendered (as a link/img src) for other users.
@@ -264,11 +292,27 @@ async function postMessage(req, res) {
     if (!Array.isArray(attachments) || attachments.length > 10) {
       return res.status(400).json({ error: 'Invalid attachments' });
     }
-    cleanAttachments = attachments.map(a => ({
-      name: String(a?.name || 'file').slice(0, 255),
-      url: String(a?.url || ''),
-      type: String(a?.type || '').slice(0, 100)
-    })).filter(a => a.url.startsWith('/uploads/'));
+    cleanAttachments = attachments.map(a => {
+      const out = {
+        name: String(a?.name || 'file').slice(0, 255),
+        url: String(a?.url || ''),
+        type: String(a?.type || '').slice(0, 100)
+      };
+      if (a?.encrypted) {
+        out.encrypted = true;
+        out.nonce = String(a?.nonce || '').slice(0, 128);
+        out.key_envelopes = {};
+        const envs = a?.key_envelopes && typeof a.key_envelopes === 'object' && !Array.isArray(a.key_envelopes) ? a.key_envelopes : {};
+        for (const [uid, env] of Object.entries(envs)) {
+          if (!/^[a-zA-Z0-9_-]{1,128}$/.test(uid) || !env || typeof env !== 'object') continue;
+          if (typeof env.ciphertext === 'string' && typeof env.nonce === 'string' && env.ciphertext.length <= 2048 && env.nonce.length <= 128) {
+            out.key_envelopes[uid] = { ciphertext: env.ciphertext, nonce: env.nonce };
+          }
+        }
+        if (!out.nonce || !Object.keys(out.key_envelopes).length) return null;
+      }
+      return out;
+    }).filter(a => a && a.url.startsWith('/uploads/'));
     if (!cleanAttachments.length) cleanAttachments = null;
   }
 
@@ -320,8 +364,8 @@ async function postMessage(req, res) {
 
     const msgId = crypto.randomUUID();
     const now = Date.now();
-    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, mime_type, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, cleanMimeType, cleanReplyToId, now]);
+    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, mime_type, key_envelopes, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, cleanMimeType, cleanKeyEnvelopes ? JSON.stringify(cleanKeyEnvelopes) : null, cleanReplyToId, now]);
 
     const message = {
       id: msgId,
@@ -331,6 +375,7 @@ async function postMessage(req, res) {
       msg_type: 'voice',
       duration: msgDuration,
       mime_type: cleanMimeType,
+      key_envelopes: cleanKeyEnvelopes,
       created_at: now,
       user_id: req.user.id,
       username: req.user.username,
@@ -354,8 +399,8 @@ async function postMessage(req, res) {
 
   const msgId = crypto.randomUUID();
   const now = Date.now();
-  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, mentions, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, cleanMentions ? JSON.stringify(cleanMentions) : null, cleanReplyToId, now]);
+  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, mentions, key_envelopes, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, cleanMentions ? JSON.stringify(cleanMentions) : null, cleanKeyEnvelopes ? JSON.stringify(cleanKeyEnvelopes) : null, cleanReplyToId, now]);
 
   const message = {
     id: msgId,
@@ -365,6 +410,7 @@ async function postMessage(req, res) {
     msg_type: 'text',
     attachments: cleanAttachments,
     mentions: cleanMentions,
+    key_envelopes: cleanKeyEnvelopes,
     created_at: now,
     user_id: req.user.id,
     username: req.user.username,
@@ -394,22 +440,43 @@ async function postMessage(req, res) {
 }
 
 async function editMessage(req, res) {
+  const userDb = await getUserDb();
+  const room = get(userDb, 'SELECT id, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  if (!room) return res.status(404).json({ error: 'Not found' });
+  if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
   const msgDb = await getMessageDb();
   const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.id]);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'Not your message' });
   if (msg.deleted) return res.status(400).json({ error: 'Cannot edit deleted message' });
 
-  const { content } = req.body;
-  if (!content || !content.trim()) return res.status(400).json({ error: 'Content required' });
+  const { content, ciphertext, nonce, key_envelopes } = req.body;
+  let nextContent = content ? String(content).trim() : '';
+  let nextNonce = nonce || null;
+  let nextEnvelopes = null;
+
+  if (ciphertext) {
+    nextContent = String(ciphertext);
+    if (!nextNonce || !key_envelopes || typeof key_envelopes !== 'object' || Array.isArray(key_envelopes)) {
+      return res.status(400).json({ error: 'Encrypted edit requires ciphertext, nonce, and key envelopes' });
+    }
+    nextEnvelopes = key_envelopes;
+  } else if (room.is_group) {
+    return res.status(400).json({ error: 'Group messages must remain end-to-end encrypted' });
+  }
+
+  if (!nextContent) return res.status(400).json({ error: 'Content required' });
+  if (nextContent.length > 4000) return res.status(400).json({ error: 'Content too long' });
 
   const now = Date.now();
-  runMessage(msgDb, 'UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', [content.trim(), now, msg.id]);
+  runMessage(msgDb, 'UPDATE messages SET content = ?, nonce = ?, key_envelopes = ?, edited_at = ? WHERE id = ?', [nextContent, nextNonce, nextEnvelopes ? JSON.stringify(nextEnvelopes) : null, now, msg.id]);
 
   req.app.locals.broadcast(req.params.id, {
     type: 'message_edited',
     message_id: msg.id,
-    content: content.trim(),
+    content: nextContent,
+    nonce: nextNonce,
+    key_envelopes: nextEnvelopes,
     edited_at: now
   });
   res.json({ ok: true });
@@ -434,6 +501,15 @@ async function deleteMessage(req, res) {
 
   const replyCountRow = getMessage(msgDb, 'SELECT COUNT(*) AS count FROM messages WHERE reply_to_id = ?', [msg.id]);
   const hasReplies = Number(replyCountRow?.count || 0) > 0;
+
+  // Image/attachment messages should disappear completely when deleted.
+  // Only text messages may retain a tombstone when they have replies.
+  let hasAttachments = false;
+  try {
+    const attachments = msg.attachments ? JSON.parse(msg.attachments) : [];
+    hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+  } catch (_) {}
+  const keepPlaceholder = !hasAttachments && hasReplies;
 
   // Remove uploaded attachments from disk when this message is deleted.
   // Only remove a file if no other message still references the same URL.
@@ -464,9 +540,9 @@ async function deleteMessage(req, res) {
   req.app.locals.broadcast(req.params.id, {
     type: 'message_deleted',
     message_id: msg.id,
-    keep_placeholder: hasReplies
+    keep_placeholder: keepPlaceholder
   });
-  res.json({ ok: true, keep_placeholder: hasReplies });
+  res.json({ ok: true, keep_placeholder: keepPlaceholder });
 }
 
 router.get('/:id/messages', requireAuth, listMessages);
