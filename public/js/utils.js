@@ -162,5 +162,3 @@ function versionedMediaUrl(url, bump) {
     return '';
   }
 }
-  const sep = url.includes('?') ? '&' : '?';
-  return url + sep + 'v=' + _mediaCacheTokens.get(url);
