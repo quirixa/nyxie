@@ -135,7 +135,17 @@ app.use((req, res, next) => {
 
 // ── Body parsing & static files ──────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(PUBLIC_DIR, {
+  setHeaders(res, filePath) {
+    // The SPA shell and frontend JS must always revalidate so deployed
+    // fixes cannot be hidden behind a stale browser/proxy cache.
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // ─── Serve uploaded media (avatars / banners / uploads) ──────────
 app.use(

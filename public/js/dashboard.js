@@ -1956,12 +1956,14 @@ function initDashboardView() {
   // or browser-level <base target> tries to make links open in a new tab.
   // Capture phase intercepts the click before any ancestor/default navigation.
   document.addEventListener('click', e => {
-    const img = e.target && e.target.closest ? e.target.closest('.msg-attachments img') : null;
-    if (!img) return;
+    const button = e.target && e.target.closest ? e.target.closest('.msg-image-button') : null;
+    if (!button) return;
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    openImageLightbox(img.currentSrc || img.src, img.alt || 'Image');
+    const src = button.dataset.imageSrc || button.querySelector('img')?.currentSrc || button.querySelector('img')?.src;
+    const alt = button.dataset.imageAlt || button.querySelector('img')?.alt || 'Image';
+    openImageLightbox(src, alt);
   }, true);
 
   function buildAttachmentsHtml(msg) {
@@ -1973,7 +1975,9 @@ function initDashboardView() {
         return;
       }
       if (a.type && a.type.startsWith('image/')) {
-        html += `<img src="${escapeHtml(versionedMediaUrl(a.url))}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="openImageLightbox(this.src, this.alt); event.stopPropagation();" />`;
+        const imageUrl = escapeHtml(versionedMediaUrl(a.url));
+        const imageName = escapeHtml(a.name || 'Image');
+        html += `<button type="button" class="msg-image-button" data-image-src="${imageUrl}" data-image-alt="${imageName}" aria-label="Open image"><img src="${imageUrl}" alt="${imageName}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" /></button>`;
       } else {
         html += `<a href="${escapeHtml(versionedMediaUrl(a.url))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 1 0 4.24 4.24L9.41 17.41a1 1 0 1 0-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
       }
@@ -2012,8 +2016,14 @@ function initDashboardView() {
           img.style.cssText = 'max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;';
           img.addEventListener('load', () => handleMsgImageSettled(img));
           img.addEventListener('error', () => handleMsgImageError(img));
-          img.addEventListener('click', e => { e.stopPropagation(); openImageLightbox(objectUrl, a.name || 'Image'); });
-          slot.replaceWith(img);
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'msg-image-button';
+          button.setAttribute('aria-label', 'Open image');
+          button.dataset.imageSrc = objectUrl;
+          button.dataset.imageAlt = a.name || 'Image';
+          button.appendChild(img);
+          slot.replaceWith(button);
         } else {
           const link = document.createElement('a');
           link.href = objectUrl;
