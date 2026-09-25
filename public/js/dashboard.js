@@ -1252,13 +1252,35 @@ function initDashboardView() {
     const myPrivB64 = localStorage.getItem('nyxie_private_key_' + currentUser.id);
     if (!myPrivB64) return null;
     const myPriv = base64ToUint8Array(myPrivB64);
+    if (!myPriv) return null;
+
+    // Prefer the room cache, but never make decryption depend on a stale
+    // member list. This is especially important for attachments because
+    // they can be opened after a reconnect or after the member cache was
+    // populated without public_key values.
+    let senderPub = null;
     const members = await getRoomEncryptionMembers(roomId);
-    const sender = members.find(m => m.id === senderId) || members.find(m => m.id === currentUser.id);
-    if (!sender?.public_key) return null;
-    const senderPub = base64ToUint8Array(sender.public_key);
-    if (!senderPub || !myPriv) return null;
-    const shared = deriveSharedKey(senderPub, myPriv);
-    return nacl.secretbox.open(base64ToUint8Array(env.ciphertext), base64ToUint8Array(env.nonce), shared) || null;
+    const sender = members.find(m => m.id === senderId);
+    if (sender?.public_key) senderPub = base64ToUint8Array(sender.public_key);
+
+    if (!senderPub && senderId === currentUser.id) {
+      senderPub = base64ToUint8Array(localStorage.getItem('nyxie_public_key_' + currentUser.id) || '');
+    }
+
+    if (!senderPub && senderId) {
+      try {
+        const data = await api('GET', `/users/${encodeURIComponent(senderId)}`);
+        senderPub = base64ToUint8Array(data?.user?.public_key || '');
+      } catch {}
+    }
+
+    if (!senderPub) return null;
+    const shared = deriveSharedKey(uint8ArrayToBase64(senderPub), myPrivB64);
+    if (!shared) return null;
+    const wrapped = base64ToUint8Array(env.ciphertext);
+    const wrapNonce = base64ToUint8Array(env.nonce);
+    if (!wrapped || !wrapNonce || wrapNonce.length !== 24) return null;
+    return nacl.secretbox.open(wrapped, wrapNonce, shared) || null;
   }
 
   async function encryptRoomText(plaintext, roomId) {
@@ -1991,18 +2013,30 @@ function initDashboardView() {
     const holder = row.querySelector('.msg-attachments');
     if (!holder) return;
     row._objectUrls = row._objectUrls || [];
+
+    // Attachment encryption uses the same per-message envelope format as
+    // encrypted text, but older room/member caches could leave the sender's
+    // public key missing. Do not make an otherwise valid attachment
+    // undecryptable just because that cache is stale: unwrapRoomKey() now
+    // falls back to fetching the sender's current public key.
     for (let i = 0; i < msg.attachments.length; i++) {
       const a = msg.attachments[i];
       if (!a.encrypted) continue;
       const slot = holder.querySelector(`[data-attachment-index="${i}"]`);
       if (!slot) continue;
       try {
-        const key = await unwrapRoomKey(msg.room_id, a.key_envelopes, msg.user_id);
+        let envelopes = a.key_envelopes;
+        if (typeof envelopes === 'string') {
+          try { envelopes = JSON.parse(envelopes); } catch { envelopes = null; }
+        }
+        const key = await unwrapRoomKey(msg.room_id, envelopes, msg.user_id || currentUser.id);
         if (!key) throw new Error('key unavailable');
-        const response = await fetch(a.url, { cache: 'force-cache' });
+        const response = await fetch(a.url, { cache: 'no-store' });
         if (!response.ok) throw new Error('download failed');
         const ciphertext = new Uint8Array(await response.arrayBuffer());
-        const plaintext = nacl.secretbox.open(ciphertext, base64ToUint8Array(a.nonce), key);
+        const fileNonce = base64ToUint8Array(a.nonce);
+        if (!fileNonce || fileNonce.length !== 24) throw new Error('invalid attachment nonce');
+        const plaintext = nacl.secretbox.open(ciphertext, fileNonce, key);
         if (!plaintext) throw new Error('decrypt failed');
         const blob = new Blob([plaintext], { type: a.type || 'application/octet-stream' });
         const objectUrl = URL.createObjectURL(blob);

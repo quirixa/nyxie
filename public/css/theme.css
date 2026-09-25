@@ -87,28 +87,27 @@ body.theme-dark {
 
 /* ---- Theme: Esc (pure black, red accent, from File A but adjusted) ---- */
 body.theme-esc {
-  /* Deep purple-black — same tonal family as the accent, so panels read
-     as part of one dark palette rather than neutral grey boxes with a
-     pink accent dropped on top. */
-  --bg-primary: #120c1f;
-  --bg-secondary: #0f0b1a;
-  --bg-sidebar: #0d0916;
-  --bg-input: #150f24;
-  --bg-hover: rgba(180, 140, 255, 0.08);
-  --bg-active: rgba(180, 140, 255, 0.14);
-  --msg-hover: rgba(180, 140, 255, 0.04);
-  --bg-modal: #0f0b1a;
-  --bg-modal-sidebar: #08050f;
-  --bg-modal-card: #150f24;
-  --bg-modal-hover: #1b1430;
+  /* ESC — true dark / OLED-style palette. No purple panels: the UI is
+     black/near-black throughout, with the accent used only for emphasis. */
+  --bg-primary: #050505;
+  --bg-secondary: #090909;
+  --bg-sidebar: #030303;
+  --bg-input: #0d0d0d;
+  --bg-hover: rgba(255, 255, 255, 0.045);
+  --bg-active: rgba(255, 255, 255, 0.075);
+  --msg-hover: rgba(255, 255, 255, 0.025);
+  --bg-modal: #080808;
+  --bg-modal-sidebar: #030303;
+  --bg-modal-card: #0d0d0d;
+  --bg-modal-hover: #141414;
 
-  --text-primary: #f2eefc;
-  --text-secondary: #b6aed0;
-  --text-muted: #837a9c;
+  --text-primary: #f5f5f5;
+  --text-secondary: #b8b8b8;
+  --text-muted: #777777;
 
-  --border-color: #1c1530;
-  --border-medium: #2a2144;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --border-color: #181818;
+  --border-medium: #242424;
+  --shadow: 0 10px 36px rgba(0, 0, 0, 0.72);
 
   --online: #3ba55c;
   --offline: #6a6a72;
@@ -121,23 +120,23 @@ body.theme-esc {
 
 /* ---- Fallback (no theme class) = Esc (deep purple-black) ---- */
 body:not(.theme-light):not(.theme-dark):not(.theme-esc):not(.theme-retro) {
-  --bg-primary: #120c1f;
-  --bg-secondary: #0f0b1a;
-  --bg-sidebar: #0d0916;
-  --bg-input: #150f24;
-  --bg-hover: rgba(180, 140, 255, 0.08);
-  --bg-active: rgba(180, 140, 255, 0.14);
-  --msg-hover: rgba(180, 140, 255, 0.04);
-  --bg-modal: #0f0b1a;
-  --bg-modal-sidebar: #08050f;
-  --bg-modal-card: #150f24;
-  --bg-modal-hover: #1b1430;
-  --text-primary: #f2eefc;
-  --text-secondary: #b6aed0;
-  --text-muted: #837a9c;
-  --border-color: #1c1530;
-  --border-medium: #2a2144;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --bg-primary: #050505;
+  --bg-secondary: #090909;
+  --bg-sidebar: #030303;
+  --bg-input: #0d0d0d;
+  --bg-hover: rgba(255, 255, 255, 0.045);
+  --bg-active: rgba(255, 255, 255, 0.075);
+  --msg-hover: rgba(255, 255, 255, 0.025);
+  --bg-modal: #080808;
+  --bg-modal-sidebar: #030303;
+  --bg-modal-card: #0d0d0d;
+  --bg-modal-hover: #141414;
+  --text-primary: #f5f5f5;
+  --text-secondary: #b8b8b8;
+  --text-muted: #777777;
+  --border-color: #181818;
+  --border-medium: #242424;
+  --shadow: 0 10px 36px rgba(0, 0, 0, 0.72);
   --online: #3ba55c;
   --offline: #6a6a72;
   --danger: #ed4245;
@@ -789,4 +788,27 @@ body.theme-retro svg {
   width: 28px !important;
   height: 28px !important;
   stroke-width: 2.2px !important;
+}
+
+/* ---- ESC: force remaining native/component surfaces into the dark palette ---- */
+body.theme-esc, body.theme-esc input, body.theme-esc textarea, body.theme-esc select, body.theme-esc option {
+  color-scheme: dark;
+}
+body.theme-esc input,
+body.theme-esc textarea,
+body.theme-esc select {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+body.theme-esc .modal,
+body.theme-esc .modal-content,
+body.theme-esc .dropdown-menu,
+body.theme-esc .context-menu,
+body.theme-esc .popover,
+body.theme-esc .card,
+body.theme-esc .panel {
+  background-color: var(--bg-modal-card);
+  color: var(--text-primary);
+  border-color: var(--border-color);
 }
