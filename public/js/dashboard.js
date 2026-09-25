@@ -772,7 +772,10 @@ function initDashboardView() {
       switch (msg.type) {
         case 'new_message': {
           const m = msg.message;
-          if (sentMsgIds.has(m.id)) { sentMsgIds.delete(m.id); break; }
+          // WS and POST can race for the sender. Do not discard our own
+          // broadcast; appendMessage() is idempotent and will de-duplicate
+          // against an already-rendered row.
+          if (sentMsgIds.has(m.id)) sentMsgIds.delete(m.id);
 
           // Sound for anything from someone else, unless we're actively
           // looking at that exact room right now (a focused, open
@@ -836,36 +839,40 @@ function initDashboardView() {
         case 'message_deleted': {
           const row = document.querySelector(`[data-msg-id="${msg.message_id}"]`);
           const cached = window._messagesById.get(msg.message_id);
-          // Attachment/image messages are always removed completely. The
-          // server only sends keep_placeholder for text messages that have replies.
-          const keepPlaceholder = !!msg.keep_placeholder && !(cached?.attachments?.length);
+          // Media must never remain visible after deletion, regardless of a
+          // stale keep_placeholder flag. Only plain text replies get a tombstone.
+          const hasMedia = !!(cached?.attachments?.length) || !!row?.querySelector('.msg-attachments, .voice-msg-bubble');
+          const keepPlaceholder = !!msg.keep_placeholder && !hasMedia;
           if (cached) {
             cached.deleted = true;
             cached.content = '[deleted]';
             cached.nonce = null;
             cached.attachments = null;
           }
-          if (row) {
-            const container = document.getElementById('messages-container');
-            const wasNearBottom = container ? isNearBottom(container) : false;
-            if (keepPlaceholder) {
-              const textEl = row.querySelector('.msg-text');
-              if (textEl) { textEl.textContent = 'Message deleted'; textEl.classList.add('deleted'); }
-              const attachments = row.querySelector('.msg-attachments');
-              if (attachments) attachments.remove();
-              const acts = row.querySelector('.msg-actions');
-              if (acts) acts.remove();
-              row.classList.add('deleted');
-            } else {
-              revokeRowObjectUrls(row);
-              row.remove();
-              window._messagesById.delete(msg.message_id);
-              if (container && wasNearBottom) scrollToBottom();
-              if (container && !container.querySelector('.msg-row')) {
-                const otherName = currentRoom?.display_name || currentRoom?.name || 'Unknown';
-                container.innerHTML = `<div class="conversation-start"><div class="start-header"><h3>This is the start of your legendary conversation with</h3><h1>@${escapeHtml(otherName)}.</h1></div></div>`;
-                _roomHasMessages = false;
-              }
+          if (!row) {
+            window._messagesById.delete(msg.message_id);
+            break;
+          }
+          const container = document.getElementById('messages-container');
+          const wasNearBottom = container ? isNearBottom(container) : false;
+          if (keepPlaceholder) {
+            const textEl = row.querySelector('.msg-text');
+            if (textEl) { textEl.textContent = 'Message deleted'; textEl.classList.add('deleted'); }
+            row.querySelector('.msg-attachments')?.remove();
+            row.querySelector('.voice-msg-bubble')?.remove();
+            row.querySelector('.msg-actions')?.remove();
+            revokeRowObjectUrls(row);
+            row.classList.add('deleted');
+          } else {
+            revokeRowObjectUrls(row);
+            row.querySelectorAll('img').forEach(img => { try { img.removeAttribute('src'); } catch (_) {} });
+            row.remove();
+            window._messagesById.delete(msg.message_id);
+            if (container && wasNearBottom) scrollToBottom();
+            if (container && !container.querySelector('.msg-row')) {
+              const otherName = currentRoom?.display_name || currentRoom?.name || 'Unknown';
+              container.innerHTML = `<div class="conversation-start"><div class="start-header"><h3>This is the start of your legendary conversation with</h3><h1>@${escapeHtml(otherName)}.</h1></div></div>`;
+              _roomHasMessages = false;
             }
           }
           break;
@@ -2342,7 +2349,33 @@ function initDashboardView() {
     popup.querySelector('#cp-cancel-btn').onclick = close;
     popup.querySelector('#cp-delete-btn').onclick = async () => {
       close();
-      await api('DELETE', `/rooms/${roomId}/messages/${msgId}`);
+      const result = await api('DELETE', `/rooms/${roomId}/messages/${msgId}`);
+      if (!result || result.error) {
+        toast(result?.error || 'Failed to delete message');
+        return;
+      }
+      const row = document.querySelector(`[data-msg-id="${msgId}"]`);
+      const cached = window._messagesById.get(msgId);
+      const hasMedia = !!(cached?.attachments?.length) || !!row?.querySelector('.msg-attachments, .voice-msg-bubble');
+      const keepPlaceholder = !!result.keep_placeholder && !hasMedia;
+      if (cached) { cached.deleted = true; cached.content = '[deleted]'; cached.nonce = null; cached.attachments = null; }
+      if (row) {
+        const container = document.getElementById('messages-container');
+        if (keepPlaceholder) {
+          const textEl = row.querySelector('.msg-text');
+          if (textEl) { textEl.textContent = 'Message deleted'; textEl.classList.add('deleted'); }
+          row.querySelector('.msg-attachments')?.remove();
+          row.querySelector('.voice-msg-bubble')?.remove();
+          row.querySelector('.msg-actions')?.remove();
+          revokeRowObjectUrls(row);
+          row.classList.add('deleted');
+        } else {
+          revokeRowObjectUrls(row);
+          row.remove();
+          window._messagesById.delete(msgId);
+          if (container && !container.querySelector('.msg-row')) { _roomHasMessages = false; }
+        }
+      }
     };
   }
 

@@ -509,7 +509,7 @@ function initVoiceFeatures() {
       document.getElementById('messages-container').innerHTML = '';
       _roomHasMessages = true;
     }
-    appendMessage(res.message);
+    await appendMessage(res.message);
     scrollToBottom();
 
     const dmObj = dms.find(d => d.id === currentRoom.id);
@@ -607,6 +607,9 @@ function initVoiceFeatures() {
         ${isOwn ? `<button class="msg-act-btn danger" title="Delete" onclick="deleteMsg('${safeMsgId}','${safeRoomId}', event)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
         </button>` : ''}
+        <button class="msg-act-btn" title="More" onclick="toggleMoreMenu(event,'${safeMsgId}')">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+        </button>
       </div>`;
 
     const bubble = `
@@ -621,7 +624,7 @@ function initVoiceFeatures() {
     row.dataset.msgId = msg.id;
 
     if (sameUser) {
-      row.className = 'msg-row compact' + (isOwn ? ' outgoing' : '');
+      row.className = 'msg-row voice-msg-row compact' + (isOwn ? ' outgoing' : '');
       row.innerHTML = `
         <div class="msg-content-col">
           <span class="msg-timestamp-inline" title="${fullTime}">${timeStr}</span>
@@ -629,7 +632,7 @@ function initVoiceFeatures() {
         </div>
         ${voiceActions}`;
     } else {
-      row.className = 'msg-row' + (isOwn ? ' outgoing' : '');
+      row.className = 'msg-row voice-msg-row' + (isOwn ? ' outgoing' : '');
       row.style.marginTop = '17px';
       row.innerHTML = `
         <div class="msg-content-col">
