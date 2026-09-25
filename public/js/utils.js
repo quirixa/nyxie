@@ -12,6 +12,11 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function escapeJs(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+}
+
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -144,10 +149,18 @@ ReservedUsernames.load();
 // hit), and only actual uploads (which pass bump=true) get a fresh one.
 const _mediaCacheTokens = new Map();
 function versionedMediaUrl(url, bump) {
-  if (!url) return url;
-  if (bump || !_mediaCacheTokens.has(url)) {
-    _mediaCacheTokens.set(url, Date.now());
+  if (!url) return '';
+  const raw = String(url).trim();
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    const normalized = parsed.href;
+    if (bump || !_mediaCacheTokens.has(normalized)) _mediaCacheTokens.set(normalized, Date.now());
+    parsed.searchParams.set('v', String(_mediaCacheTokens.get(normalized)));
+    return parsed.href.replace(/[\'\"\\()\r\n]/g, ch => '%' + ch.charCodeAt(0).toString(16).padStart(2, '0'));
+  } catch (_) {
+    return '';
   }
+}
   const sep = url.includes('?') ? '&' : '?';
   return url + sep + 'v=' + _mediaCacheTokens.get(url);
-}

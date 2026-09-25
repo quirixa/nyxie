@@ -500,8 +500,8 @@ function initDashboardView() {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function escapeJs(s) {
-    if (!s) return '';
-    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n');
   }
   function hashColor(name) {
     const colors = ['#fd6671', '#eb459e', '#ed4245', '#3ba55c', '#faa61a', '#1abc9c', '#e67e22', '#9b59b6'];
@@ -1884,7 +1884,7 @@ function initDashboardView() {
     const author = original ? (original.display_name || original.username || 'Unknown') : 'Unknown';
     const snippet = original ? (original.deleted ? 'Message deleted' : (original.content || 'Original message')) : 'Original message';
     const trimmed = snippet.length > 80 ? snippet.slice(0, 80) + '…' : snippet;
-    return `<div class="msg-reply-quote" onclick="jumpToMessage('${msg.reply_to_id}')">
+    return `<div class="msg-reply-quote" onclick="jumpToMessage('${escapeJs(msg.reply_to_id)}')">
       <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
       <span class="rq-author">${escapeHtml(author)}</span>
       <span class="rq-text">${escapeHtml(trimmed)}</span>
@@ -1898,7 +1898,7 @@ function initDashboardView() {
     for (const [emoji, userIds] of Object.entries(reactions)) {
       if (!userIds || !userIds.length) continue;
       const mine = userIds.includes(currentUser.id);
-      html += `<button class="reaction-pill${mine ? ' mine' : ''}" onclick="quickReact('${emoji}','${msg.id}')" title="${userIds.length} reacted">
+      html += `<button class="reaction-pill${mine ? ' mine' : ''}" onclick="quickReact('${escapeJs(emoji)}','${escapeJs(msg.id)}')" title="${userIds.length} reacted">
         <span>${emoji}</span><span class="r-count">${userIds.length}</span>
       </button>`;
     }
@@ -1954,9 +1954,9 @@ function initDashboardView() {
         return;
       }
       if (a.type && a.type.startsWith('image/')) {
-        html += `<img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="openImageLightbox(this.src, this.alt); event.stopPropagation();" />`;
+        html += `<img src="${escapeHtml(versionedMediaUrl(a.url))}" alt="${escapeHtml(a.name)}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" onclick="openImageLightbox(this.src, this.alt); event.stopPropagation();" />`;
       } else {
-        html += `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 1 0 4.24 4.24L9.41 17.41a1 1 0 1 0-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
+        html += `<a href="${escapeHtml(versionedMediaUrl(a.url))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 1 0 4.24 4.24L9.41 17.41a1 1 0 1 0-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
       }
     });
     html += '</div>';
@@ -2020,13 +2020,13 @@ function initDashboardView() {
   function buildMsgActionsHtml(msg, isOwn) {
     if (msg.deleted) return '';
     const ownActions = isOwn ? `
-        <button class="msg-act-btn" title="Edit" onclick="editMsg('${msg.id}',this)">
+        <button class="msg-act-btn" title="Edit" onclick="editMsg('${escapeJs(msg.id)}',this)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9"/>
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
           </svg>
         </button>
-        <button class="msg-act-btn danger" title="Delete" onclick="deleteMsg('${msg.id}','${msg.room_id}', event)">
+        <button class="msg-act-btn danger" title="Delete" onclick="deleteMsg('${escapeJs(msg.id)}','${escapeJs(msg.room_id)}', event)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -2036,7 +2036,7 @@ function initDashboardView() {
         </button>` : '';
     return `
       <div class="msg-actions">
-        <button class="msg-act-btn" title="Add reaction" onclick="toggleReactionPicker(event,'${msg.id}')">
+        <button class="msg-act-btn" title="Add reaction" onclick="toggleReactionPicker(event,'${escapeJs(msg.id)}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
@@ -2044,14 +2044,14 @@ function initDashboardView() {
             <line x1="15" y1="9" x2="15.01" y2="9"/>
           </svg>
         </button>
-        <button class="msg-act-btn" title="Reply" onclick="setReplyTo('${msg.id}')">
+        <button class="msg-act-btn" title="Reply" onclick="setReplyTo('${escapeJs(msg.id)}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 17 4 12 9 7"/>
             <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
           </svg>
         </button>
         ${ownActions}
-        <button class="msg-act-btn" title="More" onclick="toggleMoreMenu(event,'${msg.id}')">
+        <button class="msg-act-btn" title="More" onclick="toggleMoreMenu(event,'${escapeJs(msg.id)}')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="5" r="1.5"/>
             <circle cx="12" cy="12" r="1.5"/>
@@ -2469,25 +2469,25 @@ function initDashboardView() {
     const isOwn = msg && msg.user_id === currentUser.id;
     popup.dataset.msgId = msgId;
     popup.innerHTML = `
-      <button class="mm-item" onclick="copyMsgText('${msgId}')">
+      <button class="mm-item" onclick="copyMsgText('${escapeJs(msgId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         Copy text
       </button>
-      <button class="mm-item" onclick="setReplyTo('${msgId}');closeMoreMenu()">
+      <button class="mm-item" onclick="setReplyTo('${escapeJs(msgId)}');closeMoreMenu()">
         <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
         Reply
       </button>
-      <button class="mm-item" onclick="toggleReactionPicker(event,'${msgId}')">
+      <button class="mm-item" onclick="toggleReactionPicker(event,'${escapeJs(msgId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         Add reaction
       </button>
       ${isOwn ? `
       <div class="mm-divider"></div>
-      <button class="mm-item" onclick="editMsg('${msgId}', document.querySelector('[data-msg-id=\\'${msgId}\\'] .msg-act-btn'));closeMoreMenu()">
+      <button class="mm-item" onclick="editMsg('${escapeJs(msgId)}', document.querySelector('[data-msg-id=\\'${msgId}\\'] .msg-act-btn'));closeMoreMenu()">
         <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Edit
       </button>
-      <button class="mm-item danger" onclick="closeMoreMenu();deleteMsg('${msgId}','${msg.room_id}', event)">
+      <button class="mm-item danger" onclick="closeMoreMenu();deleteMsg('${escapeJs(msgId)}','${escapeJs(msg.room_id)}', event)">
         <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
         Delete
       </button>` : ''}
@@ -3606,7 +3606,7 @@ function initDashboardView() {
       const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
       const inner = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
       return `<div class="server-pill${currentServerId === s.id ? ' active' : ''}" data-server-id="${s.id}"
-        onclick="selectServer('${s.id}')" title="${escapeHtml(s.name)}">${inner}</div>`;
+        onclick="selectServer('${escapeJs(s.id)}')" title="${escapeHtml(s.name)}">${inner}</div>`;
     }).join('');
     document.getElementById('server-pill-home').classList.toggle('active', !currentServerId && !inDiscoverView);
     document.getElementById('server-pill-discover')?.classList.toggle('active', inDiscoverView);
@@ -3902,8 +3902,8 @@ function initDashboardView() {
     const categoryLabel = discoverCategories.find(c => c.key === s.category)?.label;
     const joinBtn = s.already_member
       ? `<button class="discover-join-btn" disabled>Joined</button>`
-      : `<button class="discover-join-btn" onclick="event.stopPropagation();joinDiscoveredServer('${s.id}', this)">Join</button>`;
-    return `<div class="discover-card${s.already_member ? ' joined' : ''}" onclick="if(${s.already_member ? 'true' : 'false'})selectServer('${s.id}')">
+      : `<button class="discover-join-btn" onclick="event.stopPropagation();joinDiscoveredServer('${escapeJs(s.id)}', this)">Join</button>`;
+    return `<div class="discover-card${s.already_member ? ' joined' : ''}" onclick="if(${s.already_member ? 'true' : 'false'})selectServer('${escapeJs(s.id)}')">
       <div class="discover-card-banner" style="background:${bannerColor}"></div>
       <div class="discover-card-body">
         <div class="discover-card-head">

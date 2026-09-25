@@ -8,6 +8,86 @@ const roomClients = new Map();
 const clientMeta = new Map();
 const userConnections = new Map();
 
+// Per-socket inbound WebSocket rate limiting. This is deliberately
+// event-aware: typing is cheap and bursty, while call setup/status and
+// room operations are more expensive and get much tighter limits.
+// Counters live on the socket, so one abusive connection cannot consume
+// another user's budget.
+const WS_RATE_RULES = Object.freeze({
+  // Cheap, high-frequency UI signal. This allows normal fast typing
+  // without making the indicator feel laggy.
+  typing: { windowMs: 1000, max: 30 },
+
+  // Room membership/status changes should be occasional.
+  join_room: { windowMs: 60 * 1000, max: 30 },
+  leave_room: { windowMs: 60 * 1000, max: 60 },
+  set_status: { windowMs: 60 * 1000, max: 20 },
+  ping: { windowMs: 10 * 1000, max: 20 },
+
+  // Call setup can trigger DB work and relays to another user, so keep
+  // these much tighter. ICE is intentionally more permissive because
+  // WebRTC can legitimately emit several candidates during negotiation.
+  call_offer: { windowMs: 10 * 1000, max: 5 },
+  call_answer: { windowMs: 10 * 1000, max: 5 },
+  call_reject: { windowMs: 10 * 1000, max: 10 },
+  call_end: { windowMs: 10 * 1000, max: 10 },
+  call_ice_candidate: { windowMs: 10 * 1000, max: 120 },
+});
+
+function allowWsMessage(ws, type) {
+  const rule = WS_RATE_RULES[type];
+  const now = Date.now();
+  const state = ws.__nyxieRateState || (ws.__nyxieRateState = new Map());
+
+  // Safety net for new/unknown message types: no connection should be
+  // able to flood the server simply because a new event was added without
+  // an explicit rule. Known event rules below are stricter where needed.
+  let overall = state.get('__overall');
+  if (!overall || now - overall.startedAt >= 10 * 1000) {
+    overall = { startedAt: now, count: 0 };
+    state.set('__overall', overall);
+  }
+  overall.count += 1;
+  if (overall.count > 300) {
+    if (!overall.warned) {
+      overall.warned = true;
+      try {
+        ws.send(JSON.stringify({
+          type: 'rate_limited',
+          event: '*',
+          retry_after_ms: Math.max(1, 10 * 1000 - (now - overall.startedAt))
+        }));
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  if (!rule) return true;
+
+  let bucket = state.get(type);
+  if (!bucket || now - bucket.startedAt >= rule.windowMs) {
+    bucket = { startedAt: now, count: 0 };
+    state.set(type, bucket);
+  }
+
+  bucket.count += 1;
+  if (bucket.count <= rule.max) return true;
+
+  // Only send one rate-limit response per exhausted window. Do not
+  // disconnect immediately: transient bursts should recover naturally.
+  if (!bucket.warned) {
+    bucket.warned = true;
+    try {
+      ws.send(JSON.stringify({
+        type: 'rate_limited',
+        event: type,
+        retry_after_ms: Math.max(1, rule.windowMs - (now - bucket.startedAt))
+      }));
+    } catch (_) {}
+  }
+  return false;
+}
+
 // Whether a user has at least one live socket open right now. This is the
 // "connected" half of effectiveStatus() — the DB `status` column is only
 // ever the user's manually-chosen preference (see presence.js), never
@@ -229,6 +309,8 @@ function setupWebSocket(server) {
       try { msg = JSON.parse(raw); } catch { return; }
       const meta = clientMeta.get(ws);
       if (!meta) return;
+
+      if (!allowWsMessage(ws, msg.type)) return;
 
       switch (msg.type) {
         case 'join_room': {

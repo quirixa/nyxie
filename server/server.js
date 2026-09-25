@@ -38,9 +38,21 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 const DATA_DIR = path.join(PROJECT_ROOT, 'data');
 
-// ── Security: refuse to start without a real JWT secret ──────────
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is required');
+// ── Security: validate JWT secret before starting ─────────────────
+// A missing, placeholder, or short secret would make token forgery
+// materially easier. Require at least 32 characters at startup.
+const JWT_SECRET = process.env.JWT_SECRET || '';
+const WEAK_JWT_SECRETS = new Set([
+  'secret',
+  'jwt-secret',
+  'change-me',
+  'changeme',
+  'password',
+  'replace-with-a-long-random-secret-at-least-32-characters'
+]);
+
+if (JWT_SECRET.length < 32 || WEAK_JWT_SECRETS.has(JWT_SECRET.toLowerCase())) {
+  console.error('FATAL: JWT_SECRET must be at least 32 characters and must not be a default/placeholder value.');
   process.exit(1);
 }
 
@@ -72,6 +84,22 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     error: 'Too many login attempts, please try again later.'
+  }
+});
+
+// ── Dedicated upload limiter ────────────────────────────────────
+// Uploads are much more expensive than ordinary API requests because
+// they consume disk, bandwidth and multer parsing work. Keep this
+// separate from the broad API limiter so a client cannot spend its
+// entire API allowance on 10MB uploads. This is intentionally per IP;
+// the route also requires authentication.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many uploads, please wait before uploading more files.'
   }
 });
 
@@ -131,6 +159,7 @@ app.use(
 // ── Upload route ─────────────────────────────────────────────────
 app.use(
   '/api/upload',
+  uploadLimiter,
   require('./routes/uploads')
 );
 
@@ -192,8 +221,8 @@ app.use('/api/admin/badges', adminBadgeRoutes);
 // Unlike the dev faucet below, this works in production.
 app.use('/api/admin/wallet', adminWalletRoutes);
 
-// ── Dev-only test funding — never mounted in production ──────────
-if (process.env.NODE_ENV !== 'production') {
+// ── Dev-only test funding — explicit opt-in only ─────────────────
+if (process.env.ENABLE_DEV_ROUTES === 'true') {
   app.use(
     '/api/dev',
     require('./routes/dev')

@@ -49,6 +49,10 @@
 // DTLS-SRTP and tell the user, rather than silently downgrading.
 
 function initVoiceFeatures() {
+  function escapeVoiceJs(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+  }
   'use strict';
 
   // Stroke-style lock/unlock icons matching the pattern used elsewhere
@@ -590,9 +594,24 @@ function initVoiceFeatures() {
     window._lastMsgTime = now;
 
     const displayName = msg.display_name || msg.username || 'Unknown';
+    const safeMsgId = escapeVoiceJs(msg.id);
+    const safeRoomId = escapeVoiceJs(msg.room_id);
+    const voiceActions = msg.deleted ? '' : `
+      <div class="msg-actions">
+        <button class="msg-act-btn" title="Add reaction" onclick="toggleReactionPicker(event,'${safeMsgId}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </button>
+        <button class="msg-act-btn" title="Reply" onclick="setReplyTo('${safeMsgId}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+        </button>
+        ${isOwn ? `<button class="msg-act-btn danger" title="Delete" onclick="deleteMsg('${safeMsgId}','${safeRoomId}', event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>` : ''}
+      </div>`;
+
     const bubble = `
-      <div class="voice-msg-bubble" id="voice-bubble-${msg.id}">
-        <button class="voice-msg-play" onclick="window.__playVoiceMsg('${msg.id}')">${SVG_PLAY}</button>
+      <div class="voice-msg-bubble" id="voice-bubble-${safeMsgId}">
+        <button class="voice-msg-play" onclick="window.__playVoiceMsg('${safeMsgId}')">${SVG_PLAY}</button>
         <div class="voice-msg-bar"><div class="voice-msg-bar-fill"></div></div>
         <span class="voice-msg-duration">${fmtDuration(msg.duration)}</span>
         <span class="voice-msg-lock" title="End-to-end encrypted">${SVG_LOCK}</span>
@@ -607,18 +626,20 @@ function initVoiceFeatures() {
         <div class="msg-content-col">
           <span class="msg-timestamp-inline" title="${fullTime}">${timeStr}</span>
           ${bubble}
-        </div>`;
+        </div>
+        ${voiceActions}`;
     } else {
       row.className = 'msg-row' + (isOwn ? ' outgoing' : '');
       row.style.marginTop = '17px';
       row.innerHTML = `
         <div class="msg-content-col">
           <div class="msg-header">
-            <span class="msg-author" onclick="showUserProfile(event, '${msg.user_id}')">${escapeHtml(displayName)}</span>
+            <span class="msg-author" onclick="showUserProfile(event, '${escapeVoiceJs(msg.user_id)}')">${escapeHtml(displayName)}</span>
             <span class="msg-timestamp" title="${fullTime}">${timeStr}</span>
           </div>
           ${bubble}
-        </div>`;
+        </div>
+        ${voiceActions}`;
     }
 
     container.appendChild(row);

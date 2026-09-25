@@ -123,7 +123,7 @@ function renderListingsGrid(listings) {
     return;
   }
   grid.innerHTML = listings.map(l => `
-    <div class="mp-card" onclick="mpOpenListing('${l.id}')">
+    <div class="mp-card" onclick="mpOpenListing('${escapeJs(l.id)}')">
       <div class="mp-card-image" style="${l.imageUrl ? `background-image:url('${versionedMediaUrl(l.imageUrl)}')` : ''}">${l.imageUrl ? '' : escapeHtml(l.title.charAt(0).toUpperCase())}</div>
       <div class="mp-card-title">${escapeHtml(l.title)}</div>
       <div class="mp-card-price">${l.priceNx} NX<small>$${l.priceUsd} USD</small></div>
@@ -177,7 +177,7 @@ function renderListingDetail(l) {
       ${isOwn
         ? `<span class="mp-form-hint">This is your own listing — manage it from My Listings.</span>`
         : (l.status === 'ACTIVE' && l.stock > 0
-            ? `<button class="btn-primary" onclick="mpOpenPurchaseModal('${l.id}')">Buy Now</button>`
+            ? `<button class="btn-primary" onclick="mpOpenPurchaseModal('${escapeJs(l.id)}')">Buy Now</button>`
             : `<span class="mp-badge status">No longer available</span>`)}
     </div>
   `;
@@ -288,7 +288,7 @@ async function renderPurchasesList() {
     const data = await marketplaceApi('GET', '/orders/purchases');
     if (!data.orders.length) { body.innerHTML = '<div class="mp-empty">You haven\'t purchased anything yet.</div>'; return; }
     body.innerHTML = data.orders.map(o => `
-      <div class="mp-order-row" onclick="mpOpenOrder('${o.id}')">
+      <div class="mp-order-row" onclick="mpOpenOrder('${escapeJs(o.id)}')">
         <div class="mp-row-thumb">📦</div>
         <div class="mp-row-main">
           <div class="mp-row-title">Order #${o.id.slice(0, 8)}</div>
@@ -309,7 +309,7 @@ async function renderSalesList() {
     const data = await marketplaceApi('GET', '/orders/sales');
     if (!data.orders.length) { body.innerHTML = '<div class="mp-empty">No sales yet.</div>'; return; }
     body.innerHTML = data.orders.map(o => `
-      <div class="mp-order-row" onclick="mpOpenOrder('${o.id}')">
+      <div class="mp-order-row" onclick="mpOpenOrder('${escapeJs(o.id)}')">
         <div class="mp-row-thumb">💰</div>
         <div class="mp-row-main">
           <div class="mp-row-title">Order #${o.id.slice(0, 8)}</div>
@@ -338,13 +338,13 @@ async function renderMyListingsList() {
     body.innerHTML = data.listings.map(l => `
       <div class="mp-listing-row">
         <div class="mp-row-thumb" style="${l.imageUrl ? `background-image:url('${versionedMediaUrl(l.imageUrl)}');background-size:cover;` : ''}">${l.imageUrl ? '' : '🛒'}</div>
-        <div class="mp-row-main" onclick="mpOpenListing('${l.id}')">
+        <div class="mp-row-main" onclick="mpOpenListing('${escapeJs(l.id)}')">
           <div class="mp-row-title">${escapeHtml(l.title)}</div>
           <div class="mp-row-sub">${l.priceNx} NX · Stock ${l.stock} · ${l.status}</div>
         </div>
         <div class="mp-row-actions">
-          <button class="btn-cancel" onclick="event.stopPropagation(); mpEditListingById('${l.id}')">Edit</button>
-          <button class="btn-cancel" onclick="event.stopPropagation(); mpRemoveListing('${l.id}')">Remove</button>
+          <button class="btn-cancel" onclick="event.stopPropagation(); mpEditListingById('${escapeJs(l.id)}')">Edit</button>
+          <button class="btn-cancel" onclick="event.stopPropagation(); mpRemoveListing('${escapeJs(l.id)}')">Remove</button>
         </div>
       </div>
     `).join('');
@@ -398,20 +398,20 @@ function renderOrderDetail(o) {
       <label>Delivery details (sent to buyer)</label>
       <textarea id="mp-deliver-data" maxlength="4000" placeholder="Account credentials, download link, instructions…"></textarea>
       <div class="modal-actions" style="justify-content:flex-start; margin-top:10px;">
-        <button class="btn-primary" onclick="mpDeliverOrder('${o.id}')">Mark as Delivered</button>
+        <button class="btn-primary" onclick="mpDeliverOrder('${escapeJs(o.id)}')">Mark as Delivered</button>
       </div>`;
   } else if (isBuyer && o.status === 'PAID') {
-    actions = `<div class="mp-order-actions"><button class="btn-cancel" onclick="mpCancelOrder('${o.id}')">Cancel Order</button></div>`;
+    actions = `<div class="mp-order-actions"><button class="btn-cancel" onclick="mpCancelOrder('${escapeJs(o.id)}')">Cancel Order</button></div>`;
   } else if (isBuyer && o.status === 'DELIVERED') {
     actions = `
       <div class="mp-order-actions">
-        <button class="btn-primary" onclick="mpConfirmReceipt('${o.id}')">Confirm Receipt</button>
-        <button class="btn-cancel" onclick="mpOpenDisputeModal('${o.id}')">Open Dispute</button>
+        <button class="btn-primary" onclick="mpConfirmReceipt('${escapeJs(o.id)}')">Confirm Receipt</button>
+        <button class="btn-cancel" onclick="mpOpenDisputeModal('${escapeJs(o.id)}')">Open Dispute</button>
       </div>`;
   } else if (isSeller && o.status === 'DELIVERED') {
     actions = `<div class="mp-form-hint">Waiting for the buyer to confirm receipt.</div>`;
   } else if (isBuyer && o.status === 'COMPLETED') {
-    actions = `<div class="mp-order-actions"><button class="btn-primary" onclick="mpOpenReviewModal('${o.id}')">Leave a Review</button></div>`;
+    actions = `<div class="mp-order-actions"><button class="btn-primary" onclick="mpOpenReviewModal('${escapeJs(o.id)}')">Leave a Review</button></div>`;
   }
 
   body.innerHTML = `
@@ -559,7 +559,7 @@ function renderVendorProfile(vendor, listings, reviews) {
     <div style="font-weight:700; margin-bottom:8px;">Listings</div>
     <div class="mp-grid" style="margin-bottom:20px;">
       ${listings.length ? listings.map(l => `
-        <div class="mp-card" onclick="mpOpenListing('${l.id}')">
+        <div class="mp-card" onclick="mpOpenListing('${escapeJs(l.id)}')">
           <div class="mp-card-image" style="${l.imageUrl ? `background-image:url('${versionedMediaUrl(l.imageUrl)}')` : ''}">${l.imageUrl ? '' : escapeHtml(l.title.charAt(0).toUpperCase())}</div>
           <div class="mp-card-title">${escapeHtml(l.title)}</div>
           <div class="mp-card-price">${l.priceNx} NX</div>

@@ -1,5 +1,5 @@
 // server/routes/dev.js — development-only helper endpoints. Only ever
-// mounted when NODE_ENV !== 'production' (see server.js); devFaucet()
+// mounted only when ENABLE_DEV_ROUTES=true (see server.js); devFaucet()
 // in walletService.js also re-checks NODE_ENV itself as a second layer
 // of defense in case this router is ever mounted somewhere unexpected.
 

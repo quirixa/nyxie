@@ -11,10 +11,17 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is required');
-  process.exit(1);
+const JWT_SECRET = process.env.JWT_SECRET || '';
+const WEAK_JWT_SECRETS = new Set([
+  'secret',
+  'jwt-secret',
+  'change-me',
+  'changeme',
+  'password',
+  'replace-with-a-long-random-secret-at-least-32-characters'
+]);
+if (JWT_SECRET.length < 32 || WEAK_JWT_SECRETS.has(JWT_SECRET.toLowerCase())) {
+  throw new Error('JWT_SECRET must be at least 32 characters and must not be a default/placeholder value.');
 }
 
 const JWT_EXPIRES = '7d';
