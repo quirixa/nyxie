@@ -1021,6 +1021,17 @@ function initDashboardView() {
         }
         case 'server_member_joined': {
           if (currentServerId === msg.server_id) renderServerMembersIfOpen();
+
+          // A server member is also added to every server channel. Refresh the
+          // active room's member/key state immediately so E2EE envelopes for
+          // messages sent after the join include the new member. Without this,
+          // currentRoomMembers/_roomMembersCache can still describe the old
+          // membership and the next encrypted messages can become unreadable
+          // to the newly joined client (or show as "Failed to decrypt").
+          if (currentRoom?.server_id === msg.server_id) {
+            _roomMembersCache.delete(currentRoom.id);
+            wsJoin(currentRoom.id);
+          }
           break;
         }
         case 'server_updated': {
@@ -2169,7 +2180,6 @@ function initDashboardView() {
         <div class="msg-content-col">
           <div class="msg-header">
             <span class="msg-author" onclick="showUserProfile(event, '${msg.user_id}')">${escapeHtml(displayName)}</span>
-            ${Badges.slot(msg.user_id, { size: 'sm' })}
             <span class="msg-timestamp" title="${fullTime}">${timeStr}</span>
           </div>
           ${replyHtml}
@@ -2800,10 +2810,14 @@ function initDashboardView() {
 
   // ─── USER PROFILE POPOUT (others) ──────────────────────
   async function showUserProfile(event, userId) {
+    // Member-list clicks should open the profile popout without the
+    // document-level outside-click handler immediately closing it.
+    if (event) event.stopPropagation();
     if (userId === currentUser.id) { toggleProfilePopout(); return; }
     const popout = document.getElementById('user-profile-popout');
     _profileUserId = userId;
-    const rect = event.target.getBoundingClientRect();
+    const anchor = event?.currentTarget || event?.target;
+    const rect = anchor.getBoundingClientRect();
     const popoutWidth = 300;
     const popoutHeight = 360; // rough estimate; clamped against viewport below
     let finalLeft = rect.left;
@@ -2831,6 +2845,9 @@ function initDashboardView() {
       const data = await api('GET', `/users/${userId}`);
       if (!data?.user) { toast('User not found'); closeUserProfilePopout(); return; }
       const user = data.user;
+      // Keep the profile actions in sync with the user's current relationship
+      // state. These are UI affordances only; the server remains authoritative.
+      await syncProfileRelationshipState(user);
       document.getElementById('up-name-display').textContent = user.display_name || user.username;
       document.getElementById('up-username-display').textContent = '@' + user.username;
       const bioEl = document.getElementById('up-bio-display');
@@ -2863,25 +2880,81 @@ function initDashboardView() {
     const popout = document.getElementById('user-profile-popout');
     popout.style.display = 'none';
     popout.classList.remove('pp-open');
+    closeProfileMoreMenu();
     _profileUserId = null;
   }
-  function startDMFromProfile() {
+  async function startDMFromProfile(messageText = '') {
     if (!_profileUserId) return;
     const userId = _profileUserId;
+    const text = String(messageText || '').trim();
     closeUserProfilePopout();
     const existing = dms.find(d => d._otherId === userId);
-    if (existing) { openRoom(existing.id); } else {
-      api('GET', `/users/${userId}`).then(data => {
-        if (data?.user) {
-          const name = data.user.display_name || data.user.username;
-          startDM(userId, name);
-        } else { toast('User not found'); }
-      });
+    if (existing) {
+      await openRoom(existing.id);
+    } else {
+      const data = await api('GET', `/users/${userId}`);
+      if (!data?.user) { toast('User not found'); return; }
+      const name = data.user.display_name || data.user.username;
+      await startDM(userId, name);
+    }
+    if (text) {
+      const input = document.getElementById('msg-input');
+      if (input) {
+        input.value = text;
+        sendMessage();
+      }
     }
   }
+  function sendMessageFromProfile() {
+    const input = document.getElementById('up-message-input');
+    const text = input?.value.trim();
+    if (!text) { input?.focus(); return; }
+    startDMFromProfile(text);
+  }
+
+  // ─── USER SETTINGS POPOUT ───────────────────────────────
+  function openUserSettingsModal() {
+    if (document.getElementById('user-settings-modal')) return;
+    const tpl = document.getElementById('tpl-settings');
+    if (!tpl) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'user-settings-modal';
+    overlay.className = 'user-settings-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'User Settings');
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) closeUserSettingsModal();
+    });
+    overlay.appendChild(tpl.content.cloneNode(true));
+    document.body.appendChild(overlay);
+    const view = overlay.querySelector('#view-settings');
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'user-settings-close';
+    close.setAttribute('aria-label', 'Close user settings');
+    close.title = 'Close';
+    close.innerHTML = '&times;';
+    close.onclick = closeUserSettingsModal;
+    view?.appendChild(close);
+    view?.querySelector('.settings-container')?.classList.add('settings-modal-container');
+    try { if (typeof initSettingsView === 'function') initSettingsView(); }
+    catch (err) { console.error('Failed to initialize user settings:', err); }
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  }
+
+  function closeUserSettingsModal() {
+    const modal = document.getElementById('user-settings-modal');
+    if (!modal) return;
+    try { if (typeof destroySettingsView === 'function') destroySettingsView(); }
+    catch (err) { console.error('Settings teardown error:', err); }
+    modal.classList.remove('open');
+    setTimeout(() => modal.remove(), 140);
+  }
+
   document.addEventListener('click', (e) => {
     const popout = document.getElementById('user-profile-popout');
-    if (popout.style.display === 'block' && !popout.contains(e.target) && !e.target.closest('.msg-author')) {
+    if (popout.style.display === 'block' && !popout.contains(e.target) && !e.target.closest('.msg-author') && !e.target.closest('.ml-row')) {
       closeUserProfilePopout();
     }
   });
@@ -3012,6 +3085,91 @@ function initDashboardView() {
   // "Copy User ID" button on another user's popout goes through this
   // small wrapper instead of referencing _profileUserId directly.
   function copyProfileUserId() { copyUserId(_profileUserId); }
+  async function syncProfileRelationshipState(user) {
+    const friendBtn = document.getElementById('up-friend-btn');
+    const removeBtn = document.getElementById('up-remove-friend-btn');
+    const blockBtn = document.getElementById('up-block-btn');
+    const blockLabel = document.getElementById('up-block-label');
+    if (!friendBtn || !blockBtn || !blockLabel) return;
+    try {
+      const [fRes, rRes] = await Promise.all([api('GET', '/friends'), api('GET', '/friends/requests')]);
+      friends = fRes?.friends || friends || [];
+      friendRequests = { incoming: rRes?.incoming || [], outgoing: rRes?.outgoing || [] };
+    } catch (_) {}
+    const isFriend = friends.some(f => f.id === user.id);
+    const hasOutgoing = friendRequests.outgoing.some(r => r.to_id === user.id);
+    const hasIncoming = friendRequests.incoming.some(r => r.from_id === user.id);
+    friendBtn.disabled = false;
+    friendBtn.classList.remove('pending', 'friend');
+    if (isFriend) {
+      friendBtn.title = 'Friends';
+      friendBtn.setAttribute('aria-label', 'Friends');
+      friendBtn.classList.add('friend');
+    } else if (hasOutgoing) {
+      friendBtn.title = 'Request Sent';
+      friendBtn.setAttribute('aria-label', 'Request Sent');
+      friendBtn.classList.add('pending');
+    } else if (hasIncoming) {
+      friendBtn.title = 'Accept Friend Request';
+      friendBtn.setAttribute('aria-label', 'Accept Friend Request');
+    } else {
+      friendBtn.title = 'Add Friend';
+      friendBtn.setAttribute('aria-label', 'Add Friend');
+    }
+    if (removeBtn) removeBtn.style.display = isFriend ? 'flex' : 'none';
+    blockLabel.textContent = user.is_blocked ? 'Unblock' : 'Block';
+    blockBtn.classList.toggle('danger', !user.is_blocked);
+    blockBtn.classList.toggle('safe', !!user.is_blocked);
+  }
+
+  async function profileFriendAction(event) {
+    event?.stopPropagation();
+    if (!_profileUserId) return;
+    const userId = _profileUserId;
+    const btn = document.getElementById('up-friend-btn');
+    if (btn?.classList.contains('friend')) return;
+    const req = friendRequests.incoming.find(r => r.from_id === userId);
+    if (req) {
+      await acceptFriendRequest(req.id, req.from_name || req.from_username || 'User');
+    } else if (!friendRequests.outgoing.some(r => r.to_id === userId)) {
+      const user = await api('GET', `/users/${userId}`);
+      if (user?.user) await sendFriendRequestTo(userId, user.user.display_name || user.user.username);
+    }
+    try { const data = await api('GET', `/users/${userId}`); if (data?.user) await syncProfileRelationshipState(data.user); } catch (_) {}
+  }
+
+  function toggleProfileMoreMenu(event) {
+    event?.stopPropagation();
+    const menu = document.getElementById('up-more-menu');
+    const button = document.getElementById('up-more-btn');
+    if (!menu || !button) return;
+    const open = menu.style.display !== 'block';
+    menu.style.display = open ? 'block' : 'none';
+    button.setAttribute('aria-expanded', String(open));
+  }
+  function closeProfileMoreMenu() {
+    const menu = document.getElementById('up-more-menu');
+    const button = document.getElementById('up-more-btn');
+    if (menu) menu.style.display = 'none';
+    if (button) button.setAttribute('aria-expanded', 'false');
+  }
+  async function removeProfileFriend() {
+    if (!_profileUserId) return;
+    const userId = _profileUserId;
+    await removeFriend(userId);
+    try { const data = await api('GET', `/users/${userId}`); if (data?.user) await syncProfileRelationshipState(data.user); } catch (_) {}
+  }
+  async function toggleProfileBlock() {
+    if (!_profileUserId) return;
+    const userId = _profileUserId;
+    const data = await api('GET', `/users/${userId}`);
+    if (!data?.user) return;
+    const blocked = !!data.user.is_blocked;
+    const result = blocked ? await api('DELETE', `/friends/block/${userId}`) : await api('POST', `/friends/block/${userId}`, {});
+    if (!result?.ok) return toast(result?.error || `Failed to ${blocked ? 'unblock' : 'block'} user`);
+    toast(blocked ? 'User unblocked' : 'User blocked');
+    try { const fresh = await api('GET', `/users/${userId}`); if (fresh?.user) await syncProfileRelationshipState(fresh.user); } catch (_) {}
+  }
   // Admin shortcut: profile → Manage Badges. Opens the Admin panel's Badges
   // tab with this user already selected (see initAdminPanel in admin.js).
   function manageBadgesFromProfile() {
@@ -3313,7 +3471,6 @@ function initDashboardView() {
         <div class="fr-info">
           <div class="fr-name-row">
             <div class="fr-name">${escapeHtml(name)}</div>
-            ${Badges.slot(f.id, { size: 'xs', max: 3 })}
           </div>
           <div class="fr-sub">@${escapeHtml(f.username)} · ${presenceLabel(f.status||'offline').toLowerCase()}</div>
         </div>
@@ -3353,8 +3510,10 @@ function initDashboardView() {
       else await startDM(userId, displayName);
     } else {
       toast(`Friend request sent to ${displayName}`);
-      document.getElementById('add-friend-input').value = '';
-      document.getElementById('add-friend-results').innerHTML = '';
+      const friendInput = document.getElementById('add-friend-input');
+      const friendResults = document.getElementById('add-friend-results');
+      if (friendInput) friendInput.value = '';
+      if (friendResults) friendResults.innerHTML = '';
       await loadFriendsData();
       if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
     }
@@ -3636,11 +3795,19 @@ function initDashboardView() {
   window.showUserProfile = showUserProfile;
   window.closeUserProfilePopout = closeUserProfilePopout;
   window.startDMFromProfile = startDMFromProfile;
+  window.sendMessageFromProfile = sendMessageFromProfile;
+  window.openUserSettingsModal = openUserSettingsModal;
+  window.closeUserSettingsModal = closeUserSettingsModal;
   window.toggleStatusMenu = toggleStatusMenu;
   window.setStatus = setStatus;
   window.toggleProfilePopout = toggleProfilePopout;
   window.copyUserId = copyUserId;
   window.copyProfileUserId = copyProfileUserId;
+  window.profileFriendAction = profileFriendAction;
+  window.toggleProfileMoreMenu = toggleProfileMoreMenu;
+  window.closeProfileMoreMenu = closeProfileMoreMenu;
+  window.removeProfileFriend = removeProfileFriend;
+  window.toggleProfileBlock = toggleProfileBlock;
   window.manageBadgesFromProfile = manageBadgesFromProfile;
   // Lets notifications.js (a separate, non-module script that has no
   // access to this IIFE's closure) check the current manually-picked
@@ -3708,6 +3875,8 @@ function initDashboardView() {
     inDiscoverView = false;
     document.getElementById('discover-panel').style.display = 'none';
     document.getElementById('server-panel').classList.add('hidden');
+    const serverSettingsBtn = document.getElementById('server-settings-btn');
+    if (serverSettingsBtn) serverSettingsBtn.style.display = '';
     document.getElementById('conv-header').classList.remove('hidden');
     document.getElementById('search-wrap').classList.remove('hidden');
     document.getElementById('dm-section').style.display = '';
@@ -3758,6 +3927,11 @@ function initDashboardView() {
       return showDMView();
     }
     document.getElementById('server-panel-name').textContent = server.name;
+    // Server Settings is a management surface. Only the owner or a member
+    // with MANAGE_SERVER (bit 3 / value 8) should be able to open it.
+    const canManageServer = !!(server.is_owner || (server.my_permissions & 8));
+    const serverSettingsBtn = document.getElementById('server-settings-btn');
+    if (serverSettingsBtn) serverSettingsBtn.style.display = canManageServer ? '' : 'none';
     document.getElementById('channel-list').innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">Loading…</div>`;
 
     await loadServerChannels(serverId);
@@ -4183,6 +4357,13 @@ function initDashboardView() {
     if (!currentServerId) return;
     const server = servers.find(s => s.id === currentServerId);
     if (!server) return;
+    // Keep the UI permission check in sync with the server-side
+    // MANAGE_SERVER guard. This prevents ordinary members from opening an
+    // editable server-settings screen even though the PATCH endpoint already
+    // rejects unauthorized changes.
+    if (!server.is_owner && !(server.my_permissions & 8)) {
+      return toast('You do not have permission to manage this server');
+    }
     document.getElementById('ss-server-name').textContent = server.name;
     document.getElementById('ss-name-input').value = server.name;
     document.getElementById('ss-desc-input').value = server.description || '';
@@ -4223,39 +4404,106 @@ function initDashboardView() {
     const countEl = document.getElementById('member-list-count');
     const serverId = currentServerId;
     if (!serverId) return;
-    const data = await api('GET', `/servers/${serverId}/members`);
+
+    const [membersData, rolesData] = await Promise.all([
+      api('GET', `/servers/${serverId}/members`),
+      api('GET', `/servers/${serverId}/roles`)
+    ]);
     if (currentServerId !== serverId) return; // switched servers while loading
-    const members = data?.members || [];
+
+    const members = membersData?.members || [];
+    const roles = (rolesData?.roles || []).slice().sort((a, b) => (b.position || 0) - (a.position || 0));
     countEl.textContent = `${members.length} Member${members.length === 1 ? '' : 's'}`;
 
-    const online = members.filter(m => m._status !== 'offline' && m.status !== 'offline');
-    const offline = members.filter(m => m._status === 'offline' || m.status === 'offline');
+    // Discord-style behavior:
+    // - only roles marked display_separately create their own member section;
+    // - a member appears in one section only, using their highest displayed role;
+    // - everyone else goes into the normal Members section;
+    // - offline users are kept in a separate Offline section.
+    const displayRoles = roles.filter(r => r.display_separately);
+    const displayRoleMap = new Map(displayRoles.map(r => [r.id, r]));
+    const groups = new Map(displayRoles.map(r => [r.id, []]));
+    const membersGroup = [];
+    const offlineGroup = [];
+
+    function getDisplayedRole(member) {
+      // The current Nyxie membership model assigns one role per member.
+      // Sorting by position here also makes this future-proof if the API
+      // later returns multiple roles on a member.
+      const candidates = [];
+      if (member.role?.id) candidates.push(member.role);
+      if (Array.isArray(member.roles)) candidates.push(...member.roles);
+      return candidates
+        .map(role => displayRoleMap.get(role.id) || (role.display_separately ? role : null))
+        .filter(Boolean)
+        .sort((a, b) => (b.position || 0) - (a.position || 0))[0] || null;
+    }
+
+    function isOffline(member) {
+      return (member.status || member._status || 'offline') === 'offline';
+    }
 
     function row(m) {
-      const status = m.status || 'offline';
-      const isOffline = status === 'offline';
+      const status = m.status || m._status || 'offline';
+      const isOfflineMember = status === 'offline';
       const avatarHtml = m.avatar
         ? `<img src="${versionedMediaUrl(m.avatar)}" />`
         : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase());
-      return `<div class="ml-row ${isOffline ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
+      const role = getDisplayedRole(m) || m.role;
+      return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
         <div class="ml-avatar">
           ${avatarHtml}
-          <span class="ml-status-dot pip-${isOffline ? 'offline' : 'online'}"></span>
+          <span class="ml-status-dot pip-${isOfflineMember ? 'offline' : (status === 'idle' ? 'idle' : status === 'dnd' ? 'dnd' : 'online')}"></span>
         </div>
         <div class="ml-info">
           <div class="ml-name-row">
             <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ownerCrownSvg() : ''}</div>
-            ${Badges.slot(m.id, { size: 'xs', max: 3 })}
           </div>
-          <div class="ml-sub">${escapeHtml(m.role?.name || 'Member')}</div>
+          ${role?.name ? `<div class="ml-sub">${escapeHtml(role.name)}</div>` : ''}
         </div>
       </div>`;
     }
 
-    container.innerHTML =
-      (online.length ? `<div class="ml-group-label">Online — ${online.length}</div>${online.map(row).join('')}` : '') +
-      (offline.length ? `<div class="ml-group-label">Offline — ${offline.length}</div>${offline.map(row).join('')}` : '') ||
-      `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
+    for (const member of members) {
+      if (isOffline(member)) {
+        offlineGroup.push(member);
+        continue;
+      }
+      const displayedRole = getDisplayedRole(member);
+      if (displayedRole && groups.has(displayedRole.id)) {
+        groups.get(displayedRole.id).push(member);
+      } else {
+        membersGroup.push(member);
+      }
+    }
+
+    // Stable ordering inside each section: display name/username.
+    const sortMembers = list => list.sort((a, b) =>
+      String(a.display_name || a.username || '').localeCompare(
+        String(b.display_name || b.username || ''), undefined, { sensitivity: 'base' }
+      )
+    );
+    groups.forEach(sortMembers);
+    sortMembers(membersGroup);
+    sortMembers(offlineGroup);
+
+    let html = '';
+    for (const role of displayRoles) {
+      const group = groups.get(role.id) || [];
+      if (!group.length) continue;
+      html += `<div class="ml-group-label ml-role-group-label">${escapeHtml(role.name)} — ${group.length}</div>`;
+      html += group.map(row).join('');
+    }
+    if (membersGroup.length) {
+      html += `<div class="ml-group-label ml-role-group-label">Members — ${membersGroup.length}</div>`;
+      html += membersGroup.map(row).join('');
+    }
+    if (offlineGroup.length) {
+      html += `<div class="ml-group-label ml-offline-group-label">Offline — ${offlineGroup.length}</div>`;
+      html += offlineGroup.map(row).join('');
+    }
+
+    container.innerHTML = html || `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
   }
 
   // Toggles the member list panel. On wide layouts it's a normal flex
@@ -4290,11 +4538,20 @@ function initDashboardView() {
 
     container.innerHTML = members.map(m => {
       const avatarHtml = m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : escapeHtml((m.display_name || '?')[0].toUpperCase());
+      const assignedRoleIds = new Set((m.roles || []).map(r => r.id));
       const roleSelect = (canManage && !m.is_owner)
-        ? `<select class="picker-role-select" onchange="submitMemberRoleChange('${m.id}', this.value)">
-             ${roleOptions.map(r => `<option value="${r.id}" ${m.role?.id === r.id ? 'selected' : ''}>${escapeHtml(r.name)}</option>`).join('')}
-           </select>`
-        : `<span class="picker-sub">${escapeHtml(m.role?.name || 'Member')}</span>`;
+        ? `<details class="picker-role-menu">
+             <summary class="picker-role-summary">Roles · ${assignedRoleIds.size}</summary>
+             <div class="picker-role-options">
+               ${roleOptions.map(r => `
+                 <label class="picker-role-option">
+                   <input type="checkbox" value="${r.id}" ${assignedRoleIds.has(r.id) ? 'checked' : ''} ${r.is_default ? 'disabled' : ''}
+                     onchange="submitMemberRoleChange('${m.id}', this)">
+                   <span>${escapeHtml(r.name)}</span>
+                 </label>`).join('')}
+             </div>
+           </details>`
+        : `<span class="picker-sub">${escapeHtml((m.roles || []).map(r => r.name).join(', ') || m.role?.name || 'Member')}</span>`;
       const kickBtn = (canKick && !m.is_owner && m.id !== currentUser.id)
         ? `<button class="picker-action-btn" onclick="confirmKickMember('${m.id}', ${JSON.stringify(m.display_name || m.username).replace(/"/g, '&quot;')})">Kick</button>`
         : '';
@@ -4310,10 +4567,19 @@ function initDashboardView() {
     }).join('') || `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
   }
 
-  async function submitMemberRoleChange(userId, roleId) {
-    const data = await api('PATCH', `/servers/${currentServerId}/members/${userId}`, { role_id: roleId });
-    if (!data?.ok) { toast(data?.error || 'Failed to change role'); renderServerMembers(); return; }
-    toast('Role updated');
+  async function submitMemberRoleChange(userId, input) {
+    const menu = input?.closest('.picker-role-menu');
+    if (!menu) return;
+    const roleIds = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked')).map(el => el.value);
+    const data = await api('PATCH', `/servers/${currentServerId}/members/${userId}`, { role_ids: roleIds });
+    if (!data?.ok) {
+      toast(data?.error || 'Failed to update roles');
+      renderServerMembers();
+      return;
+    }
+    const summary = menu.querySelector('.picker-role-summary');
+    if (summary) summary.textContent = `Roles · ${roleIds.length}`;
+    toast('Roles updated');
   }
 
   function confirmKickMember(userId, name) {

@@ -1787,6 +1787,71 @@ body.select-mode #view-app .dm-checkbox {
 }
 
 /* ── Compact action rows (shared by self + other-user popout) ── */
+#view-app .up-profile-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#view-app .up-friend-btn,
+#view-app .up-more-btn {
+  height: 32px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(20,20,22,.78);
+  color: #fff;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s ease, border-color .12s ease;
+}
+#view-app .up-friend-btn {
+  gap: 7px;
+  padding: 0 10px;
+  font: 600 .78rem inherit;
+}
+#view-app .up-friend-btn svg { width: 15px; height: 15px; }
+#view-app .up-friend-btn:hover,
+#view-app .up-more-btn:hover,
+#view-app .up-more-btn[aria-expanded="true"] { background: rgba(40,40,44,.95); border-color: rgba(255,255,255,.2); }
+#view-app .up-friend-btn.friend { color: var(--online); }
+#view-app .up-friend-btn.pending { color: var(--text-muted); }
+#view-app .up-friend-btn:disabled { opacity: .6; cursor: default; }
+#view-app .up-more-btn { width: 32px; padding: 0; }
+#view-app .up-more-btn svg { width: 18px; height: 18px; }
+#view-app .up-more-menu {
+  display: none;
+  position: absolute;
+  top: 38px;
+  right: 0;
+  width: 220px;
+  padding: 6px;
+  background: var(--bg-modal-card, var(--bg-secondary));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+#view-app .up-more-divider { height: 1px; background: var(--border-color); margin: 5px 2px; }
+
+#view-app .up-invite-server {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  border: 0; background: transparent; color: var(--text-secondary);
+  padding: 7px 8px; border-radius: 6px; text-align: left; cursor: pointer; font: inherit;
+}
+#view-app .up-invite-server:hover { background: var(--bg-hover); color: var(--text-primary); }
+#view-app .up-invite-server-dot {
+  width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-hover); color: var(--text-primary); font-size: .72rem; font-weight: 700; flex-shrink: 0;
+}
+#view-app .up-invite-empty { padding: 8px; color: var(--text-muted); font-size: .78rem; line-height: 1.35; }
+#view-app .pp-menu-item.safe { color: var(--online); }
+
 #view-app .pp-menu-item {
   display: flex;
   align-items: center;
@@ -2446,8 +2511,58 @@ body.select-mode #view-app .dm-checkbox {
   border-bottom-color: var(--accent);
 }
 #view-app .modal-wide {
-  max-width: 480px;
-  width: 100%;
+  max-width: 760px;
+  width: min(760px, calc(100vw - 32px));
+}
+
+/* Server settings is a centered pop-out, never a full-page settings view. */
+#view-app .server-settings-popout {
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+  max-height: min(760px, calc(100vh - 48px));
+  overflow-y: auto;
+  padding: 24px;
+}
+#view-app .server-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+#view-app .server-settings-header h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#view-app .server-settings-close {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+#view-app .server-settings-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+@media (max-width: 600px) {
+  #view-app .server-settings-popout {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 20px;
+    border-radius: 12px;
+  }
 }
 
 /* Shared bits reused by the Discovery page (search box, join button,
@@ -2868,6 +2983,58 @@ body.select-mode #view-app .dm-checkbox {
   padding: 3px 6px;
   font-size: 0.78rem;
 }
+#view-app .picker-role-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+#view-app .picker-role-summary {
+  list-style: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--bg-hover);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#view-app .picker-role-summary::-webkit-details-marker {
+  display: none;
+}
+#view-app .picker-role-menu[open] .picker-role-summary {
+  border-color: var(--accent);
+}
+#view-app .picker-role-options {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  top: calc(100% + 5px);
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-hover);
+  border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.28);
+}
+#view-app .picker-role-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+#view-app .picker-role-option:hover {
+  background: var(--bg-hover);
+}
+#view-app .picker-role-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
 #view-app .picker-action-btn {
   background: transparent;
   border: 1px solid var(--bg-hover);
@@ -3192,3 +3359,163 @@ body.image-lightbox-open {
   border-radius: 8px;
 }
 
+
+/* ─────────────────────────────────────────────────────────
+   User settings popout — account/client settings stay above
+   the dashboard instead of replacing the whole application.
+   Server settings keep their existing, separate modal.
+   ───────────────────────────────────────────────────────── */
+.user-settings-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.user-settings-modal.open { opacity: 1; }
+.user-settings-modal #view-settings {
+  width: min(1080px, 100%);
+  height: min(760px, calc(100vh - 48px));
+  height: min(760px, calc(100dvh - 48px));
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-modal);
+  box-shadow: var(--shadow), 0 24px 80px rgba(0,0,0,.45);
+  position: relative;
+  transform: translateY(8px) scale(.985);
+  transition: transform .14s ease;
+}
+.user-settings-modal.open #view-settings { transform: translateY(0) scale(1); }
+.user-settings-modal #view-settings .settings-container {
+  width: 100%;
+  height: 100%;
+}
+.user-settings-modal #view-settings .settings-content {
+  padding-right: 56px;
+}
+.user-settings-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 10;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+.user-settings-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Profile popout message composer */
+#view-app .up-message-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 10px;
+  padding: 4px 5px 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-input, var(--bg-secondary));
+}
+#view-app .up-message-input {
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: .82rem;
+}
+#view-app .up-message-input::placeholder { color: var(--text-muted); }
+#view-app .up-message-send {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#view-app .up-message-send:hover { filter: brightness(1.08); }
+#view-app .up-message-send svg { width: 15px; height: 15px; }
+
+@media (max-width: 768px) {
+  .user-settings-modal { padding: 0; }
+  .user-settings-modal #view-settings {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    border: 0;
+  }
+}
+
+/* User settings popout: the account/client settings overlay the app. */
+.user-settings-modal {
+  position: fixed; inset: 0; z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(0,0,0,.62);
+  opacity: 0; transition: opacity .14s ease;
+}
+.user-settings-modal.open { opacity: 1; }
+.user-settings-modal #view-settings {
+  width: min(1080px, 100%);
+  height: min(760px, calc(100vh - 48px));
+  height: min(760px, calc(100dvh - 48px));
+  border: 1px solid var(--border-color); border-radius: 14px;
+  overflow: hidden; background: var(--bg-modal);
+  box-shadow: var(--shadow), 0 24px 80px rgba(0,0,0,.45);
+  position: relative; transform: translateY(8px) scale(.985);
+  transition: transform .14s ease;
+}
+.user-settings-modal.open #view-settings { transform: translateY(0) scale(1); }
+.user-settings-modal #view-settings .settings-container { width:100%; height:100%; }
+.user-settings-modal #view-settings .settings-content { padding-right:56px; }
+.user-settings-close {
+  position:absolute; top:14px; right:16px; z-index:10;
+  width:34px; height:34px; border:0; border-radius:8px;
+  background:transparent; color:var(--text-muted); font-size:28px;
+  line-height:1; cursor:pointer;
+}
+.user-settings-close:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+/* Profile popout message composer */
+#view-app .up-message-box {
+  display:flex; align-items:center; gap:6px; margin:12px 0 10px;
+  padding:4px 5px 4px 10px; border:1px solid var(--border-color);
+  border-radius:8px; background:var(--bg-input, var(--bg-secondary));
+}
+#view-app .up-message-input {
+  min-width:0; flex:1; height:30px; border:0; outline:none;
+  background:transparent; color:var(--text-primary); font:inherit; font-size:.82rem;
+}
+#view-app .up-message-input::placeholder { color:var(--text-muted); }
+#view-app .up-message-send {
+  width:28px; height:28px; display:grid; place-items:center;
+  border:0; border-radius:6px; background:var(--accent); color:#fff;
+  cursor:pointer; flex-shrink:0;
+}
+#view-app .up-message-send:hover { filter:brightness(1.08); }
+#view-app .up-message-send svg { width:15px; height:15px; }
+@media (max-width:768px) {
+  .user-settings-modal { padding:0; }
+  .user-settings-modal #view-settings { width:100%; height:100%; max-height:none; border-radius:0; border:0; }
+}

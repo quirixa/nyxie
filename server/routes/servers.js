@@ -33,6 +33,29 @@ function cleanChannelName(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, MAX_CHANNEL_NAME);
 }
 
+function syncMemberPrimaryRole(db, serverId, userId) {
+  const top = get(db, `
+    SELECT sr.id
+    FROM server_member_roles smr
+    JOIN server_roles sr ON sr.id = smr.role_id AND sr.server_id = smr.server_id
+    WHERE smr.server_id = ? AND smr.user_id = ?
+    ORDER BY sr.position DESC, sr.created_at ASC
+    LIMIT 1
+  `, [serverId, userId]);
+  run(db, 'UPDATE server_members SET role_id = ? WHERE server_id = ? AND user_id = ?',
+    [top?.id || null, serverId, userId]);
+}
+
+function getAssignedRoles(db, serverId, userId) {
+  return all(db, `
+    SELECT sr.id, sr.name, sr.permissions, sr.position, sr.is_default, sr.display_separately
+    FROM server_member_roles smr
+    JOIN server_roles sr ON sr.id = smr.role_id AND sr.server_id = smr.server_id
+    WHERE smr.server_id = ? AND smr.user_id = ?
+    ORDER BY sr.position DESC, sr.created_at ASC
+  `, [serverId, userId]);
+}
+
 function serializeServer(db, server, ctx) {
   const memberCount = get(db, 'SELECT COUNT(*) AS c FROM server_members WHERE server_id = ?', [server.id])?.c || 0;
   return {
@@ -351,32 +374,50 @@ router.post('/:serverId/leave', requireAuth, requireServerPermission(null), asyn
 
 router.get('/:serverId/members', requireAuth, requireServerPermission(null), async (req, res) => {
   const db = await getUserDb();
+  const serverId = req.params.serverId;
+  ensureServerRoles(db, serverId);
   const members = all(db, `
     SELECT sm.user_id, sm.joined_at, sm.nickname, sm.muted, sm.role_id,
-           sr.name AS role_name, sr.position AS role_position, sr.permissions AS role_permissions,
            u.username, u.display_name, u.avatar, u.status
     FROM server_members sm
     JOIN users u ON u.id = sm.user_id
-    LEFT JOIN server_roles sr ON sr.id = sm.role_id
     WHERE sm.server_id = ?
-    ORDER BY COALESCE(sr.position, -1) DESC, u.username ASC
-  `, [req.params.serverId]);
+  `, [serverId]);
 
   const isUserConnected = req.app.locals.isUserConnected || (() => false);
   res.json({
-    members: members.map(m => ({
-      id: m.user_id,
-      username: m.username,
-      display_name: m.nickname || m.display_name,
-      global_display_name: m.display_name,
-      avatar: m.avatar,
-      status: effectiveStatus(m.status, { connected: isUserConnected(m.user_id), isSelf: m.user_id === req.user.id }),
-      nickname: m.nickname,
-      muted: !!m.muted,
-      joined_at: m.joined_at,
-      is_owner: m.user_id === req.serverCtx.server.owner_id,
-      role: m.role_id ? { id: m.role_id, name: m.role_name, position: m.role_position, permissions: m.role_permissions } : null
-    }))
+    members: members.map(m => {
+      const assignedRoles = getAssignedRoles(db, serverId, m.user_id);
+      const highestRole = assignedRoles[0] || null;
+      return {
+        id: m.user_id,
+        username: m.username,
+        display_name: m.nickname || m.display_name,
+        global_display_name: m.display_name,
+        avatar: m.avatar,
+        status: effectiveStatus(m.status, { connected: isUserConnected(m.user_id), isSelf: m.user_id === req.user.id }),
+        nickname: m.nickname,
+        muted: !!m.muted,
+        joined_at: m.joined_at,
+        is_owner: m.user_id === req.serverCtx.server.owner_id,
+        roles: assignedRoles.map(r => ({
+          id: r.id,
+          name: r.name,
+          position: r.position,
+          permissions: r.permissions,
+          display_separately: !!r.display_separately,
+          is_default: !!r.is_default
+        })),
+        // Keep the old single-role shape for any existing client code.
+        role: highestRole ? {
+          id: highestRole.id,
+          name: highestRole.name,
+          position: highestRole.position,
+          permissions: highestRole.permissions,
+          display_separately: !!highestRole.display_separately
+        } : null
+      };
+    })
   });
 });
 
@@ -385,10 +426,11 @@ router.get('/:serverId/members', requireAuth, requireServerPermission(null), asy
 router.patch('/:serverId/members/:userId', requireAuth, requireServerPermission(null), async (req, res) => {
   const db = await getUserDb();
   const { serverId, userId } = req.params;
+  ensureServerRoles(db, serverId);
   const targetCtx = getServerContext(db, serverId, userId);
   if (!targetCtx) return res.status(404).json({ error: 'Member not found' });
 
-  const { nickname, role_id } = req.body;
+  const { nickname, role_id, role_ids } = req.body;
   const isSelf = userId === req.user.id;
 
   if (nickname !== undefined) {
@@ -399,28 +441,67 @@ router.patch('/:serverId/members/:userId', requireAuth, requireServerPermission(
       [nickname ? String(nickname).trim().slice(0, 32) : null, serverId, userId]);
   }
 
-  if (role_id !== undefined) {
-    if (!hasPermission(req.serverCtx, PERMISSIONS.MANAGE_MEMBERS)) return res.status(403).json({ error: 'Missing permission' });
-    if (!outranks(req.serverCtx, targetCtx)) return res.status(403).json({ error: 'Cannot change the role of an equal or higher-ranked member' });
-    const role = get(db, 'SELECT * FROM server_roles WHERE id = ? AND server_id = ?', [role_id, serverId]);
-    if (!role) return res.status(400).json({ error: 'Role not found' });
-    // Can't hand out a role that outranks (or equals) your own — stops a
-    // Moderator promoting someone to Admin.
-    if (!req.serverCtx.isOwner && role.position >= req.serverCtx.rolePosition) {
+  const wantsRoleUpdate = role_ids !== undefined || role_id !== undefined;
+  if (wantsRoleUpdate) {
+    if (!hasPermission(req.serverCtx, PERMISSIONS.MANAGE_MEMBERS)) {
+      return res.status(403).json({ error: 'Missing permission' });
+    }
+    if (!outranks(req.serverCtx, targetCtx)) {
+      return res.status(403).json({ error: 'Cannot change the roles of an equal or higher-ranked member' });
+    }
+
+    let requestedRoleIds;
+    if (Array.isArray(role_ids)) {
+      requestedRoleIds = role_ids.map(id => String(id)).filter(Boolean);
+    } else {
+      // Backwards compatibility for the old one-role client.
+      requestedRoleIds = role_id ? [String(role_id)] : [];
+    }
+    requestedRoleIds = [...new Set(requestedRoleIds)];
+
+    const defaultRoleId = getDefaultRoleId(db, serverId);
+    // The base Member role is the server-wide baseline and cannot be removed.
+    if (defaultRoleId && !requestedRoleIds.includes(defaultRoleId)) {
+      requestedRoleIds.push(defaultRoleId);
+    }
+
+    const placeholders = requestedRoleIds.map(() => '?').join(',');
+    const roles = requestedRoleIds.length ? all(db, `
+      SELECT * FROM server_roles
+      WHERE server_id = ? AND id IN (${placeholders})
+    `, [serverId, ...requestedRoleIds]) : [];
+
+    if (roles.length !== requestedRoleIds.length) {
+      return res.status(400).json({ error: 'One or more roles were not found' });
+    }
+    if (!req.serverCtx.isOwner && roles.some(role => role.position >= req.serverCtx.rolePosition)) {
       return res.status(403).json({ error: 'Cannot assign a role equal to or higher than your own' });
     }
-    run(db, 'UPDATE server_members SET role_id = ? WHERE server_id = ? AND user_id = ?', [role_id, serverId, userId]);
-    req.app.locals.broadcastToUser(userId, { type: 'server_member_updated', server_id: serverId, user_id: userId, role_id });
+
+    run(db, 'DELETE FROM server_member_roles WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    const now = Date.now();
+    for (const role of roles) {
+      run(db, `
+        INSERT INTO server_member_roles (server_id, user_id, role_id, assigned_at)
+        VALUES (?, ?, ?, ?)
+      `, [serverId, userId, role.id, now]);
+    }
+    syncMemberPrimaryRole(db, serverId, userId);
   }
 
   const updatedCtx = getServerContext(db, serverId, userId);
+  const updatedRoles = getAssignedRoles(db, serverId, userId);
   const memberIds = all(db, 'SELECT user_id FROM server_members WHERE server_id = ?', [serverId]).map(m => m.user_id);
   memberIds.forEach(uid => req.app.locals.broadcastToUser(uid, {
-    type: 'server_member_updated', server_id: serverId, user_id: userId,
-    nickname: updatedCtx.nickname, role_id: updatedCtx.roleId
+    type: 'server_member_updated',
+    server_id: serverId,
+    user_id: userId,
+    nickname: updatedCtx.nickname,
+    role_id: updatedCtx.roleId,
+    role_ids: updatedRoles.map(r => r.id)
   }));
 
-  res.json({ ok: true });
+  res.json({ ok: true, roles: updatedRoles });
 });
 
 router.delete('/:serverId/members/:userId', requireAuth, requireServerPermission(PERMISSIONS.KICK_MEMBERS), async (req, res) => {
@@ -504,7 +585,7 @@ router.get('/:serverId/roles', requireAuth, requireServerPermission(null), async
 router.post('/:serverId/roles', requireAuth, requireServerPermission(PERMISSIONS.MANAGE_ROLES), async (req, res) => {
   const db = await getUserDb();
   const { serverId } = req.params;
-  let { name, permissions, position } = req.body;
+  let { name, permissions, position, display_separately } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Role name required' });
   name = name.trim().slice(0, 32);
   // Can't grant a role with more permission bits than the creator holds
@@ -519,8 +600,9 @@ router.post('/:serverId/roles', requireAuth, requireServerPermission(PERMISSIONS
 
   const id = crypto.randomUUID();
   const now = Date.now();
-  run(db, 'INSERT INTO server_roles (id, server_id, name, permissions, position, is_default, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
-    [id, serverId, name, cappedPerms, pos, now]);
+  const displaySeparately = display_separately === true || display_separately === 1 || display_separately === '1' ? 1 : 0;
+  run(db, 'INSERT INTO server_roles (id, server_id, name, permissions, position, is_default, display_separately, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+    [id, serverId, name, cappedPerms, pos, displaySeparately, now]);
 
   const role = get(db, 'SELECT * FROM server_roles WHERE id = ?', [id]);
   const memberIds = all(db, 'SELECT user_id FROM server_members WHERE server_id = ?', [serverId]).map(m => m.user_id);
@@ -537,7 +619,7 @@ router.patch('/:serverId/roles/:roleId', requireAuth, requireServerPermission(PE
     return res.status(403).json({ error: 'Cannot edit a role at or above your own rank' });
   }
 
-  const { name, permissions } = req.body;
+  const { name, permissions, display_separately } = req.body;
   const updates = [];
   const params = [];
   if (name !== undefined) {
@@ -549,6 +631,10 @@ router.patch('/:serverId/roles/:roleId', requireAuth, requireServerPermission(PE
     const requested = Number.isInteger(permissions) ? permissions : 0;
     const cappedPerms = req.serverCtx.isOwner ? requested : (requested & req.serverCtx.permissions);
     updates.push('permissions = ?'); params.push(cappedPerms);
+  }
+  if (display_separately !== undefined) {
+    const value = display_separately === true || display_separately === 1 || display_separately === '1' ? 1 : 0;
+    updates.push('display_separately = ?'); params.push(value);
   }
   if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
   params.push(roleId);
@@ -571,8 +657,18 @@ router.delete('/:serverId/roles/:roleId', requireAuth, requireServerPermission(P
   }
 
   const fallbackRoleId = getDefaultRoleId(db, serverId);
-  run(db, 'UPDATE server_members SET role_id = ? WHERE server_id = ? AND role_id = ?', [fallbackRoleId, serverId, roleId]);
+  const affectedMembers = all(db, 'SELECT user_id FROM server_member_roles WHERE server_id = ? AND role_id = ?', [serverId, roleId]).map(r => r.user_id);
+  run(db, 'DELETE FROM server_member_roles WHERE server_id = ? AND role_id = ?', [serverId, roleId]);
   run(db, 'DELETE FROM server_roles WHERE id = ?', [roleId]);
+  if (fallbackRoleId) {
+    for (const userId of affectedMembers) {
+      run(db, `
+        INSERT OR IGNORE INTO server_member_roles (server_id, user_id, role_id, assigned_at)
+        VALUES (?, ?, ?, ?)
+      `, [serverId, userId, fallbackRoleId, Date.now()]);
+      syncMemberPrimaryRole(db, serverId, userId);
+    }
+  }
 
   const memberIds = all(db, 'SELECT user_id FROM server_members WHERE server_id = ?', [serverId]).map(m => m.user_id);
   memberIds.forEach(uid => req.app.locals.broadcastToUser(uid, { type: 'server_role_deleted', server_id: serverId, role_id: roleId }));

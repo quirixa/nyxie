@@ -162,6 +162,21 @@ async function getUserDb() {
   try { db.run("ALTER TABLE server_members ADD COLUMN nickname TEXT"); } catch (e) {}
   try { db.run("ALTER TABLE server_members ADD COLUMN muted INTEGER DEFAULT 0"); } catch (e) {}
 
+  // Members can hold multiple server roles. role_id is retained as a
+  // backwards-compatible cache of the highest-position role; the join table
+  // below is the source of truth for assignments.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS server_member_roles (
+      server_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      assigned_at INTEGER NOT NULL,
+      PRIMARY KEY (server_id, user_id, role_id)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_server_member_roles_member ON server_member_roles (server_id, user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_server_member_roles_role ON server_member_roles (server_id, role_id)');
+
   // Roles a server can assign to members. Every server gets three
   // default roles (Admin/Moderator/Member) created in
   // services/permissions.js at server-creation time; MANAGE_SERVER
@@ -175,10 +190,21 @@ async function getUserDb() {
       permissions INTEGER NOT NULL DEFAULT 0,
       position INTEGER NOT NULL DEFAULT 0,
       is_default INTEGER DEFAULT 0,
+      display_separately INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_server_roles_server ON server_roles (server_id)');
+  // Discord-style member-list grouping: roles can opt into being shown as
+  // their own section in the server member list. Existing databases get the
+  // new column through this lightweight migration.
+  try { db.run("ALTER TABLE server_roles ADD COLUMN display_separately INTEGER DEFAULT 0"); } catch (e) {}
+  // Give the built-in Admin/Moderator roles the Discord-style hoisted
+  // behavior when upgrading an existing database. Custom roles remain
+  // opt-in and the normal Member role stays in the main Members section.
+  db.run(`UPDATE server_roles SET display_separately = 1
+          WHERE LOWER(name) IN ('admin', 'administrator', 'moderator')
+            AND (display_separately IS NULL OR display_separately = 0)`);
 
   // Server-level bans. Kept separate from `blocks` (which is a per-user,
   // cross-server relationship) — a server ban only prevents rejoining

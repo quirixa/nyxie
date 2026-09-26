@@ -151,23 +151,8 @@ body.theme-retro .nyx-badge svg {
 #nyx-badge-tip .nyx-tip-name { font-weight: 700; }
 #nyx-badge-tip .nyx-tip-desc { color: var(--text-muted); margin-top: 1px; }
 
-/* ── Placement in existing views ── */
-
-/* Chat message header: name · badges · time */
-#view-app .msg-header > .nyx-badges { align-self: center; }
-
-/* Member list + friends list names are single-line ellipsised blocks; the
-   badges sit beside them (not inside) so they never get cut off. */
-#view-app .ml-name-row,
-#view-app .fr-name-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-#view-app .ml-name-row .ml-name,
-#view-app .fr-name-row .fr-name { min-width: 0; flex: 0 1 auto; }
-#view-app .ml-row.offline .nyx-badges { opacity: 0.55; }
+/* ── Placement in profiles only ── */
+/* Badges are intentionally not rendered in chat headers, member lists, or friends lists. */
 
 /* Settings → My Account row */
 #view-settings .account-field .af-value.af-badges {
