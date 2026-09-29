@@ -3,6 +3,16 @@
 // from routes/auth.js, so middleware doesn't depend on a route module.
 const { verifyToken } = require('../services/jwt');
 const { getUserDb, get } = require('../database/userDb');
+const { checkSession } = require('../services/sessions');
+
+// A token is live when (a) it carries a session id whose session hasn't
+// been revoked, or (b) it's a pre-sessions token issued after the user's
+// last "log out everywhere else" (users.tokens_invalid_before).
+function tokenIsLive(db, payload, tokensInvalidBefore) {
+  if (payload.sid) return checkSession(db, payload.sid, payload.sub);
+  if (tokensInvalidBefore && (payload.iat || 0) * 1000 < tokensInvalidBefore) return false;
+  return true;
+}
 
 async function requireAuth(req, res, next) {
   try {
@@ -18,10 +28,15 @@ async function requireAuth(req, res, next) {
     // defensively ALTERs this column onto `users` before any request
     // that could reach here would run (server.js initializes the user
     // DB before listening), so it's always present by the time we query.
-    const user = get(db, 'SELECT id, username, display_name, disabled, role FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, display_name, disabled, role, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     if (user.disabled) return res.status(403).json({ error: 'Account disabled' });
+    if (!tokenIsLive(db, payload, user.tokens_invalid_before)) {
+      return res.status(401).json({ error: 'Session expired or revoked' });
+    }
     req.user = user;
+    req.sessionId = payload.sid || null;
+    req.tokenIat = payload.iat || 0;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -38,4 +53,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, requireAdmin, tokenIsLive };

@@ -20,6 +20,7 @@ const NotifSound = (() => {
       audio = new Audio('/assets/sounds/notification.mp3');
       audio.volume = 0.5;
     }
+    if (typeof nyxieApplyOutput === 'function') nyxieApplyOutput(audio, 0.5);
     return audio;
   }
 
@@ -104,6 +105,7 @@ const Ringtone = (() => {
     audio = new Audio(files[kind]);
     audio.loop = true;
     audio.volume = 0.6;
+    if (typeof nyxieApplyOutput === 'function') nyxieApplyOutput(audio, 0.6);
     const p = audio.play();
     // Same reasoning as NotifSound.play(): autoplay can legitimately be
     // blocked before the page's first click/keydown has fired, and that

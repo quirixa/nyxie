@@ -6,6 +6,9 @@ const { getUserDb, get, run } = require('../database/userDb');
 const { signToken, verifyToken } = require('../services/jwt');
 const { isReservedUsername } = require('../services/reservedUsernames');
 const { STATUSES } = require('../services/presence');
+const { createSession } = require('../services/sessions');
+const { tokenIsLive } = require('../middleware/auth');
+const totp = require('../services/totp');
 
 const SALT_ROUNDS = 10;
 
@@ -72,7 +75,7 @@ router.post('/register', async (req, res) => {
     // /api/servers/:id/join) — see routes/servers.js. There is
     // deliberately no automatic enrollment into any server here.
 
-    const token = signToken(userId);
+    const token = signToken(userId, createSession(db, userId, req));
     res.status(201).json({
       token,
       user: { id: userId, username: trimmedUsername, email: trimmedEmail, display_name: displayName, avatar: null, banner: null, banner_color: null, bio: null, status: 'online' }
@@ -116,9 +119,36 @@ router.post('/login', async (req, res) => {
       user.disabled = 0;
     }
 
+    // Two-factor: password was correct, so ask for the second factor.
+    // Accepts an authenticator code or a one-time backup code.
+    if (user.totp_enabled) {
+      const code = String(req.body.code || '').trim();
+      if (!code) {
+        return res.status(401).json({ error: 'Enter your two-factor code', mfa_required: true });
+      }
+      if (totp.tooManyAttempts(user.id)) {
+        return res.status(429).json({ error: 'Too many wrong codes. Try again in a few minutes.', mfa_required: true });
+      }
+      let ok = false;
+      try { ok = totp.verifyTotp(totp.decryptSecret(user.totp_secret), code); } catch (e) { ok = false; }
+      if (!ok) {
+        const hash = totp.hashBackupCode(code);
+        const row = get(db, 'SELECT code_hash FROM user_backup_codes WHERE user_id = ? AND code_hash = ? AND used_at IS NULL', [user.id, hash]);
+        if (row) {
+          run(db, 'UPDATE user_backup_codes SET used_at = ? WHERE user_id = ? AND code_hash = ?', [Date.now(), user.id, hash]);
+          ok = true;
+        }
+      }
+      if (!ok) {
+        totp.recordFailure(user.id);
+        return res.status(401).json({ error: 'Invalid two-factor code', mfa_required: true });
+      }
+      totp.clearFailures(user.id);
+    }
+
     run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
 
-    const token = signToken(user.id);
+    const token = signToken(user.id, createSession(db, user.id, req));
     res.json({
       token,
       user: {
@@ -141,7 +171,8 @@ router.post('/login', async (req, res) => {
         // this is display-only; every admin endpoint re-checks the real
         // role server-side via requireAdmin (server/middleware/auth.js)
         // and never trusts this client-held copy.
-        role: user.role || 'USER'
+        role: user.role || 'USER',
+        totp_enabled: !!user.totp_enabled
       }
     });
   } catch (err) {
@@ -163,8 +194,13 @@ router.get('/me', async (req, res) => {
     // response above) — dashboard.js refreshes currentUser from this
     // endpoint on every app load, so it's the other place the client's
     // cached role can go stale without this.
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
+    if (!tokenIsLive(db, payload, user.tokens_invalid_before)) {
+      return res.status(401).json({ error: 'Session expired or revoked' });
+    }
+    delete user.tokens_invalid_before;
+    user.totp_enabled = !!user.totp_enabled;
     res.json({ user });
   } catch (err) {
     res.status(401).json({ error: 'Invalid or expired token' });

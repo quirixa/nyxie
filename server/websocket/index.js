@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const { verifyToken } = require('../services/jwt');
+const { tokenIsLive } = require('../middleware/auth');
 const { getUserDb, get, run, all } = require('../database/userDb');
 const { isBlocked } = require('../services/blocks');
 const { STATUSES, effectiveStatus } = require('../services/presence');
@@ -276,8 +277,8 @@ function setupWebSocket(server) {
     }
 
     const db = await getUserDb();
-    const user = get(db, 'SELECT id, username, display_name, avatar, status FROM users WHERE id = ?', [payload.sub]);
-    if (!user) {
+    const user = get(db, 'SELECT id, username, display_name, avatar, status, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
+    if (!user || !tokenIsLive(db, payload, user.tokens_invalid_before)) {
       ws.close(4001);
       return;
     }
@@ -291,7 +292,7 @@ function setupWebSocket(server) {
     if (rawStatus !== user.status) run(db, 'UPDATE users SET status = ? WHERE id = ?', [rawStatus, user.id]);
     run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
 
-    clientMeta.set(ws, { userId: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, rooms: new Set() });
+    clientMeta.set(ws, { sid: payload.sid || null, userId: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, rooms: new Set() });
     if (!userConnections.has(user.id)) userConnections.set(user.id, new Set());
     userConnections.get(user.id).add(ws);
 
@@ -495,4 +496,15 @@ function setupWebSocket(server) {
   return { wss, broadcast, broadcastToUser, broadcastAll };
 }
 
-module.exports = { setupWebSocket, broadcast, broadcastToUser, isUserConnected, broadcastPresenceChange };
+// Close every socket that belongs to a revoked session (or, with no sid,
+// every socket the user has except those whose sid is in `keepSids`).
+function disconnectSessions(userId, predicate) {
+  const set = userConnections.get(userId);
+  if (!set) return;
+  for (const ws of Array.from(set)) {
+    const meta = clientMeta.get(ws);
+    if (meta && predicate(meta.sid)) { try { ws.close(4001); } catch (e) {} }
+  }
+}
+
+module.exports = { disconnectSessions, setupWebSocket, broadcast, broadcastToUser, isUserConnected, broadcastPresenceChange };

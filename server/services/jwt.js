@@ -26,8 +26,12 @@ if (JWT_SECRET.length < 32 || WEAK_JWT_SECRETS.has(JWT_SECRET.toLowerCase())) {
 
 const JWT_EXPIRES = '7d';
 
-function signToken(userId) {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+// `sessionId` (optional) ties the token to a row in user_sessions so the
+// Sessions settings tab can list and revoke it. Old tokens without one
+// keep working (see middleware/auth.js).
+function signToken(userId, sessionId) {
+  const payload = sessionId ? { sub: userId, sid: sessionId } : { sub: userId };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
 function verifyToken(token) {

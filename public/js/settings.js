@@ -72,6 +72,16 @@ function initSettingsView() {
     });
     if (isMobileLayout()) document.querySelector('.settings-container').classList.add('mobile-tab-active');
     if (tab === 'language') initLanguageSettings();
+    if (tab !== 'voice') stopMicTest();
+    if (tab === 'my-account') refresh2fa();
+    else if (tab === 'sessions') refreshSessions();
+    else if (tab === 'voice') loadVoiceSettings();
+    else if (tab === 'sync') loadSyncTab();
+    else if (tab === 'experiments') renderExperiments();
+    else if (tab === 'bots') refreshBots();
+    else if (tab === 'feedback') loadFeedbackTab();
+    else if (tab === 'changelogs') renderChangelog();
+    else if (tab === 'source' || tab === 'donate') loadLinkTabs();
   }
 
   // ---- Load user data ----
@@ -487,8 +497,531 @@ function initSettingsView() {
   }
 }
 
-  function generateBackupCodes() { toast('Backup codes generation coming soon'); }
-  function addAuthenticator() { toast('Authenticator setup coming soon'); }
+  // ═══════════════════════════════════════════════════════════════
+  // Settings tabs: Sessions, Two-factor, Voice, Sync, Experiments,
+  // Bots, Feedback, Changelogs, Source Code, Donate
+  // ═══════════════════════════════════════════════════════════════
+  const byId = id => document.getElementById(id);
+
+  function timeAgo(ts) {
+    const diff = Math.max(0, Date.now() - ts);
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + ' hr ago';
+    const d = Math.floor(h / 24);
+    return d + (d === 1 ? ' day ago' : ' days ago');
+  }
+
+  function copyText(text, okMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast(okMsg || 'Copied')).catch(() => toast('Could not copy'));
+    } else {
+      toast('Could not copy');
+    }
+  }
+
+  // ---- Sessions ----
+  const ICON_DESKTOP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+  const ICON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+
+  async function refreshSessions() {
+    const list = byId('sessions-list');
+    if (!list) return;
+    list.innerHTML = '<div class="px-empty">Loading…</div>';
+    const res = await api('GET', '/account/sessions');
+    if (!res || res.error) { list.innerHTML = '<div class="px-empty">Couldn\'t load sessions.</div>'; return; }
+    let html = res.sessions.map(s => `
+      <div class="px-card">
+        <div class="px-card-icon">${s.mobile ? ICON_PHONE : ICON_DESKTOP}</div>
+        <div class="px-card-body">
+          <div class="px-card-title">${escapeHtml(s.browser)} on ${escapeHtml(s.os)} ${s.current ? '<span class="px-badge">This device</span>' : ''}</div>
+          <div class="px-card-sub">Active ${timeAgo(s.lastActive)} · signed in ${new Date(s.createdAt).toLocaleDateString()}${s.ip ? ' · ' + escapeHtml(s.ip) : ''}</div>
+        </div>
+        ${s.current ? '' : `<div class="px-card-actions"><button type="button" class="px-mini-btn danger" onclick="revokeSession('${escapeHtml(s.id)}')">Log out</button></div>`}
+      </div>`).join('');
+    if (res.legacyToken) {
+      html = '<div class="px-card"><div class="px-card-icon">' + ICON_DESKTOP + '</div><div class="px-card-body"><div class="px-card-title">This device <span class="px-badge">Current</span></div><div class="px-card-sub">You signed in before session tracking was added. Log out and back in to see it listed here.</div></div></div>' + html;
+    }
+    list.innerHTML = html || '<div class="px-empty">No active sessions.</div>';
+    const others = res.sessions.filter(s => !s.current).length;
+    byId('sessions-revoke-all').disabled = others === 0 && !res.legacyToken;
+  }
+
+  async function revokeSession(id) {
+    const res = await api('DELETE', '/account/sessions/' + encodeURIComponent(id));
+    if (res?.error) { toast(res.error); return; }
+    toast('Device logged out');
+    refreshSessions();
+  }
+
+  async function revokeOtherSessions() {
+    if (!confirm('Log out every other device? You\'ll stay signed in here.')) return;
+    const res = await api('DELETE', '/account/sessions');
+    if (res?.error) { toast(res.error); return; }
+    if (res && res.token) {
+      token = res.token;
+      localStorage.setItem('nyxie_token', res.token);
+    }
+    toast('Logged out of all other devices');
+    refreshSessions();
+  }
+
+  // ---- Two-factor: authenticator + backup codes ----
+  let twofaState = { enabled: false, remaining: 0 };
+  let twofaSecret = '';
+  let backupCodes = [];
+  let twofaPwAction = null;
+
+  async function refresh2fa() {
+    const res = await api('GET', '/account/2fa');
+    if (!res || res.error) return;
+    twofaState = { enabled: !!res.enabled, remaining: res.backupCodesRemaining || 0 };
+    const title = byId('twofa-auth-title'), desc = byId('twofa-auth-desc'), backup = byId('twofa-backup-desc');
+    if (title) title.textContent = twofaState.enabled ? 'Authenticator is on' : 'Add Authenticator';
+    if (desc) desc.textContent = twofaState.enabled ? 'Tap to turn off two-factor authentication' : 'Use an authenticator app to generate codes';
+    if (backup) backup.textContent = twofaState.enabled ? `${twofaState.remaining} of 10 codes left — tap to make new ones` : 'Get 10 one-time use backup codes';
+  }
+
+  async function addAuthenticator() {
+    if (twofaState.enabled) { openTwofaPassword('disable'); return; }
+    const res = await api('POST', '/account/2fa/setup', {});
+    if (!res || res.error) { toast(res?.error || 'Could not start setup'); return; }
+    twofaSecret = res.secret;
+    byId('twofa-secret').textContent = res.secret.match(/.{1,4}/g).join(' ');
+    byId('twofa-code').value = '';
+    byId('twofa-setup-modal').style.display = 'flex';
+    if (typeof QRCode !== 'undefined') {
+      QRCode.toCanvas(byId('twofa-qr'), res.otpauthUri, { width: 180, margin: 1 }, () => {});
+    }
+    byId('twofa-code').focus();
+  }
+
+  function copyTwofaSecret() { copyText(twofaSecret, 'Secret copied'); }
+
+  async function enableAuthenticator() {
+    const code = byId('twofa-code').value.trim();
+    if (!/^\d{6}$/.test(code.replace(/\s/g, ''))) { toast('Enter the 6-digit code from your app'); return; }
+    const btn = byId('twofa-enable-btn');
+    btn.disabled = true;
+    const res = await api('POST', '/account/2fa/enable', { code });
+    btn.disabled = false;
+    if (!res || res.error) { toast(res?.error || 'Could not turn on authenticator'); return; }
+    byId('twofa-setup-modal').style.display = 'none';
+    toast('Two-factor authentication is on');
+    showBackupCodes(res.backupCodes);
+    refresh2fa();
+  }
+
+  function generateBackupCodes() {
+    if (!twofaState.enabled) {
+      toast('Turn on an authenticator first — backup codes are its fallback');
+      addAuthenticator();
+      return;
+    }
+    openTwofaPassword('backup');
+  }
+
+  function openTwofaPassword(action) {
+    twofaPwAction = action;
+    byId('twofa-password-title').textContent = action === 'disable' ? 'Turn off authenticator' : 'New backup codes';
+    byId('twofa-password-desc').textContent = action === 'disable'
+      ? 'Enter your password to turn off two-factor authentication. Your backup codes will stop working.'
+      : 'Enter your password to generate 10 new codes. Any codes you had before will stop working.';
+    byId('twofa-password-btn').textContent = action === 'disable' ? 'Turn off' : 'Generate';
+    byId('twofa-password').value = '';
+    byId('twofa-password-modal').style.display = 'flex';
+    byId('twofa-password').focus();
+  }
+
+  async function submitTwofaPassword() {
+    const password = byId('twofa-password').value;
+    if (!password) { toast('Password is required'); return; }
+    const btn = byId('twofa-password-btn');
+    btn.disabled = true;
+    const path = twofaPwAction === 'disable' ? '/account/2fa/disable' : '/account/2fa/backup-codes';
+    const res = await api('POST', path, { password });
+    btn.disabled = false;
+    if (!res || res.error) { toast(res?.error || 'Something went wrong'); return; }
+    byId('twofa-password-modal').style.display = 'none';
+    if (twofaPwAction === 'disable') toast('Two-factor authentication is off');
+    else showBackupCodes(res.backupCodes);
+    refresh2fa();
+  }
+
+  function showBackupCodes(codes) {
+    backupCodes = codes || [];
+    byId('backup-codes-grid').innerHTML = backupCodes.map(c => `<code>${escapeHtml(c)}</code>`).join('');
+    byId('backup-codes-modal').style.display = 'flex';
+  }
+  function copyBackupCodes() { copyText(backupCodes.join('\n'), 'Codes copied'); }
+  function downloadBackupCodes() {
+    const text = 'Nyxie backup codes for @' + currentUser.username + '\nEach code works once.\n\n' + backupCodes.join('\n') + '\n';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = 'nyxie-backup-codes.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ---- Voice settings ----
+  let micTest = null;
+
+  function fillDeviceSelect(sel, devices, current, fallbackLabel) {
+    const real = devices.filter(d => d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    sel.innerHTML = '<option value="default">System default</option>' +
+      real.map((d, i) => `<option value="${escapeHtml(d.deviceId)}">${escapeHtml(d.label || (fallbackLabel + ' ' + (i + 1)))}</option>`).join('');
+    sel.value = Array.from(sel.options).some(o => o.value === current) ? current : 'default';
+  }
+
+  async function populateAudioDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const p = getVoicePrefs();
+      fillDeviceSelect(byId('voice-input-device'), devs.filter(d => d.kind === 'audioinput'), p.inputDeviceId, 'Microphone');
+      fillDeviceSelect(byId('voice-output-device'), devs.filter(d => d.kind === 'audiooutput'), p.outputDeviceId, 'Speaker');
+    } catch (e) { /* leave the default option */ }
+  }
+
+  function loadVoiceSettings() {
+    const p = getVoicePrefs();
+    byId('voice-input-volume').value = p.inputVolume;
+    byId('voice-input-volume-val').textContent = p.inputVolume + '%';
+    byId('voice-output-volume').value = p.outputVolume;
+    byId('voice-output-volume-val').textContent = p.outputVolume + '%';
+    byId('voice-noise').checked = !!p.noiseSuppression;
+    byId('voice-echo').checked = !!p.echoCancellation;
+    byId('voice-agc').checked = !!p.autoGainControl;
+    const outSel = byId('voice-output-device');
+    const canSink = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+    outSel.disabled = !canSink;
+    byId('voice-output-hint').style.display = canSink ? 'none' : '';
+    populateAudioDevices();
+
+    const root = byId('tab-voice');
+    if (root.dataset.bound) return;
+    root.dataset.bound = '1';
+    const restartTest = () => { if (micTest) { stopMicTest(); startMicTest(); } };
+    byId('voice-input-device').addEventListener('change', e => { saveVoicePrefs({ inputDeviceId: e.target.value }); restartTest(); });
+    byId('voice-output-device').addEventListener('change', e => { saveVoicePrefs({ outputDeviceId: e.target.value }); });
+    byId('voice-input-volume').addEventListener('input', e => {
+      byId('voice-input-volume-val').textContent = e.target.value + '%';
+      saveVoicePrefs({ inputVolume: Number(e.target.value) });
+    });
+    byId('voice-input-volume').addEventListener('change', restartTest);
+    byId('voice-output-volume').addEventListener('input', e => {
+      byId('voice-output-volume-val').textContent = e.target.value + '%';
+      saveVoicePrefs({ outputVolume: Number(e.target.value) });
+    });
+    [['voice-noise', 'noiseSuppression'], ['voice-echo', 'echoCancellation'], ['voice-agc', 'autoGainControl']].forEach(([id, key]) => {
+      byId(id).addEventListener('change', e => { saveVoicePrefs({ [key]: e.target.checked }); restartTest(); });
+    });
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateAudioDevices);
+    }
+  }
+
+  async function startMicTest() {
+    let stream;
+    try { stream = await nyxieGetMic(); } catch (e) { toast('Microphone access denied'); return; }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    const buf = new Uint8Array(analyser.fftSize);
+    let raf = 0;
+    const fill = byId('voice-meter-fill');
+    const tick = () => {
+      analyser.getByteTimeDomainData(buf);
+      let peak = 0;
+      for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+      fill.style.width = Math.min(100, (peak / 128) * 140) + '%';
+      raf = requestAnimationFrame(tick);
+    };
+    micTest = { stop() { cancelAnimationFrame(raf); stream.getTracks().forEach(t => t.stop()); ctx.close().catch(() => {}); } };
+    byId('voice-mic-test-btn').textContent = 'Stop test';
+    tick();
+    populateAudioDevices(); // device labels are available once permission is granted
+  }
+
+  function stopMicTest() {
+    if (!micTest) return;
+    micTest.stop();
+    micTest = null;
+    const btn = byId('voice-mic-test-btn');
+    if (btn) btn.textContent = 'Test microphone';
+    const fill = byId('voice-meter-fill');
+    if (fill) fill.style.width = '0%';
+  }
+
+  function toggleMicTest() { micTest ? stopMicTest() : startMicTest(); }
+
+  function testSpeakers() {
+    const a = nyxieApplyOutput(new Audio('/assets/sounds/notification.mp3'));
+    a.play().catch(() => toast('Could not play a test sound'));
+  }
+
+  // ---- Sync ----
+  function renderSyncStatus() {
+    const last = nyxieSyncLast();
+    byId('sync-status').textContent = last ? 'Last synced: ' + new Date(last).toLocaleString() : 'Last synced: never';
+  }
+
+  function loadSyncTab() {
+    byId('sync-auto').checked = nyxieSyncAuto();
+    renderSyncStatus();
+    const box = byId('sync-auto');
+    if (box.dataset.bound) return;
+    box.dataset.bound = '1';
+    box.addEventListener('change', async () => {
+      localStorage.setItem('nyxie_sync_auto', String(box.checked));
+      if (!box.checked) { toast('Automatic sync is off'); return; }
+      const res = await api('GET', '/account/settings-sync');
+      if (res && !res.error && !res.data) {
+        try { await nyxiePushSettings(); toast('Sync is on — this device\'s settings were saved'); } catch (e) { toast(e.message); }
+      } else {
+        toast('Sync is on. Use "Download saved settings" to apply what\'s already saved.');
+      }
+      renderSyncStatus();
+    });
+  }
+
+  async function syncUpload() {
+    try { await nyxiePushSettings(); toast('Settings uploaded'); renderSyncStatus(); } catch (e) { toast(e.message); }
+  }
+
+  async function syncDownload() {
+    try {
+      const r = await nyxiePullSettings(true);
+      if (!r.applied) { toast('Nothing has been saved to your account yet'); return; }
+      toast('Saved settings applied');
+      renderExperiments();
+      renderSyncStatus();
+      const fs = byId('font-select');
+      if (fs && localStorage.getItem('font')) fs.value = localStorage.getItem('font');
+      if (window.initLanguageSettings) initLanguageSettings();
+    } catch (e) { toast(e.message); }
+  }
+
+  async function syncDelete() {
+    if (!confirm('Delete the synced copy of your settings? Settings on your devices are not changed.')) return;
+    const res = await api('DELETE', '/account/settings-sync');
+    if (res?.error) { toast(res.error); return; }
+    localStorage.removeItem('nyxie_sync_last');
+    toast('Synced copy deleted');
+    renderSyncStatus();
+  }
+
+  // ---- Experiments ----
+  function renderExperiments() {
+    const list = byId('experiments-list');
+    if (!list) return;
+    const cur = getExperiments();
+    list.innerHTML = NYXIE_EXPERIMENTS.map(e => `
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">${escapeHtml(e.label)}</div><div class="toggle-desc">${escapeHtml(e.desc)}</div></div>
+        <label class="switch px-switch"><input type="checkbox" data-px data-exp="${e.id}" ${cur[e.id] ? 'checked' : ''}/><span class="slider round"></span></label>
+      </div>`).join('');
+    list.querySelectorAll('input[data-exp]').forEach(i => i.addEventListener('change', () => setExperiment(i.dataset.exp, i.checked)));
+  }
+
+  function resetExperiments() {
+    localStorage.setItem('nyxie_experiments', '{}');
+    applyExperiments();
+    renderExperiments();
+    toast('All experiments are off');
+  }
+
+  // ---- Bots ----
+  let botsCache = [];
+  let editingBotId = null;
+  let botTokenValue = '';
+
+  async function refreshBots() {
+    const list = byId('bots-list');
+    if (!list) return;
+    const res = await api('GET', '/account/bots');
+    if (!res || res.error) { list.innerHTML = '<div class="px-empty">Couldn\'t load your bots.</div>'; return; }
+    botsCache = res.bots;
+    byId('bots-create-btn').disabled = res.bots.length >= res.max;
+    if (!res.bots.length) { list.innerHTML = '<div class="px-empty">You haven\'t created any bots yet.</div>'; return; }
+    list.innerHTML = res.bots.map(b => `
+      <div class="px-card">
+        <div class="px-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg></div>
+        <div class="px-card-body">
+          <div class="px-card-title">${escapeHtml(b.name)}</div>
+          <div class="px-card-sub">${b.description ? escapeHtml(b.description) + ' · ' : ''}Token ending ${escapeHtml(b.tokenHint)} · created ${new Date(b.createdAt).toLocaleDateString()}</div>
+        </div>
+        <div class="px-card-actions">
+          <button type="button" class="px-mini-btn" onclick="openBotModal('${escapeHtml(b.id)}')">Edit</button>
+          <button type="button" class="px-mini-btn" onclick="resetBotToken('${escapeHtml(b.id)}')">Reset token</button>
+          <button type="button" class="px-mini-btn danger" onclick="deleteBot('${escapeHtml(b.id)}')">Delete</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function openBotModal(id) {
+    editingBotId = id || null;
+    const bot = id ? botsCache.find(b => b.id === id) : null;
+    byId('bot-modal-title').textContent = bot ? 'Edit bot' : 'Create bot';
+    byId('bot-name').value = bot ? bot.name : '';
+    byId('bot-desc').value = bot ? bot.description : '';
+    byId('bot-modal').style.display = 'flex';
+    byId('bot-name').focus();
+  }
+
+  function showBotToken(t) {
+    botTokenValue = t;
+    byId('bot-token-value').textContent = t;
+    byId('bot-token-modal').style.display = 'flex';
+  }
+  function copyBotToken() { copyText(botTokenValue, 'Token copied'); }
+
+  async function saveBot() {
+    const name = byId('bot-name').value.trim();
+    const description = byId('bot-desc').value.trim();
+    if (name.length < 2) { toast('Give your bot a name (at least 2 characters)'); return; }
+    const btn = byId('bot-save-btn');
+    btn.disabled = true;
+    const res = editingBotId
+      ? await api('PATCH', '/account/bots/' + encodeURIComponent(editingBotId), { name, description })
+      : await api('POST', '/account/bots', { name, description });
+    btn.disabled = false;
+    if (!res || res.error) { toast(res?.error || 'Could not save bot'); return; }
+    byId('bot-modal').style.display = 'none';
+    if (res.token) showBotToken(res.token); else toast('Bot updated');
+    refreshBots();
+  }
+
+  async function resetBotToken(id) {
+    if (!confirm('Reset this bot\'s token? Anything using the old token will stop working.')) return;
+    const res = await api('POST', '/account/bots/' + encodeURIComponent(id) + '/reset-token', {});
+    if (!res || res.error) { toast(res?.error || 'Could not reset token'); return; }
+    showBotToken(res.token);
+    refreshBots();
+  }
+
+  async function deleteBot(id) {
+    if (!confirm('Delete this bot? This can\'t be undone.')) return;
+    const res = await api('DELETE', '/account/bots/' + encodeURIComponent(id));
+    if (res?.error) { toast(res.error); return; }
+    toast('Bot deleted');
+    refreshBots();
+  }
+
+  // ---- Feedback ----
+  let feedbackCategory = 'bug';
+
+  function setFeedbackCategory(cat) {
+    feedbackCategory = cat;
+    document.querySelectorAll('#feedback-category .px-chip').forEach(c => c.classList.toggle('active', c.dataset.cat === cat));
+  }
+
+  function loadFeedbackTab() {
+    const ta = byId('feedback-message');
+    if (!ta.dataset.bound) {
+      ta.dataset.bound = '1';
+      ta.addEventListener('input', () => { byId('feedback-count').textContent = ta.value.length; });
+    }
+    refreshFeedbackHistory();
+  }
+
+  async function sendFeedback() {
+    const message = byId('feedback-message').value.trim();
+    if (message.length < 10) { toast('Please write at least 10 characters'); return; }
+    let diagnostics;
+    if (byId('feedback-diagnostics').checked) {
+      diagnostics = [
+        navigator.userAgent,
+        screen.width + 'x' + screen.height,
+        'lang ' + (localStorage.getItem('nyxie_language') || navigator.language),
+        'theme ' + (localStorage.getItem('theme') || 'dark'),
+      ].join(' | ');
+    }
+    const btn = byId('feedback-send-btn');
+    btn.disabled = true;
+    const res = await api('POST', '/account/feedback', { category: feedbackCategory, message, diagnostics });
+    btn.disabled = false;
+    if (!res || res.error) { toast(res?.error || 'Could not send feedback'); return; }
+    byId('feedback-message').value = '';
+    byId('feedback-count').textContent = '0';
+    toast('Thanks — feedback sent');
+    refreshFeedbackHistory();
+  }
+
+  async function refreshFeedbackHistory() {
+    const list = byId('feedback-history');
+    const res = await api('GET', '/account/feedback');
+    if (!res || res.error || !res.feedback.length) { list.innerHTML = '<div class="px-empty">Nothing sent yet.</div>'; return; }
+    const label = { bug: 'Bug', idea: 'Idea', other: 'Other' };
+    list.innerHTML = res.feedback.map(f => `
+      <div class="px-card">
+        <div class="px-card-body">
+          <div class="px-card-title"><span class="px-badge muted">${label[f.category] || 'Other'}</span> ${f.status === 'new' ? 'Received' : escapeHtml(f.status)}</div>
+          <div class="px-card-sub px-fb-msg">${escapeHtml(f.message.length > 240 ? f.message.slice(0, 240) + '…' : f.message)}</div>
+          <div class="px-card-sub">${new Date(f.createdAt).toLocaleString()}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // ---- Changelogs ----
+  const CHANGELOG = [
+    {
+      title: 'Settings and wallet filled in',
+      date: 'September 28, 2026',
+      items: [
+        'Sessions: see every device signed in to your account and log any of them out.',
+        'Two-factor authentication with an authenticator app, plus one-time backup codes.',
+        'Voice settings: pick your microphone and speakers, set volumes, test your mic, and toggle noise suppression, echo cancellation and auto gain.',
+        'Sync: keep your theme, language and other preferences the same across devices.',
+        'Experiments: compact messages, larger text, reduced motion and stronger borders.',
+        'My Bots: create bot applications and manage their tokens.',
+        'Feedback: send bug reports and ideas from inside the app.',
+        'Wallet: scan a Nyxie QR code with your camera (or upload one) to start a payment.',
+      ],
+    },
+    {
+      title: 'Earlier',
+      date: 'Before this changelog',
+      items: [
+        'Direct messages, group chats and servers with channels, roles and invites.',
+        'End-to-end encrypted messages, voice messages and voice calls.',
+        'NX wallet with PIN-protected sending, receiving and transaction history.',
+        'Marketplace, badges, custom themes and accent colours, and multiple languages.',
+      ],
+    },
+  ];
+
+  function renderChangelog() {
+    const el = byId('changelog-list');
+    if (!el || el.dataset.rendered) return;
+    el.dataset.rendered = '1';
+    el.innerHTML = CHANGELOG.map(r => `
+      <div class="settings-section px-release">
+        <h3>${escapeHtml(r.title)}</h3>
+        <div class="px-date">${escapeHtml(r.date)}</div>
+        <ul>${r.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+      </div>`).join('');
+  }
+
+  // ---- Source code / Donate ----
+  function safeLink(url) { return /^https?:\/\//i.test(url || '') ? url : ''; }
+
+  function loadLinkTabs() {
+    const src = safeLink(NYXIE_LINKS.source);
+    byId('source-link-row').style.display = src ? '' : 'none';
+    if (src) byId('source-link').href = src;
+    const don = safeLink(NYXIE_LINKS.donate);
+    byId('donate-link-row').style.display = don ? '' : 'none';
+    byId('donate-nolink').style.display = don ? 'none' : '';
+    if (don) byId('donate-link').href = don;
+  }
+
+  function copyInviteLink() { copyText(location.origin, 'Link copied — share it with a friend'); }
 
   // ---- Language ----
   function initLanguageSettings() {
@@ -590,7 +1123,7 @@ function initSettingsView() {
       toast('Font: ' + this.value);
     });
 
-    document.querySelectorAll('.switch input').forEach(el => {
+    document.querySelectorAll('.switch input:not([data-px])').forEach(el => {
       const saved = localStorage.getItem('switch-' + el.id);
       if (saved !== null) el.checked = saved === 'true';
       el.addEventListener('change', function() {
@@ -601,6 +1134,7 @@ function initSettingsView() {
     if (document.getElementById('tab-profile').style.display !== 'none') {
       loadProfileForm();
     }
+    refresh2fa();
   })();
 
   // Expose functions globally
@@ -635,8 +1169,19 @@ function initSettingsView() {
   window.loadProfileForm = loadProfileForm;
   window.loadUserData = loadUserData;
   window.initLanguageSettings = initLanguageSettings;
+  Object.assign(window, {
+    refreshSessions, revokeSession, revokeOtherSessions,
+    enableAuthenticator, copyTwofaSecret, submitTwofaPassword, copyBackupCodes, downloadBackupCodes,
+    toggleMicTest, testSpeakers,
+    syncUpload, syncDownload, syncDelete,
+    resetExperiments,
+    openBotModal, saveBot, resetBotToken, deleteBot, copyBotToken,
+    setFeedbackCategory, sendFeedback,
+    copyInviteLink,
+  });
 
   function destroySettingsView() {
+    stopMicTest();
     // Nothing to tear down (no WebSocket, no timers/observers set up
     // by this view) — present for symmetry with the dashboard/voice
     // teardown and as a hook for future settings-view state.

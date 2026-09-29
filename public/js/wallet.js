@@ -158,6 +158,10 @@ function openSendModal() {
   document.getElementById('wm-amount').value = '';
   document.getElementById('wm-note').value = '';
   document.getElementById('wm-pin').value = '';
+  if (_sendPrefill) {
+    document.getElementById('wm-recipient').value = _sendPrefill;
+    _sendPrefill = null;
+  }
   sendModalShowStep('form');
   document.getElementById('send-money-modal').style.display = 'flex';
 }
@@ -326,4 +330,149 @@ async function submitWalletPin() {
   } finally {
     btn.disabled = false;
   }
+}
+// ─── Scan to pay ────────────────────────────────────────────────────
+// Reads a Nyxie wallet QR (nyx://pay/<walletId>) with the camera, an
+// uploaded image, or a typed wallet ID, then opens the Send flow with
+// that recipient filled in. Uses the browser's BarcodeDetector where it
+// exists and falls back to the jsQR library (loaded in index.html).
+
+let _scan = { stream: null, timer: 0, detector: null, busy: false, cooldownUntil: 0 };
+let _sendPrefill = null;
+
+const _WALLET_QR_RE = /^nyx:\/\/pay\/([A-Za-z0-9-]{4,64})$/;
+
+function _scanSetStatus(msg, isErr) {
+  const el = document.getElementById('wm-scan-status');
+  el.textContent = msg;
+  el.classList.toggle('err', !!isErr);
+}
+
+async function openScanModal() {
+  if (!_walletHasPin) {
+    toast('Set a wallet PIN first');
+    openWalletPinModal();
+    return;
+  }
+  document.getElementById('wm-scan-manual').value = '';
+  document.getElementById('scan-modal').style.display = 'flex';
+  await startScan();
+}
+
+function closeScanModal() {
+  stopScan();
+  document.getElementById('scan-modal').style.display = 'none';
+}
+
+async function startScan() {
+  const view = document.getElementById('wm-scan-view');
+  const video = document.getElementById('wm-scan-video');
+  view.classList.remove('px-nocam');
+  _scanSetStatus('Starting camera…');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    view.classList.add('px-nocam');
+    _scanSetStatus('Camera isn\'t available here (it needs HTTPS). Upload an image or enter a wallet ID instead.', true);
+    return;
+  }
+  try {
+    _scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+  } catch (e) {
+    view.classList.add('px-nocam');
+    _scanSetStatus('Camera access was blocked. Upload an image or enter a wallet ID instead.', true);
+    return;
+  }
+  // The modal may have been closed while the permission prompt was open.
+  if (document.getElementById('scan-modal').style.display === 'none') { stopScan(); return; }
+
+  video.srcObject = _scan.stream;
+  try { await video.play(); } catch (e) { /* autoplay quirks — frames still arrive */ }
+  if (!_scan.detector && 'BarcodeDetector' in window) {
+    try { _scan.detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { _scan.detector = null; }
+  }
+  if (!_scan.detector && typeof jsQR === 'undefined') {
+    view.classList.add('px-nocam');
+    stopScan();
+    _scanSetStatus('QR scanning isn\'t supported in this browser. Enter a wallet ID instead.', true);
+    return;
+  }
+  _scanSetStatus('Point your camera at a Nyxie wallet QR code.');
+  _scan.timer = setInterval(_scanTick, 200);
+}
+
+function stopScan() {
+  clearInterval(_scan.timer);
+  _scan.timer = 0;
+  if (_scan.stream) _scan.stream.getTracks().forEach(t => t.stop());
+  _scan.stream = null;
+  const video = document.getElementById('wm-scan-video');
+  if (video) video.srcObject = null;
+}
+
+async function _decodeQr(source, width, height) {
+  if (_scan.detector) {
+    const found = await _scan.detector.detect(source);
+    return found && found[0] ? found[0].rawValue : null;
+  }
+  if (typeof jsQR === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, width, height);
+  const img = ctx.getImageData(0, 0, width, height);
+  const code = jsQR(img.data, width, height, { inversionAttempts: 'dontInvert' });
+  return code ? code.data : null;
+}
+
+async function _scanTick() {
+  const video = document.getElementById('wm-scan-video');
+  if (_scan.busy || !video || video.readyState < 2 || Date.now() < _scan.cooldownUntil) return;
+  _scan.busy = true;
+  try {
+    const text = await _decodeQr(video, video.videoWidth, video.videoHeight);
+    if (text) _handleScanResult(text);
+  } catch (e) { /* a bad frame — try the next one */ }
+  _scan.busy = false;
+}
+
+function _handleScanResult(text) {
+  const m = _WALLET_QR_RE.exec(String(text).trim());
+  if (!m) {
+    _scan.cooldownUntil = Date.now() + 2000;
+    _scanSetStatus('That QR code isn\'t a Nyxie wallet code.', true);
+    return;
+  }
+  _startPaymentTo(m[1]);
+}
+
+function _startPaymentTo(walletId) {
+  closeScanModal();
+  _sendPrefill = walletId;
+  openSendModal();
+}
+
+async function scanFromImage(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    if (!_scan.detector && 'BarcodeDetector' in window) {
+      try { _scan.detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) {}
+    }
+    const text = await _decodeQr(bmp, bmp.width, bmp.height);
+    if (!text) { _scanSetStatus('Couldn\'t find a QR code in that image.', true); return; }
+    _handleScanResult(text);
+  } catch (e) {
+    _scanSetStatus('Couldn\'t read that image.', true);
+  }
+}
+
+function scanUseManual() {
+  const raw = document.getElementById('wm-scan-manual').value.trim();
+  if (!raw) { _scanSetStatus('Enter a wallet ID first.', true); return; }
+  const m = _WALLET_QR_RE.exec(raw);
+  const id = m ? m[1] : raw.replace(/^@/, '');
+  if (!/^[A-Za-z0-9_-]{2,64}$/.test(id)) { _scanSetStatus('That doesn\'t look like a wallet ID.', true); return; }
+  _startPaymentTo(id);
 }

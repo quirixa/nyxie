@@ -302,6 +302,71 @@ async function getUserDb() {
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_user_badges_badge ON user_badges (badge_id)');
 
+  // ── Account extras: sessions, 2FA, settings sync, feedback, bots ──
+  // `sid` inside a JWT points at a user_sessions row; revoking the row
+  // kills that device's token (see middleware/auth.js). Tokens issued
+  // before sessions existed carry no sid and are invalidated in bulk by
+  // users.tokens_invalid_before (see routes/account.js).
+  try { db.run("ALTER TABLE users ADD COLUMN totp_secret TEXT"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN tokens_invalid_before INTEGER"); } catch (e) {}
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_agent TEXT,
+      ip TEXT,
+      created_at INTEGER NOT NULL,
+      last_active INTEGER NOT NULL,
+      revoked INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions (user_id)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_backup_codes (
+      user_id TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      used_at INTEGER,
+      PRIMARY KEY (user_id, code_hash)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_settings_sync (
+      user_id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      message TEXT NOT NULL,
+      diagnostics TEXT,
+      status TEXT NOT NULL DEFAULT 'new',
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_user_feedback_user ON user_feedback (user_id, created_at)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_bots (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      token_hash TEXT NOT NULL,
+      token_hint TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_user_bots_owner ON user_bots (owner_id)');
+
   // NOTE: this used to unconditionally seed a hardcoded 'nyxie-default'
   // server (owner_id 'system', a user that doesn't exist) and silently
   // enroll every newly-registered user into it (see the removed block in

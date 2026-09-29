@@ -57,6 +57,7 @@
 <link rel="stylesheet" href="/css/marketplace.css">
 <link rel="stylesheet" href="/css/admin.css">
 <link rel="stylesheet" href="/css/badges.css">
+<link rel="stylesheet" href="/css/prefs.css">
 
 <style>
     /* ─── Cropper Overlay ──────────────────────────────────── */
@@ -404,6 +405,10 @@ __    __  __      __  __    __  ______  ________
                     <div class="input-group" id="passwordGroup">
                         <label>Password</label>
                         <input type="password" id="password" placeholder="Your password" autocomplete="current-password">
+                    </div>
+                    <div class="input-group" id="codeGroup" style="display:none;">
+                        <label>Two-factor code</label>
+                        <input type="text" id="mfaCode" placeholder="6-digit code or backup code" autocomplete="one-time-code">
                     </div>
                     <button type="submit" class="login-btn" id="loginBtn">Sign in</button>
                 </form>
@@ -940,7 +945,7 @@ __    __  __      __  __    __  ______  ________
                                 <button class="wallet-action-btn" onclick="openReceiveModal()">
                                     <span class="wab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span><span>Receive</span>
                                 </button>
-                                <button class="wallet-action-btn" onclick="toast('Scan is coming soon')">
+                                <button class="wallet-action-btn" onclick="openScanModal()">
                                     <span class="wab-icon">▢</span><span>Scan</span>
                                 </button>
                                 <button class="wallet-action-btn" onclick="showWalletHistory()">
@@ -1345,6 +1350,26 @@ __    __  __      __  __    __  ______  ________
                     <div class="modal-actions">
                         <button type="button" class="btn-primary" style="width:100%" onclick="closeSendModal()">Done</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scan Modal -->
+        <div class="overlay" id="scan-modal" style="display:none" onclick="if(event.target===this)closeScanModal()">
+            <div class="modal wallet-modal">
+                <h2>Scan to pay</h2>
+                <div class="wm-scan-view" id="wm-scan-view">
+                    <video id="wm-scan-video" playsinline muted></video>
+                    <div class="wm-scan-frame"></div>
+                </div>
+                <p class="wm-scan-status" id="wm-scan-status">Point your camera at a Nyxie wallet QR code.</p>
+                <label>Or enter a wallet ID</label>
+                <input type="text" id="wm-scan-manual" placeholder="NX-XXXX-XXXX-XXXX" autocomplete="off" />
+                <input type="file" id="wm-scan-file" accept="image/*" style="display:none" onchange="scanFromImage(this)" />
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('wm-scan-file').click()">Upload image</button>
+                    <button type="button" class="btn-cancel" onclick="scanUseManual()">Use ID</button>
+                    <button type="button" class="btn-primary" onclick="closeScanModal()">Close</button>
                 </div>
             </div>
         </div>
@@ -1783,12 +1808,12 @@ __    __  __      __  __    __  ______  ________
                         <div class="twofa-grid">
                             <div class="twofa-card" onclick="generateBackupCodes()">
                                 <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
-                                <div class="tc-info"><div class="tc-title">Generate Backup Codes</div><div class="tc-desc">Get 10 one-time use backup codes</div></div>
+                                <div class="tc-info"><div class="tc-title">Generate Backup Codes</div><div class="tc-desc" id="twofa-backup-desc">Get 10 one-time use backup codes</div></div>
                                 <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
                             </div>
                             <div class="twofa-card" onclick="addAuthenticator()">
                                 <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
-                                <div class="tc-info"><div class="tc-title">Add Authenticator</div><div class="tc-desc">Use an authenticator app to generate codes</div></div>
+                                <div class="tc-info"><div class="tc-title" id="twofa-auth-title">Add Authenticator</div><div class="tc-desc" id="twofa-auth-desc">Use an authenticator app to generate codes</div></div>
                                 <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
                             </div>
                         </div>
@@ -1883,8 +1908,66 @@ __    __  __      __  __    __  ______  ________
                 </div>
 
                 <!-- Sessions Tab -->
-                <div class="settings-tab" id="tab-sessions" style="display:none;"><div class="page-title">Sessions</div><p style="color:var(--text-muted);">Session management coming soon.</p></div>
-                <div class="settings-tab" id="tab-voice" style="display:none;"><div class="page-title">Voice Settings</div><p style="color:var(--text-muted);">Voice settings coming soon.</p></div>
+                <div class="settings-tab" id="tab-sessions" style="display:none;">
+                    <div class="page-title">Sessions</div>
+                    <div class="settings-section">
+                        <div class="section-title">Where you're signed in</div>
+                        <div class="section-desc">These devices are currently logged in to your account. Log out anything you don't recognise, then change your password.</div>
+                        <div id="sessions-list" class="px-list"><div class="px-empty">Loading…</div></div>
+                        <div class="px-actions">
+                            <button type="button" class="btn-cancel" onclick="refreshSessions()">Refresh</button>
+                            <button type="button" class="btn-danger" id="sessions-revoke-all" onclick="revokeOtherSessions()">Log out all other devices</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-voice" style="display:none;">
+                    <div class="page-title">Voice Settings</div>
+                    <div class="settings-section">
+                        <div class="section-title">Devices</div>
+                        <div class="section-desc">Choose which microphone and speakers Nyxie uses for calls and voice messages.</div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-input-device">Input device</label>
+                            <div class="font-selector"><select id="voice-input-device"><option value="default">System default</option></select></div>
+                        </div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-output-device">Output device</label>
+                            <div class="font-selector"><select id="voice-output-device"><option value="default">System default</option></select></div>
+                            <div class="px-hint" id="voice-output-hint" style="display:none;">Your browser doesn't let sites choose an output device — sound plays through the system default.</div>
+                        </div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-input-volume">Input volume <span id="voice-input-volume-val" class="px-val">100%</span></label>
+                            <input type="range" class="px-range" id="voice-input-volume" min="0" max="200" step="5" />
+                        </div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-output-volume">Output volume <span id="voice-output-volume-val" class="px-val">100%</span></label>
+                            <input type="range" class="px-range" id="voice-output-volume" min="0" max="100" step="5" />
+                        </div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-cancel" id="voice-mic-test-btn" onclick="toggleMicTest()">Test microphone</button>
+                            <button type="button" class="btn-cancel" onclick="testSpeakers()">Test speakers</button>
+                        </div>
+                        <div class="px-meter" id="voice-meter" aria-hidden="true"><div class="px-meter-fill" id="voice-meter-fill"></div></div>
+                        <div class="px-hint" id="voice-test-hint">Start the mic test and speak — the bar should move. Changes apply to your next call or recording.</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Audio processing</div>
+                        <div class="section-desc">Cleans up your microphone before it's sent.</div>
+                        <div class="appearance-toggle">
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Noise suppression</div><div class="toggle-desc">Reduce background noise like fans and keyboards.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="voice-noise"  /><span class="slider round"></span></label>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Echo cancellation</div><div class="toggle-desc">Stop your speakers from feeding back into your mic.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="voice-echo"  /><span class="slider round"></span></label>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Automatic gain control</div><div class="toggle-desc">Keep your volume steady if you move closer or further away.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="voice-agc"  /><span class="slider round"></span></label>
+                        </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Appearance Tab -->
                 <div class="settings-tab" id="tab-appearance" style="display:none;">
@@ -2166,13 +2249,129 @@ __    __  __      __  __    __  ______  ________
     </div>
   </div>
 </div>
-                <div class="settings-tab" id="tab-sync" style="display:none;"><div class="page-title">Sync</div><p style="color:var(--text-muted);">Sync settings coming soon.</p></div>
-                <div class="settings-tab" id="tab-experiments" style="display:none;"><div class="page-title">Experiments</div><p style="color:var(--text-muted);">Experimental features coming soon.</p></div>
-                <div class="settings-tab" id="tab-bots" style="display:none;"><div class="page-title">My Bots</div><p style="color:var(--text-muted);">Bot management coming soon.</p></div>
-                <div class="settings-tab" id="tab-feedback" style="display:none;"><div class="page-title">Feedback</div><p style="color:var(--text-muted);">Send feedback coming soon.</p></div>
-                <div class="settings-tab" id="tab-changelogs" style="display:none;"><div class="page-title">Changelogs</div><p style="color:var(--text-muted);">Changelogs coming soon.</p></div>
-                <div class="settings-tab" id="tab-source" style="display:none;"><div class="page-title">Source Code</div><p style="color:var(--text-muted);">Source code information coming soon.</p></div>
-                <div class="settings-tab" id="tab-donate" style="display:none;"><div class="page-title">Donate</div><p style="color:var(--text-muted);">Support nyxie development coming soon.</p></div>
+                <div class="settings-tab" id="tab-sync" style="display:none;">
+                    <div class="page-title">Sync</div>
+                    <div class="settings-section">
+                        <div class="section-title">Settings sync</div>
+                        <div class="section-desc">Keep your preferences the same on every device you sign in on.</div>
+                        <div class="appearance-toggle">
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Sync automatically</div><div class="toggle-desc">Upload changes as you make them, and pick up newer settings when you open the app.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="sync-auto"  /><span class="slider round"></span></label>
+                        </div>
+                        </div>
+                        <div class="px-status" id="sync-status">Last synced: never</div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-primary" onclick="syncUpload()">Upload this device's settings</button>
+                            <button type="button" class="btn-cancel" onclick="syncDownload()">Download saved settings</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">What's included</div>
+                        <div class="section-desc">Theme, accent colour, font, language, notification toggles, voice processing options and experiments. Your microphone and speaker choices stay on each device, and your messages, keys and password are never part of this.</div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-danger" onclick="syncDelete()">Delete synced copy</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-experiments" style="display:none;">
+                    <div class="page-title">Experiments</div>
+                    <div class="settings-section">
+                        <div class="section-title">Try things early</div>
+                        <div class="section-desc">Optional tweaks you can switch on. They only affect how Nyxie looks on this device and can change or disappear as things settle.</div>
+                        <div class="appearance-toggle" id="experiments-list"></div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-cancel" onclick="resetExperiments()">Turn everything off</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-bots" style="display:none;">
+                    <div class="page-title">My Bots</div>
+                    <div class="settings-section">
+                        <div class="section-title">Your bots</div>
+                        <div class="section-desc">Create bot applications and manage their access tokens. A token is shown once when it's created — store it somewhere safe.</div>
+                        <div id="bots-list" class="px-list"><div class="px-empty">Loading…</div></div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-primary" id="bots-create-btn" onclick="openBotModal()">Create bot</button>
+                        </div>
+                        <div class="px-hint">Bots can be created and their tokens managed here today. Tokens can't post messages yet — the bot messaging API is still to come.</div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-feedback" style="display:none;">
+                    <div class="page-title">Feedback</div>
+                    <div class="settings-section">
+                        <div class="section-title">Tell us what you think</div>
+                        <div class="section-desc">Found a bug or have an idea? It goes straight to the people building Nyxie.</div>
+                        <div class="px-chips" id="feedback-category">
+                            <button type="button" class="px-chip active" data-cat="bug" onclick="setFeedbackCategory('bug')">Bug</button>
+                            <button type="button" class="px-chip" data-cat="idea" onclick="setFeedbackCategory('idea')">Idea</button>
+                            <button type="button" class="px-chip" data-cat="other" onclick="setFeedbackCategory('other')">Other</button>
+                        </div>
+                        <textarea id="feedback-message" class="px-textarea" maxlength="2000" rows="6" placeholder="What happened, or what would you like to see?"></textarea>
+                        <div class="px-counter"><span id="feedback-count">0</span> / 2000</div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info"><div class="toggle-label">Include diagnostics</div><div class="toggle-desc">Browser, screen size, language and theme. No messages or personal data.</div></div>
+                                <label class="switch px-switch"><input type="checkbox" data-px id="feedback-diagnostics" checked /><span class="slider round"></span></label>
+                            </div>
+                        </div>
+                        <div class="px-actions">
+                            <button type="button" class="btn-primary" id="feedback-send-btn" onclick="sendFeedback()">Send feedback</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Your recent feedback</div>
+                        <div id="feedback-history" class="px-list"><div class="px-empty">Nothing sent yet.</div></div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-changelogs" style="display:none;">
+                    <div class="page-title">Changelogs</div>
+                    <div id="changelog-list"></div>
+                </div>
+                <div class="settings-tab" id="tab-source" style="display:none;">
+                    <div class="page-title">Source Code</div>
+                    <div class="settings-section">
+                        <div class="section-title">How Nyxie is built</div>
+                        <div class="section-desc">A single-page web app talking to a small Node.js server. No front-end framework, no build step.</div>
+                        <div class="px-kv"><span>Client</span><span>Vanilla JavaScript SPA (<code>public/</code>) with a hand-rolled router</span></div>
+                        <div class="px-kv"><span>Server</span><span>Node.js + Express REST API (<code>server/routes</code>) and a WebSocket gateway</span></div>
+                        <div class="px-kv"><span>Storage</span><span>SQLite via sql.js, saved atomically to disk</span></div>
+                        <div class="px-kv"><span>Encryption</span><span>End-to-end encrypted messages and calls using TweetNaCl</span></div>
+                        <div class="px-kv"><span>Wallet</span><span>Closed-loop NX currency with PIN-protected transfers</span></div>
+                        <div class="px-actions px-actions-left" id="source-link-row" style="display:none;">
+                            <a class="btn-primary px-link-btn" id="source-link" href="#" target="_blank" rel="noopener noreferrer">View source</a>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Found a problem?</div>
+                        <div class="section-desc">Bug reports and ideas are welcome — send them from the Feedback tab.</div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-cancel" onclick="switchTab('feedback')">Open Feedback</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-donate" style="display:none;">
+                    <div class="page-title">Donate</div>
+                    <div class="settings-section">
+                        <div class="section-title">Support Nyxie</div>
+                        <div class="section-desc">Nyxie is built and run by a small team. If it's useful to you, chipping in helps cover hosting and keeps development going.</div>
+                        <div class="px-actions px-actions-left" id="donate-link-row" style="display:none;">
+                            <a class="btn-primary px-link-btn" id="donate-link" href="#" target="_blank" rel="noopener noreferrer">Donate</a>
+                        </div>
+                        <div class="px-hint" id="donate-nolink" style="display:none;">Direct donations aren't set up yet — the ways to help below cost nothing.</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Other ways to help</div>
+                        <div class="account-mgmt-grid">
+                            <div class="mgmt-card" onclick="copyInviteLink()">
+                                <div class="mc-info"><div class="mc-title">Tell a friend</div><div class="mc-desc">Copy a link to Nyxie to share</div></div>
+                            </div>
+                            <div class="mgmt-card" onclick="switchTab('feedback')">
+                                <div class="mc-info"><div class="mc-title">Send feedback</div><div class="mc-desc">Report bugs and suggest features</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -2218,6 +2417,77 @@ __    __  __      __  __    __  ______  ________
                 <div class="modal-actions">
                     <button class="btn-cancel" onclick="document.getElementById('change-password-modal').style.display='none'">Cancel</button>
                     <button class="btn-primary" onclick="savePassword()">Save</button>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="overlay" id="twofa-setup-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Set up authenticator</h2>
+                <p>Scan this code with an authenticator app (Google Authenticator, Authy, 1Password…), then enter the 6-digit code it shows.</p>
+                <div class="px-qr-wrap"><canvas id="twofa-qr"></canvas></div>
+                <div class="px-secret-row">
+                    <code id="twofa-secret">—</code>
+                    <button type="button" class="btn-cancel" onclick="copyTwofaSecret()">Copy</button>
+                </div>
+                <label>6-digit code</label>
+                <input type="text" id="twofa-code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" placeholder="123456" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('twofa-setup-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" id="twofa-enable-btn" onclick="enableAuthenticator()">Turn on</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="backup-codes-modal" style="display:none">
+            <div class="modal">
+                <h2>Your backup codes</h2>
+                <p>Each code works once if you lose your authenticator. Save them somewhere safe — they won't be shown again.</p>
+                <div class="px-codes" id="backup-codes-grid"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="copyBackupCodes()">Copy</button>
+                    <button class="btn-cancel" onclick="downloadBackupCodes()">Download</button>
+                    <button class="btn-primary" onclick="document.getElementById('backup-codes-modal').style.display='none'">I've saved them</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="twofa-password-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2 id="twofa-password-title">Confirm password</h2>
+                <p id="twofa-password-desc">Enter your password to continue.</p>
+                <label>Password</label>
+                <input type="password" id="twofa-password" placeholder="Your current password" autocomplete="current-password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('twofa-password-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" id="twofa-password-btn" onclick="submitTwofaPassword()">Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="bot-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2 id="bot-modal-title">Create bot</h2>
+                <label>Name</label>
+                <input type="text" id="bot-name" maxlength="32" placeholder="My helper bot" />
+                <label>Description (optional)</label>
+                <textarea id="bot-desc" maxlength="200" rows="3" placeholder="What does it do?"></textarea>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('bot-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" id="bot-save-btn" onclick="saveBot()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="bot-token-modal" style="display:none">
+            <div class="modal">
+                <h2>Bot token</h2>
+                <p>Copy this token now. For your security it won't be shown again — if you lose it, reset it from the bot's menu.</p>
+                <div class="px-secret-row"><code id="bot-token-value">—</code></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="copyBotToken()">Copy</button>
+                    <button class="btn-primary" onclick="document.getElementById('bot-token-modal').style.display='none'">Done</button>
                 </div>
             </div>
         </div>
@@ -2372,11 +2642,13 @@ __    __  __      __  __    __  ______  ________
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
 <script src="/js/utils.js"></script>
 <script src="/js/state.js"></script>
 <script src="/js/badges.js"></script>
 <script src="/js/theme.js"></script>
+<script src="/js/prefs.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/router.js"></script>
 <script src="/js/auth.js"></script>

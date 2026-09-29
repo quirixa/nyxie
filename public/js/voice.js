@@ -403,7 +403,7 @@ function initVoiceFeatures() {
     }
 
     try {
-      recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStream = await nyxieGetMic();
     } catch {
       toast('Microphone access denied');
       return;
@@ -544,7 +544,7 @@ function initVoiceFeatures() {
       // sender's audio/mp4 clip on a recipient's browser: the bytes
       // are fine, but a Blob mislabeled as audio/webm fails to decode.
       const blobUrl = URL.createObjectURL(new Blob([bytes], { type: msg.mime_type || 'audio/webm' }));
-      const audio = new Audio(blobUrl);
+      const audio = nyxieApplyOutput(new Audio(blobUrl));
       audio.addEventListener('timeupdate', () => {
         if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
       });
@@ -759,6 +759,7 @@ function initVoiceFeatures() {
         remoteAudio = document.createElement('audio');
         remoteAudio.id = 'call-remote-audio';
         remoteAudio.autoplay = true;
+        nyxieApplyOutput(remoteAudio);
         document.body.appendChild(remoteAudio);
       }
       remoteAudio.srcObject = e.streams[0];
@@ -783,7 +784,7 @@ function initVoiceFeatures() {
     callPeerName = dm?.display_name || dm?.name || 'Unknown';
 
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream = await nyxieGetMic();
     } catch { toast('Microphone access denied'); return; }
 
     callRole = 'caller';
@@ -820,7 +821,7 @@ function initVoiceFeatures() {
     if (!offerMsg) return;
 
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream = await nyxieGetMic();
     } catch { toast('Microphone access denied'); rejectCall(); return; }
 
     myEphemeral = nacl.box.keyPair();

@@ -61,6 +61,20 @@ function initLoginView() {
 
     const isEmail = isValidEmail(loginVal);
     const payload = isEmail ? { email: loginVal, password: passwordVal } : { username: loginVal, password: passwordVal };
+    const mfaGroup = document.getElementById('codeGroup');
+    const mfaInput = document.getElementById('mfaCode');
+    const mfaVisible = mfaGroup && mfaGroup.style.display !== 'none';
+    if (mfaVisible) {
+      const codeVal = mfaInput.value.trim();
+      if (!codeVal) {
+        setError(mfaGroup, 'Enter your two-factor code');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Sign in';
+        mfaInput.focus();
+        return;
+      }
+      payload.code = codeVal;
+    }
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -71,6 +85,15 @@ function initLoginView() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Password was right but this account has two-factor turned on.
+        if (data.mfa_required && mfaGroup) {
+          mfaGroup.style.display = '';
+          if (mfaVisible) setError(mfaGroup, data.error || 'Invalid two-factor code');
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Sign in';
+          mfaInput.focus();
+          return;
+        }
         throw new Error(data.error || 'Login failed');
       }
 
@@ -80,6 +103,7 @@ function initLoginView() {
       localStorage.setItem('nyxie_user', JSON.stringify(data.user));
 
       await recoverEncryptionKey(data.user, passwordVal);
+      if (typeof nyxieAutoPull === 'function') await nyxieAutoPull();
 
       toast(`Welcome back, ${data.user.display_name || data.user.username}!`, false);
       setTimeout(() => { router.navigate('/app'); }, 400);
@@ -93,6 +117,8 @@ function initLoginView() {
 
   loginField.addEventListener('input', () => clearError(loginGroup));
   passwordInput.addEventListener('input', () => clearError(passwordGroup));
+  const mfaField = document.getElementById('mfaCode');
+  if (mfaField) mfaField.addEventListener('input', () => clearError(document.getElementById('codeGroup')));
   setTimeout(() => loginField.focus(), 100);
 }
 
