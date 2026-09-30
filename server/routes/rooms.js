@@ -298,6 +298,10 @@ async function postMessage(req, res) {
         url: String(a?.url || ''),
         type: String(a?.type || '').slice(0, 100)
       };
+      // Display-only (shown on the file card). Clamped so a client can't
+      // store nonsense; the real limit is enforced by the upload endpoint.
+      const size = Number(a?.size);
+      if (Number.isFinite(size) && size >= 0) out.size = Math.min(Math.floor(size), 50 * 1024 * 1024);
       if (a?.encrypted) {
         out.encrypted = true;
         out.nonce = String(a?.nonce || '').slice(0, 128);

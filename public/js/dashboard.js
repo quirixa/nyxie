@@ -1656,29 +1656,87 @@ function initDashboardView() {
   //  ATTACHMENT PREVIEW & REMOVE
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  // ── Discord-style attachment helpers ───────────────────────────────
+  const MAX_ATTACHMENTS = 10;
+  // Server caps the uploaded (encrypted) blob at 10 MB; secretbox adds 16 bytes.
+  const MAX_FILE_BYTES = 10 * 1024 * 1024 - 64;
+
+  // Only these are ever rendered inline. The blob MIME for a decrypted file is
+  // taken from THIS table (never the sender-declared type), so a file claiming
+  // to be text/html can't become an openable same-origin document.
+  const SAFE_MEDIA = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', svg: 'image/svg+xml',
+    mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg',
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+    m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac'
+  };
+  const SAFE_MEDIA_MIMES = new Set(Object.values(SAFE_MEDIA));
+
+  function fileExt(name) {
+    const m = String(name || '').match(/\.([a-z0-9]{1,8})$/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function resolveAttachmentMedia(a) {
+    let mime = SAFE_MEDIA[fileExt(a && a.name)] || '';
+    if (!mime) {
+      const declared = String((a && a.type) || '').toLowerCase().split(';')[0].trim();
+      if (SAFE_MEDIA_MIMES.has(declared)) mime = declared;
+    }
+    return { kind: mime ? mime.split('/')[0] : 'file', mime };
+  }
+
+  function formatFileSize(bytes) {
+    bytes = Number(bytes);
+    if (!Number.isFinite(bytes) || bytes < 0) return '';
+    if (bytes < 1024) return bytes + ' B';
+    const units = ['KB', 'MB', 'GB'];
+    let v = bytes / 1024, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' ' + units[i];
+  }
+
+  function fileIconHtml(name) {
+    const ext = fileExt(name).slice(0, 4).toUpperCase();
+    return `<span class="file-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${ext ? `<b>${escapeHtml(ext)}</b>` : ''}</span>`;
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  ATTACHMENT PREVIEW TRAY & REMOVE
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  const _trayThumbs = new Map(); // File -> object URL (revoked once the file leaves the tray)
+
   function renderAttachmentPreviews() {
     let bar = document.getElementById('attachment-preview-bar');
     if (!bar) {
       bar = document.createElement('div');
       bar.id = 'attachment-preview-bar';
-      bar.style.cssText = 'display:flex;gap:8px;padding:8px 16px;overflow-x:auto;border-top:1px solid var(--border-color);background:var(--bg-secondary);';
       const inputArea = document.getElementById('input-area');
       if (inputArea) inputArea.insertBefore(bar, document.getElementById('input-box'));
     }
-    if (!pendingFiles.length) {
-      bar.style.display = 'none';
-      return;
+    for (const [f, url] of _trayThumbs) {
+      if (!pendingFiles.includes(f)) { URL.revokeObjectURL(url); _trayThumbs.delete(f); }
     }
-    bar.style.display = 'flex';
+    bar.classList.toggle('open', pendingFiles.length > 0);
     bar.innerHTML = pendingFiles.map((f, i) => {
-      const isImage = f.type && f.type.startsWith('image/');
-      const thumb = isImage ? URL.createObjectURL(f) : '';
-      return `
-        <div class="attachment-chip" style="position:relative;display:flex;align-items:center;gap:6px;background:var(--bg-tertiary);padding:6px 10px;border-radius:8px;flex-shrink:0;border:1px solid var(--border-color);">
-          ${isImage ? `<img src="${thumb}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" />` : `<span style="display:inline-flex;color:var(--text-muted);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 1 1 4.24 4.24L9.41 17.41a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg></span>`}
-          <span style="font-size:.8rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</span>
-          <button onclick="window.removeAttachment(${i})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;line-height:1;padding:0 4px;">×</button>
-        </div>`;
+      const { kind } = resolveAttachmentMedia({ name: f.name, type: f.type });
+      let thumb;
+      if (kind === 'image') {
+        let u = _trayThumbs.get(f);
+        if (!u) { u = URL.createObjectURL(f); _trayThumbs.set(f, u); }
+        thumb = `<img src="${escapeHtml(u)}" alt="" />`;
+      } else {
+        thumb = fileIconHtml(f.name);
+      }
+      const name = escapeHtml(f.name);
+      return `<div class="attach-card">
+        <div class="attach-card-thumb">${thumb}</div>
+        <div class="attach-card-name" title="${name}">${name}</div>
+        <div class="attach-card-size">${formatFileSize(f.size)}</div>
+        <button type="button" class="attach-card-remove" aria-label="Remove ${name}" title="Remove" onclick="window.removeAttachment(${i})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>`;
     }).join('');
   }
 
@@ -1689,14 +1747,22 @@ function initDashboardView() {
     }
   };
 
+  // Single entry point for the + button, drag-and-drop and paste.
   function handleFileUpload(files) {
-    if (!files || files.length === 0) return;
-    for (const f of files) {
+    const list = Array.from(files || []); // copy first: clearing the input empties its live FileList
+    if (!list.length) return;
+    let tooBig = 0, overflow = 0;
+    for (const f of list) {
+      if (f.size > MAX_FILE_BYTES) { tooBig++; continue; }
+      if (pendingFiles.length >= MAX_ATTACHMENTS) { overflow++; continue; }
       pendingFiles.push(f);
     }
+    if (tooBig) toast(tooBig === 1 ? 'That file is too large (max 10 MB)' : `${tooBig} files are too large (max 10 MB each)`);
+    else if (overflow) toast(`You can attach up to ${MAX_ATTACHMENTS} files per message`);
     renderAttachmentPreviews();
-    document.getElementById('file-input').value = '';
-    toast(`${files.length} file(s) ready to send`);
+    const fi = document.getElementById('file-input');
+    if (fi) fi.value = '';
+    document.getElementById('msg-input')?.focus();
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1850,6 +1916,7 @@ function initDashboardView() {
           name: file.name,
           url: data.url,
           type: file.type || 'application/octet-stream',
+          size: file.size,
           encrypted: true,
           nonce: uint8ArrayToBase64(fileNonce),
           key_envelopes
@@ -1999,21 +2066,36 @@ function initDashboardView() {
     openImageLightbox(src, alt);
   }, true);
 
+  // One renderer for both paths (plain /uploads URL or decrypted blob: URL).
+  function attachmentHtml(a, url) {
+    const { kind } = resolveAttachmentMedia(a);
+    const u = escapeHtml(url);
+    const nameRaw = String(a.name || 'file');
+    const name = escapeHtml(nameRaw);
+    const size = a.size != null ? formatFileSize(a.size) : '';
+    if (kind === 'image') {
+      return `<button type="button" class="msg-image-button" data-image-src="${u}" data-image-alt="${name}" aria-label="Open image"><img src="${u}" alt="${name}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" /></button>`;
+    }
+    if (kind === 'video') {
+      return `<video class="msg-video" src="${u}" controls preload="metadata" playsinline aria-label="${name}" onloadedmetadata="handleMsgImageSettled(this)"></video>`;
+    }
+    const dl = `<a class="msg-file-dl" href="${u}" download="${name}" title="Download" aria-label="Download ${name}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>`;
+    const info = `<div class="msg-file-info"><a class="msg-file-name" href="${u}" download="${name}" title="${name}">${name}</a>${size ? `<span class="msg-file-size">${size}</span>` : ''}</div>`;
+    if (kind === 'audio') {
+      return `<div class="msg-file-card msg-audio-card"><div class="msg-audio-head">${fileIconHtml(nameRaw)}${info}${dl}</div><audio src="${u}" controls preload="metadata"></audio></div>`;
+    }
+    return `<div class="msg-file-card">${fileIconHtml(nameRaw)}${info}${dl}</div>`;
+  }
+
   function buildAttachmentsHtml(msg) {
     if (msg.deleted || !msg.attachments || !msg.attachments.length) return '';
-    let html = '<div class="msg-attachments" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">';
+    let html = '<div class="msg-attachments" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px;">';
     msg.attachments.forEach((a, i) => {
       if (a.encrypted) {
-        html += `<div class="msg-attachment-e2ee" data-attachment-index="${i}" style="min-height:48px;display:flex;align-items:center;color:var(--text-muted);font-size:.85rem;">Decrypting encrypted attachment…</div>`;
+        html += `<div class="msg-attachment-e2ee msg-attachment-loading" data-attachment-index="${i}">Decrypting ${escapeHtml(String(a.name || 'attachment'))}…</div>`;
         return;
       }
-      if (a.type && a.type.startsWith('image/')) {
-        const imageUrl = escapeHtml(versionedMediaUrl(a.url));
-        const imageName = escapeHtml(a.name || 'Image');
-        html += `<button type="button" class="msg-image-button" data-image-src="${imageUrl}" data-image-alt="${imageName}" aria-label="Open image"><img src="${imageUrl}" alt="${imageName}" loading="lazy" decoding="async" style="max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;" onload="handleMsgImageSettled(this)" onerror="handleMsgImageError(this)" /></button>`;
-      } else {
-        html += `<a href="${escapeHtml(versionedMediaUrl(a.url))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 1 0 4.24 4.24L9.41 17.41a1 1 0 1 0-1.41-1.41l8.49-8.49"/></svg>${escapeHtml(a.name)}</a>`;
-      }
+      html += attachmentHtml(a, versionedMediaUrl(a.url));
     });
     html += '</div>';
     return html;
@@ -2049,37 +2131,18 @@ function initDashboardView() {
         if (!fileNonce || fileNonce.length !== 24) throw new Error('invalid attachment nonce');
         const plaintext = nacl.secretbox.open(ciphertext, fileNonce, key);
         if (!plaintext) throw new Error('decrypt failed');
-        const blob = new Blob([plaintext], { type: a.type || 'application/octet-stream' });
+        // MIME comes from our own allowlist, never the sender's declared type:
+        // anything that isn't known-inert media becomes octet-stream, so a
+        // blob: URL can never be opened as an HTML/script document.
+        const { mime } = resolveAttachmentMedia(a);
+        const blob = new Blob([plaintext], { type: mime || 'application/octet-stream' });
         const objectUrl = URL.createObjectURL(blob);
         row._objectUrls.push(objectUrl);
-        if (a.type?.startsWith('image/')) {
-          const img = document.createElement('img');
-          img.src = objectUrl;
-          img.alt = a.name || 'Image';
-          img.loading = 'lazy';
-          img.decoding = 'async';
-          img.style.cssText = 'max-width:320px;max-height:240px;min-height:48px;min-width:48px;border-radius:8px;object-fit:cover;background:var(--bg-tertiary);cursor:pointer;';
-          img.addEventListener('load', () => handleMsgImageSettled(img));
-          img.addEventListener('error', () => handleMsgImageError(img));
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = 'msg-image-button';
-          button.setAttribute('aria-label', 'Open image');
-          button.dataset.imageSrc = objectUrl;
-          button.dataset.imageAlt = a.name || 'Image';
-          button.appendChild(img);
-          slot.replaceWith(button);
-        } else {
-          const link = document.createElement('a');
-          link.href = objectUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = a.name || 'Download attachment';
-          link.style.cssText = 'color:var(--accent);font-size:.85rem;display:inline-flex;align-items:center;gap:4px;';
-          slot.replaceWith(link);
-        }
+        slot.insertAdjacentHTML('afterend', attachmentHtml({ ...a, size: plaintext.length }, objectUrl));
+        slot.remove();
       } catch (e) {
         slot.textContent = 'Unable to decrypt attachment';
+        slot.classList.remove('msg-attachment-loading');
         slot.style.color = 'var(--text-muted)';
       }
     }
@@ -2782,18 +2845,49 @@ function initDashboardView() {
   document.getElementById('msg-input').addEventListener('paste', e => {
     const items = e.clipboardData?.items;
     if (!items) return;
-    const imageFiles = [];
+    const pastedFiles = [];
     for (const item of items) {
-      if (item.kind === 'file' && item.type.startsWith('image/')) {
+      if (item.kind === 'file') {
         const file = item.getAsFile();
-        if (file) imageFiles.push(file);
+        if (file) pastedFiles.push(file);
       }
     }
-    if (imageFiles.length) {
+    if (pastedFiles.length) {
       e.preventDefault();
-      handleFileUpload(imageFiles);
+      handleFileUpload(pastedFiles);
     }
   });
+
+  // ─── Drag & drop files anywhere on the chat (Discord-style overlay) ───
+  (function setupFileDrop() {
+    const view = document.getElementById('chat-view');
+    if (!view) return;
+    let depth = 0, overlay = null;
+    const hasFiles = e => Array.from(e.dataTransfer?.types || []).includes('Files');
+    const show = () => {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'file-drop-overlay';
+        overlay.innerHTML = '<div class="file-drop-card"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><strong>Upload to this chat</strong><span>Drop files to add them to your message</span></div>';
+        view.appendChild(overlay);
+      }
+      overlay.classList.add('open');
+    };
+    const hide = () => { depth = 0; if (overlay) overlay.classList.remove('open'); };
+    view.addEventListener('dragenter', e => { if (!hasFiles(e) || !currentRoom) return; e.preventDefault(); depth++; show(); });
+    view.addEventListener('dragover', e => { if (!hasFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+    view.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) hide(); });
+    view.addEventListener('drop', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      hide();
+      if (currentRoom && e.dataTransfer?.files?.length) handleFileUpload(e.dataTransfer.files);
+    });
+    // A file dropped outside the chat must not make the browser navigate to it.
+    window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+    window.addEventListener('drop', e => { if (hasFiles(e)) { e.preventDefault(); hide(); } });
+    window.addEventListener('dragend', hide);
+  })();
 
   const typingUsers = new Map();
   function showTyping(name) {
@@ -3619,7 +3713,6 @@ function initDashboardView() {
       el.style.display = name.includes(lq) ? '' : 'none';
     });
   }
-  function handleFileUpload(files) { /* defined above */ }
   // NOTE: the real startCall() lives in voice.js's initVoiceFeatures()
   // (window.startCall = async function... — actual WebRTC call logic).
   // There used to be a placeholder stub here that got wired up via
@@ -3744,17 +3837,6 @@ function initDashboardView() {
     document.body.classList.toggle('select-mode', selectModeActive);
     updateMSBar();
     renderDMList();
-  }
-
-  // ─── HANDLE FILE UPLOAD ──────────────────────────────────
-  function handleFileUpload(files) {
-    if (!files || files.length === 0) return;
-    for (const f of files) {
-      pendingFiles.push(f);
-    }
-    renderAttachmentPreviews();
-    document.getElementById('file-input').value = '';
-    toast(`${files.length} file(s) ready to send`);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
