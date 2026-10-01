@@ -213,6 +213,16 @@ app.use(['/api/servers', '/api/groups'], (req, res, next) => {
   next();
 });
 app.use('/api/invites/:code/join', inviteJoinLimiter);
+// The public invite preview needs no login, so it gets its own per-IP cap
+// (a normal page view is one call; this just stops code-guessing loops).
+const invitePreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { valid: false, error: 'Too many requests, please slow down.' }
+});
+app.use('/api/invites/:code/public', invitePreviewLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

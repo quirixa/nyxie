@@ -26,6 +26,35 @@ function loadInvite(db, code) {
   return { invite, error: null };
 }
 
+// Public preview for the /invite/:code landing page — this is what someone
+// sees BEFORE they have an account or are logged in, so it can't require
+// auth. It is deliberately minimal: server name, icon and member count
+// only (no description, member list or channels), and nothing at all about
+// a server when the invite isn't usable. Every failure mode (unknown code,
+// revoked, expired, used up, deleted server) returns the same generic
+// answer so this can't be used to probe which codes exist. Codes are ~48
+// bits and the route is rate limited in server.js, so it can't be used to
+// enumerate servers either. The authenticated GET below stays the source
+// of truth for per-user state (already a member / banned).
+const INVITE_CODE_RE = /^[A-Za-z0-9_-]{4,16}$/;
+router.get('/:code/public', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const invalid = () => res.json({ valid: false, error: 'This invite is invalid or has expired.' });
+  try {
+    if (!INVITE_CODE_RE.test(req.params.code)) return invalid();
+    const db = await getUserDb();
+    const { invite, error } = loadInvite(db, req.params.code);
+    if (!invite || error) return invalid();
+    const server = get(db, 'SELECT id, name, icon FROM servers WHERE id = ?', [invite.server_id]);
+    if (!server) return invalid();
+    const memberCount = get(db, 'SELECT COUNT(*) AS c FROM server_members WHERE server_id = ?', [server.id])?.c || 0;
+    res.json({ valid: true, server: { name: server.name, icon: server.icon || null, member_count: memberCount } });
+  } catch (err) {
+    console.error('Error previewing invite:', err);
+    res.status(500).json({ valid: false, error: 'Something went wrong. Please try again.' });
+  }
+});
+
 // Preview an invite (server name/icon/member count) before joining —
 // authenticated so we don't leak server metadata to anonymous scrapers,
 // but does not require membership.

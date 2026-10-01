@@ -106,7 +106,7 @@ function initLoginView() {
       if (typeof nyxieAutoPull === 'function') await nyxieAutoPull();
 
       toast(`Welcome back, ${data.user.display_name || data.user.username}!`, false);
-      setTimeout(() => { router.navigate('/app'); }, 400);
+      setTimeout(() => { router.navigate(typeof postAuthPath === 'function' ? postAuthPath() : '/app'); }, 400);
     } catch (err) {
       toast(err.message, true);
       setError(passwordGroup, err.message);
@@ -230,7 +230,7 @@ function initRegisterView() {
       localStorage.setItem('nyxie_user', JSON.stringify(data.user));
       await setupEncryptionKeys(data.user.id, password, data.token);
       toast(`Welcome, ${data.user.display_name || data.user.username}!`, false);
-      setTimeout(() => { router.navigate('/app'); }, 700);
+      setTimeout(() => { router.navigate(typeof postAuthPath === 'function' ? postAuthPath() : '/app'); }, 700);
     } catch (err) {
       toast(err.message, true);
       submitBtn.disabled = false;

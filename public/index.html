@@ -58,6 +58,7 @@
 <link rel="stylesheet" href="/css/admin.css">
 <link rel="stylesheet" href="/css/badges.css">
 <link rel="stylesheet" href="/css/prefs.css">
+<link rel="stylesheet" href="/css/invite.css">
 
 <style>
     /* ─── Cropper Overlay ──────────────────────────────────── */
@@ -2526,6 +2527,13 @@ __    __  __      __  __    __  ______  ________
     </div>
 </template>
 
+<template id="tpl-invite">
+    <div id="view-invite">
+        <div class="invite-brand">Nyxie</div>
+        <main class="invite-card" id="invite-card" aria-live="polite"></main>
+    </div>
+</template>
+
 <template id="tpl-404">
     <div id="view-404" class="route-error">
         <div class="route-error-glyph">404</div>
@@ -2652,6 +2660,7 @@ __    __  __      __  __    __  ______  ________
 <script src="/js/i18n.js"></script>
 <script src="/js/router.js"></script>
 <script src="/js/auth.js"></script>
+<script src="/js/invite.js"></script>
 <script src="/js/notifications.js"></script>
 <script src="/js/dashboard.js?v=20260925-imgfix2"></script>
 <script src="/js/wallet.js"></script>

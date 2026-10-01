@@ -78,6 +78,11 @@ const router = (() => {
     // dashboard mounts (showDiscoverView() in dashboard.js).
     { path: '/discover', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'discover'; window._initialDiscoverCategory = null; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     { path: '/discover/:category', template: 'tpl-app', auth: 'required', init: (params) => { window._initialSection = 'discover'; window._initialDiscoverCategory = params.category; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Invite landing page (Discord-style). auth: 'any' on purpose — the whole
+    // point is that someone with a link and no account yet can open it, see
+    // the server, and be walked through login/register and back. See
+    // js/invite.js.
+    { path: '/invite/:code', template: 'tpl-invite', auth: 'any', init: (params) => { if (typeof initInviteView === 'function') initInviteView(params.code); }, destroy: () => { if (typeof destroyInviteView === 'function') destroyInviteView(); } },
     { path: '/settings', template: 'tpl-settings', auth: 'required', init: () => initSettingsView(), destroy: () => { if (typeof destroySettingsView === 'function') destroySettingsView(); } }
   ];
 
@@ -87,6 +92,8 @@ const router = (() => {
   const root = () => document.getElementById('app-root');
 
   function matchRoute(path) {
+    // '/invite/abc/' should behave like '/invite/abc'.
+    if (path.length > 1) path = path.replace(/\/+$/, '') || '/';
     for (const route of routes) {
       const m = route.regex.exec(path);
       if (!m) continue;
