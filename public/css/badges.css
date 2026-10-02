@@ -105,26 +105,26 @@
 
 /* ── Light-surface themes: darken tinted glyphs so amber/green keep contrast,
       and tone the glow down (glows read as smudges on white). ── */
-body.theme-light .nyx-badge:not([data-tier="staff"]),
-body.theme-retro .nyx-badge:not([data-tier="staff"]) {
+body.theme-light .nyx-badge:not([data-tier="staff"]):not(.profile-surface *),
+body.theme-retro .nyx-badge:not([data-tier="staff"]):not(.profile-surface *) {
   --badge-fg: color-mix(in srgb, var(--badge-color) 68%, #000);
 }
-body.theme-light .nyx-badge { --badge-glow: 30%; }
-body.theme-light .nyx-badge[data-tier="special"] {
+body.theme-light .nyx-badge:not(.profile-surface *) { --badge-glow: 30%; }
+body.theme-light .nyx-badge[data-tier="special"]:not(.profile-surface *) {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge-color) 60%, transparent);
 }
 
 /* ── Retro (Windows 95) theme: square, bevelled, no glow — the theme forces
       border-radius:0 and box-shadow:none on everything, so the bevel is a
       real border. ── */
-body.theme-retro .nyx-badge {
+body.theme-retro .nyx-badge:not(.profile-surface *) {
   background: var(--bg-input);
   border: 1px solid;
   border-color: var(--bevel-light) var(--bevel-dark) var(--bevel-dark) var(--bevel-light);
 }
-body.theme-retro .nyx-badge[data-tier="staff"] { background: var(--badge-color); }
+body.theme-retro .nyx-badge[data-tier="staff"]:not(.profile-surface *) { background: var(--badge-color); }
 /* …and the theme also forces every <svg> to 28px !important; keep glyphs proportional to their chip. */
-body.theme-retro .nyx-badge svg {
+body.theme-retro .nyx-badge svg:not(.profile-surface *) {
   width: 68% !important;
   height: 68% !important;
   min-width: 0 !important;

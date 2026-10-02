@@ -528,7 +528,7 @@ body.theme-retro {
   font-family: 'Tahoma', 'MS Sans Serif', Geneva, sans-serif !important;
 }
 
-body.theme-retro * {
+body.theme-retro *:not(.profile-surface):not(.profile-surface *) {
   border-radius: 0 !important;
   box-shadow: none !important;
   text-shadow: none !important;
@@ -536,11 +536,11 @@ body.theme-retro * {
   backdrop-filter: none !important;
 }
 
-body.theme-retro a:not(.no-accent) {
+body.theme-retro a:not(.no-accent):not(.profile-surface):not(.profile-surface *) {
   color: #0000EE !important;
   text-decoration: underline !important;
 }
-body.theme-retro a:not(.no-accent):visited {
+body.theme-retro a:not(.no-accent):not(.profile-surface):not(.profile-surface *):visited {
   color: #551A8B !important;
 }
 
@@ -561,7 +561,7 @@ body.theme-retro .dm-action-btn,
 body.theme-retro .up-btn,
 body.theme-retro .back-btn,
 body.theme-retro .msb-cancel,
-body.theme-retro button,
+body.theme-retro button:not(.profile-surface):not(.profile-surface *),
 body.theme-retro select {
   background: #c0c0c0 !important;
   color: #000000 !important;
@@ -601,7 +601,7 @@ body.theme-retro input[type="submit"]:active,
 body.theme-retro .btn-secondary:active,
 body.theme-retro .ftab:active,
 body.theme-retro .nav-item:active,
-body.theme-retro button:active {
+body.theme-retro button:active:not(.profile-surface *) {
   border-color: var(--bevel-darker) var(--bevel-light) var(--bevel-light) var(--bevel-darker) !important;
   box-shadow: inset 1px 1px 0 var(--bevel-dark), inset -1px -1px 0 #dfdfdf !important;
   padding: 5px 11px 3px 13px;
@@ -665,7 +665,7 @@ body.theme-retro .dm-avatar,
 body.theme-retro .ch-avatar,
 body.theme-retro .pc-avatar,
 body.theme-retro #up-avatar,
-body.theme-retro .pp-avatar,
+body.theme-retro .pp-avatar:not(.profile-surface):not(.profile-surface *),
 body.theme-retro .mini-avatar {
   background: #c0c0c0 !important;
   color: #000000 !important;
@@ -731,7 +731,7 @@ body.theme-retro .brand-small {
   -webkit-text-fill-color: #000 !important;
   color: #000 !important;
 }
-body.theme-retro .pp-banner {
+body.theme-retro .pp-banner:not(.profile-surface):not(.profile-surface *) {
   background: #c0c0c0 !important;
 }
 body.theme-retro .msg-row.outgoing .msg-author {
@@ -782,7 +782,7 @@ body.theme-retro .mgmt-card {
 }
 
 /* ---- Retro Icons (chunky) ---- */
-body.theme-retro svg {
+body.theme-retro svg:not(.profile-surface):not(.profile-surface *) {
   min-width: 28px !important;
   min-height: 28px !important;
   width: 28px !important;
@@ -811,4 +811,49 @@ body.theme-esc .panel {
   background-color: var(--bg-modal-card);
   color: var(--text-primary);
   border-color: var(--border-color);
+}
+
+
+/* ============================================================
+   Profile surfaces (own + other users' popouts)
+   A profile is the same for everyone who views it, so it must not
+   follow the viewer's theme or accent. These popouts re-declare the
+   default (Dark) palette locally; CSS variables set here win over the
+   ones body.theme-* defines, so nothing inside needs to change.
+   ============================================================ */
+.profile-surface {
+  --accent: #fd6671;
+  --accent-hover: #e85a64;
+  --accent-subtle: rgba(253, 102, 113, 0.08);
+  --accent-muted: rgba(253, 102, 113, 0.15);
+
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-sidebar: #242424;
+  --bg-input: #2e2e2e;
+  --bg-modal: #1e1e1e;
+  --bg-modal-sidebar: #242424;
+  --bg-modal-card: #2a2a2a;
+  --bg-modal-hover: #303030;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.08);
+  --msg-hover: rgba(255, 255, 255, 0.03);
+
+  --text-primary: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #7a7a7a;
+
+  --border-color: #333333;
+  --border-medium: #444444;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+
+  --online: #3ba55c;
+  --offline: #6a6a72;
+  --danger: #ed4245;
+  --warning: #faa61a;
+  --radius: 8px;
+
+  color: var(--text-primary);
+  color-scheme: dark;
+  font-family: 'Inter', sans-serif;
 }
