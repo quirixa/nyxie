@@ -10,6 +10,7 @@ const { requireAuth } = require('../middleware/auth');
 const { hasBlocked } = require('../services/blocks');
 const { isReservedUsername } = require('../services/reservedUsernames');
 const { STATUSES, effectiveStatus } = require('../services/presence');
+const { assertCanEquip, CosmeticsError } = require('../services/cosmetics');
 
 // ─── Paths ──────────────────────────────────────────────────
 const PROJECT_ROOT = path.resolve(__dirname, '../..'); // because this file is in server/routes/
@@ -66,7 +67,7 @@ router.get('/search', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   const users = all(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, role, public_key, last_seen, status
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, last_seen, status
     FROM users
     WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?
     LIMIT 20
@@ -80,7 +81,7 @@ router.get('/search', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const user = get(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, role, public_key, status, created_at, last_seen
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status, created_at, last_seen
     FROM users WHERE id = ?
   `, [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -160,7 +161,7 @@ router.delete('/banner', requireAuth, async (req, res) => {
 // ─── UPDATE PROFILE (PATCH /me) ────────────────────────────
 router.patch('/me', requireAuth, async (req, res) => {
   const db = await getUserDb();
-  const { username, email, display_name, bio, pronouns, banner_color, public_key, encrypted_private_key, key_salt, key_nonce, current_password, new_password } = req.body;
+  const { username, email, display_name, bio, pronouns, avatar_decoration, card_decoration, banner_color, public_key, encrypted_private_key, key_salt, key_nonce, current_password, new_password } = req.body;
   const userId = req.user.id;
 
   const updates = [];
@@ -217,6 +218,22 @@ router.patch('/me', requireAuth, async (req, res) => {
     if (trimmed.length > 40) return res.status(400).json({ error: 'Pronouns too long (max 40 chars)' });
     updates.push('pronouns = ?');
     params.push(trimmed || null);
+  }
+
+  // Avatar + card decorations — cosmetic, but NX-gated: a user can only
+  // equip an item they bought in the shop (or 'none' to unequip). The id
+  // must also exist in the server-side catalog, so clients can't inject
+  // arbitrary class names/assets into profile rendering.
+  for (const [type, value] of [['avatar_decoration', avatar_decoration], ['card_decoration', card_decoration]]) {
+    if (value === undefined) continue;
+    try {
+      assertCanEquip(db, userId, type, value);
+    } catch (e) {
+      if (e instanceof CosmeticsError) return res.status(e.status).json({ error: e.message, code: e.code });
+      throw e;
+    }
+    updates.push(`${type} = ?`);
+    params.push(value);
   }
 
   // Banner color
@@ -309,7 +326,20 @@ router.patch('/me', requireAuth, async (req, res) => {
   const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
   run(db, sql, params);
 
-  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
+  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
+  // Tell every connected client (including this user's other sessions)
+  // that this profile's cosmetics changed, so open profile cards update
+  // live. Carries only public cosmetic ids — same approach as the
+  // 'badges_updated' event in routes/adminBadges.js.
+  if ((avatar_decoration !== undefined || card_decoration !== undefined) && typeof req.app.locals.broadcastAll === 'function') {
+    req.app.locals.broadcastAll({
+      type: 'profile_updated',
+      user_id: userId,
+      avatar_decoration: updated.avatar_decoration || 'none',
+      card_decoration: updated.card_decoration || 'none',
+      profile_effect: updated.profile_effect ? 1 : 0,
+    });
+  }
   res.json({ ok: true, user: updated });
 });
 

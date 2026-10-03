@@ -194,7 +194,7 @@ router.get('/me', async (req, res) => {
     // response above) — dashboard.js refreshes currentUser from this
     // endpoint on every app load, so it's the other place the client's
     // cached role can go stale without this.
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     if (!tokenIsLive(db, payload, user.tokens_invalid_before)) {
       return res.status(401).json({ error: 'Session expired or revoked' });

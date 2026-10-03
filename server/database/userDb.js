@@ -73,6 +73,7 @@ async function getUserDb() {
       banner_color TEXT,
       bio TEXT,
       pronouns TEXT,
+      avatar_decoration TEXT DEFAULT 'none',
       public_key TEXT,          -- E2EE: base64 encoded public key
       encrypted_private_key TEXT, -- E2EE: private key, encrypted client-side with a
                                    -- password-derived key (server never sees the
@@ -103,6 +104,16 @@ async function getUserDb() {
   // popout under the username — added defensively the same way as the
   // columns above so existing DB files pick it up without a full migration.
   try { db.run("ALTER TABLE users ADD COLUMN pronouns TEXT"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN avatar_decoration TEXT DEFAULT 'none'"); } catch (e) {}
+  // card_decoration: cosmetic frame/effect for the profile card (popout).
+  // Like avatar_decoration it's only ever set to an id the user OWNS (see
+  // user_cosmetics below + services/cosmetics.js).
+  try { db.run("ALTER TABLE users ADD COLUMN card_decoration TEXT DEFAULT 'none'"); } catch (e) {}
+  // profile_effect: the animated ring + sparks around the avatar on profile
+  // cards. Off for everyone by default; ONLY an admin can switch it on for a
+  // user (routes/adminProfileEffects.js or scripts/setProfileEffect.js).
+  // Deliberately not writable through PATCH /users/me.
+  try { db.run("ALTER TABLE users ADD COLUMN profile_effect INTEGER NOT NULL DEFAULT 0"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN status_updated_at INTEGER"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0"); } catch (e) {}
   // `role` also gets added defensively by walletDb.js's ensureWalletTables(),
@@ -111,6 +122,32 @@ async function getUserDb() {
   // starting from server startup. Adding it here too guarantees it exists
   // before any request can hit that query.
   try { db.run("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'USER'"); } catch (e) {}
+
+  // ── Cosmetics ownership ───────────────────────────────────────────
+  // Avatar/card decorations are only obtainable by buying them with NX
+  // (services/cosmetics.js -> POST /api/shop/items/:id/purchase). This
+  // table is the record of what each user owns. It lives here (not in a
+  // lazy ensure*Tables like the wallet) because /api/users/* reads the
+  // equipped decoration on every request from boot, and the sanitiser
+  // below has to run before any of that.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_cosmetics (
+      user_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      transaction_id TEXT,          -- wallet_transactions.id of the purchase
+      acquired_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, item_id)
+    )
+  `);
+  // Invariant: nobody has a decoration equipped that they don't own.
+  // This also clears decorations that were equipped back when they were
+  // free (before the shop existed). Idempotent; a no-op once clean.
+  db.run(`UPDATE users SET avatar_decoration = 'none'
+          WHERE avatar_decoration IS NOT NULL AND avatar_decoration != 'none'
+            AND NOT EXISTS (SELECT 1 FROM user_cosmetics c WHERE c.user_id = users.id AND c.item_id = users.avatar_decoration)`);
+  db.run(`UPDATE users SET card_decoration = 'none'
+          WHERE card_decoration IS NOT NULL AND card_decoration != 'none'
+            AND NOT EXISTS (SELECT 1 FROM user_cosmetics c WHERE c.user_id = users.id AND c.item_id = users.card_decoration)`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS servers (

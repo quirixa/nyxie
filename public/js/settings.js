@@ -12,6 +12,9 @@ function initSettingsView() {
   token = localStorage.getItem('nyxie_token');
   currentUser = JSON.parse(localStorage.getItem('nyxie_user') || 'null');
   let emailVisible = false;
+  let _pendingAvatarDecoration = null;
+  let _pendingCardDecoration = null;
+  let _shop = null; // last GET /api/shop response
 
   if (!token || !currentUser) { router.navigate('/login'); return; }
 
@@ -76,6 +79,14 @@ function initSettingsView() {
     if (tab === 'my-account') refresh2fa();
     else if (tab === 'sessions') refreshSessions();
     else if (tab === 'voice') loadVoiceSettings();
+    else if (tab === 'profile') {
+      // The decoration shop is rendered by JS, so it must (re)load whenever
+      // this tab is opened. Keep any unsaved selection the user already made.
+      if (_pendingAvatarDecoration === null) _pendingAvatarDecoration = currentUser.avatar_decoration || 'none';
+      if (_pendingCardDecoration === null) _pendingCardDecoration = currentUser.card_decoration || 'none';
+      renderShop();
+      loadShop();
+    }
     else if (tab === 'sync') loadSyncTab();
     else if (tab === 'experiments') renderExperiments();
     else if (tab === 'bots') refreshBots();
@@ -129,6 +140,10 @@ function initSettingsView() {
     updateDisplayNameCounter();
     document.getElementById('profile-bio').value = currentUser.bio || '';
     updateBioCounter();
+    _pendingAvatarDecoration = currentUser.avatar_decoration || 'none';
+    _pendingCardDecoration = currentUser.card_decoration || 'none';
+    renderShop();   // paint immediately from whatever we have...
+    loadShop();     // ...then refresh ownership/balance from the server
   }
 
   function updateDisplayNameCounter() {
@@ -139,6 +154,93 @@ function initSettingsView() {
   function updateBioCounter() {
     const val = document.getElementById('profile-bio').value;
     document.getElementById('bio-counter').textContent = val.length;
+  }
+
+  // ---- Cosmetics shop (avatar + card decorations, bought with NX) ----
+  // Ownership is decided by the server; the client only reflects it. A tile
+  // is selectable only if owned (or 'none'); everything else shows a Buy button.
+  async function loadShop() {
+    const data = await api('GET', '/shop');
+    if (data && !data.error && Array.isArray(data.items)) {
+      _shop = data;
+      renderShop();
+    }
+  }
+
+  function shopSlot(type) {
+    return type === 'avatar_decoration'
+      ? { pending: () => _pendingAvatarDecoration, el: 'avatar-decoration-picker', pick: 'selectAvatarDecoration', label: 'None' }
+      : { pending: () => _pendingCardDecoration, el: 'card-decoration-picker', pick: 'selectCardDecoration', label: 'None' };
+  }
+
+  function tileHtml(type, item) {
+    const slot = shopSlot(type);
+    const id = item ? item.id : 'none';
+    const name = item ? item.name : 'None';
+    const owned = !item || item.owned;
+    const active = slot.pending() === id;
+    const preview = type === 'avatar_decoration'
+      ? `<span class="decoration-preview decoration-${id}"><span></span></span>`
+      : `<span class="card-deco-preview" data-card-decoration="${id}"></span>`;
+    let footer;
+    if (owned) {
+      footer = `<span class="shop-state">${active ? 'Selected' : (item ? 'Owned' : '')}</span>`;
+    } else {
+      const afford = !_shop || _shop.balance >= item.price;
+      footer = `<button type="button" class="shop-buy-btn ${afford ? '' : 'cant'}" onclick="event.stopPropagation(); buyCosmetic('${id}')">${item.priceDisplay.replace(/\.00$/, '')} NX</button>`;
+    }
+    const attrs = owned ? `class="shop-tile selectable${active ? ' active' : ''}" role="button" tabindex="0" onclick="${slot.pick}('${id}')"` : 'class="shop-tile"';
+    return `<div ${attrs} title="${escapeHtml(item ? item.description : 'No decoration')}"><span class="shop-name">${escapeHtml(name)}</span>${preview}${footer}</div>`;
+  }
+
+  function renderShop() {
+    const bal = document.getElementById('shop-balance');
+    if (bal) bal.innerHTML = `Balance: <strong>${_shop ? escapeHtml(_shop.balanceDisplay) : '…'}</strong> NX`;
+    ['avatar_decoration', 'card_decoration'].forEach(type => {
+      const grid = document.getElementById(shopSlot(type).el);
+      if (!grid) return;
+      const items = _shop ? _shop.items.filter(i => i.type === type) : [];
+      grid.innerHTML = tileHtml(type, null) + items.map(i => tileHtml(type, i)).join('');
+    });
+  }
+
+  function setShopError(msg) {
+    const el = document.getElementById('shop-error');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  function ownsInShop(id) {
+    return id === 'none' || !!(_shop && _shop.items.some(i => i.id === id && i.owned));
+  }
+
+  function selectAvatarDecoration(id) {
+    if (!ownsInShop(id)) return;
+    _pendingAvatarDecoration = id;
+    renderShop();
+  }
+  function selectCardDecoration(id) {
+    if (!ownsInShop(id)) return;
+    _pendingCardDecoration = id;
+    renderShop();
+  }
+
+  async function buyCosmetic(id) {
+    const item = _shop && _shop.items.find(i => i.id === id);
+    if (!item) return;
+    setShopError('');
+    if (!confirm(`Buy "${item.name}" for ${item.priceDisplay} NX?`)) return;
+    const res = await api('POST', `/shop/items/${encodeURIComponent(id)}/purchase`);
+    if (!res || res.error) {
+      setShopError(res?.error || 'Purchase failed. Please try again.');
+      return;
+    }
+    _shop = res.shop;
+    // Pre-select what they just bought; it's only worn once they hit Save.
+    if (item.type === 'avatar_decoration') _pendingAvatarDecoration = id; else _pendingCardDecoration = id;
+    renderShop();
+    toast(`Bought ${item.name}! Hit Save to wear it.`);
   }
 
   let _pendingBannerColor = null;
@@ -254,6 +356,14 @@ function initSettingsView() {
     const payload = {};
     if (displayName !== currentUser.display_name) payload.display_name = displayName;
     if (bio !== (currentUser.bio || '')) payload.bio = bio;
+    const selectedDecoration = _pendingAvatarDecoration || 'none';
+    if (selectedDecoration !== (currentUser.avatar_decoration || 'none')) {
+      payload.avatar_decoration = selectedDecoration;
+    }
+    const selectedCard = _pendingCardDecoration || 'none';
+    if (selectedCard !== (currentUser.card_decoration || 'none')) {
+      payload.card_decoration = selectedCard;
+    }
     if (_pendingBannerColor !== null && _pendingBannerColor !== (currentUser.banner_color || '')) {
       payload.banner_color = _pendingBannerColor;
     }
@@ -275,6 +385,8 @@ function initSettingsView() {
         currentUser.bio = res.user.bio;
         currentUser.banner_color = res.user.banner_color;
         currentUser.banner = res.user.banner;
+        currentUser.avatar_decoration = res.user.avatar_decoration || 'none';
+        currentUser.card_decoration = res.user.card_decoration || 'none';
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
         _pendingBannerColor = null;
         toast('Profile updated');
@@ -1166,6 +1278,9 @@ function initSettingsView() {
   window.saveProfileChanges = saveProfileChanges;
   window.updateDisplayNameCounter = updateDisplayNameCounter;
   window.updateBioCounter = updateBioCounter;
+  window.selectAvatarDecoration = selectAvatarDecoration;
+  window.selectCardDecoration = selectCardDecoration;
+  window.buyCosmetic = buyCosmetic;
   window.loadProfileForm = loadProfileForm;
   window.loadUserData = loadUserData;
   window.initLanguageSettings = initLanguageSettings;

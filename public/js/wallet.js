@@ -112,7 +112,8 @@ function renderTxList(containerId, txs) {
     const sign = out ? '-' : '+';
     const who = tx.counterpartyUsername ? '@' + escapeHtml(tx.counterpartyUsername)
       : (tx.type === 'SYSTEM_CREDIT' ? 'Test funds' : tx.type.replace(/_/g, ' '));
-    const label = out ? `Sent to ${who}` : `Received from ${who}`;
+    const label = tx.type === 'SHOP_PURCHASE' ? escapeHtml(tx.description || 'Shop purchase')
+      : (out ? `Sent to ${who}` : `Received from ${who}`);
     return `
       <div class="wallet-tx-row" onclick="openTxDetail('${tx.id}')">
         <div class="wtx-icon ${out ? 'out' : 'in'}">${out

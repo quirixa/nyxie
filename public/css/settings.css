@@ -1383,3 +1383,48 @@
   #view-settings .language-settings-footer { align-items: stretch; flex-direction: column; }
   #view-settings .language-apply-btn { width: 100%; }
 }
+
+/* Avatar decoration picker */
+#view-settings .avatar-decoration-picker {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(70px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+#view-settings .decoration-option {
+  min-width: 0;
+  padding: 10px 7px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  font-size: .75rem;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+#view-settings .decoration-option:hover { transform: translateY(-1px); }
+#view-settings .decoration-option.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+#view-settings .decoration-preview {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  display: block;
+}
+#view-settings .decoration-preview span { position:absolute; inset:0; display:block; }
+#view-settings .decoration-halo span::before { content:""; position:absolute; width:30px; height:9px; left:9px; top:1px; border:2px solid #ffe89a; border-radius:50%; box-shadow:0 0 8px #ffd95c; }
+#view-settings .decoration-crown span::before { content:""; position:absolute; width:34px; height:21px; left:7px; top:1px; background:linear-gradient(#fff3a8,#d99518); clip-path:polygon(0 15%,20% 48%,35% 3%,50% 48%,68% 0,82% 48%,100% 14%,90% 88%,10% 88%); }
+#view-settings .decoration-flowers span::before { content:"✿"; position:absolute; left:3px; top:1px; color:#ff9fca; font-size:22px; text-shadow:0 0 6px #ff72b7; }
+#view-settings .decoration-flowers span::after { content:"✿"; position:absolute; right:2px; top:13px; color:#fff0a7; font-size:18px; }
+#view-settings .decoration-headphones span::before { content:""; position:absolute; width:36px; height:36px; left:6px; top:3px; border:4px solid #c9c8ff; border-bottom-color:transparent; border-radius:22px 22px 8px 8px; }
+#view-settings .decoration-headphones span::after { content:""; position:absolute; width:7px; height:15px; left:4px; top:25px; border-radius:5px; background:#aaa5ff; box-shadow:33px 0 #aaa5ff; }
+@media (max-width: 700px) { #view-settings .avatar-decoration-picker { grid-template-columns:repeat(3, 1fr); } }

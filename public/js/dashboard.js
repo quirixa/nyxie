@@ -891,6 +891,11 @@ function initDashboardView() {
           break;
         }
 
+        case 'profile_updated': {
+          handleProfileUpdated(msg);
+          break;
+        }
+
         case 'badges_updated': {
           // An admin changed someone's badges: re-fetch so every chat
           // header / list / popout showing that user updates in place.
@@ -2902,6 +2907,65 @@ function initDashboardView() {
     el.textContent = names.length ? `${names[0]} is typing…` : '';
   }
 
+  // ─── AVATAR DECORATIONS ─────────────────────────────────
+  // Only server-approved decoration IDs are rendered. The visual layer is
+  // CSS-only and sits above the avatar without modifying the avatar asset.
+  // Ids are validated by shape only; the server decides which ids exist and
+  // who owns them (see services/cosmetics.js), and the CSS only draws ids it
+  // knows, so an unknown id simply renders nothing.
+  const COSMETIC_ID_RE = /^[a-z0-9_-]{1,32}$/;
+  function cosmeticId(value) {
+    return typeof value === 'string' && COSMETIC_ID_RE.test(value) ? value : 'none';
+  }
+  function applyAvatarDecoration(element, decoration) {
+    if (!element) return;
+    element.dataset.decoration = cosmeticId(decoration);
+  }
+  // Card decorations style the whole popout via [data-card-decoration] (cosmetics.css).
+  function applyCardDecoration(element, decoration) {
+    if (!element) return;
+    const v = cosmeticId(decoration);
+    if (v === 'none') element.removeAttribute('data-card-decoration');
+    else element.dataset.cardDecoration = v;
+  }
+
+  // The ring + sparks only draw for users an admin has authorised.
+  function applyProfileEffect(popout, enabled) {
+    const host = popout && popout.querySelector('.profile-effect-host');
+    if (host) host.classList.toggle('has-profile-effect', !!enabled);
+  }
+
+  // WebSocket 'profile_updated': someone equipped/unequipped a decoration.
+  // Keeps our own cached user in sync across sessions, and live-updates any
+  // profile card that's currently open for that user.
+  function handleProfileUpdated(msg) {
+    if (!msg || !msg.user_id) return;
+    if (msg.user_id === currentUser.id) {
+      currentUser.avatar_decoration = cosmeticId(msg.avatar_decoration);
+      currentUser.card_decoration = cosmeticId(msg.card_decoration);
+      if (msg.profile_effect !== undefined) currentUser.profile_effect = msg.profile_effect ? 1 : 0;
+      try { localStorage.setItem('nyxie_user', JSON.stringify(currentUser)); } catch {}
+      const pp = document.getElementById('profile-popout');
+      if (pp && pp.style.display === 'block') {
+        applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
+    applyCardDecoration(pp, currentUser.card_decoration);
+    applyProfileEffect(pp, currentUser.profile_effect);
+        applyCardDecoration(pp, currentUser.card_decoration);
+        applyProfileEffect(pp, currentUser.profile_effect);
+      }
+    }
+    const up = document.getElementById('user-profile-popout');
+    if (up && up.style.display === 'block' && _profileUserId === msg.user_id) {
+      applyAvatarDecoration(document.getElementById('up-avatar-decoration'), msg.avatar_decoration);
+      applyCardDecoration(up, msg.card_decoration);
+      if (msg.profile_effect !== undefined) {
+        applyProfileEffect(up, msg.profile_effect);
+        up.dataset.profileEffect = msg.profile_effect ? '1' : '0';
+        updateProfileEffectMenu();
+      }
+    }
+  }
+
   // ─── USER PROFILE POPOUT (others) ──────────────────────
   async function showUserProfile(event, userId) {
     // Member-list clicks should open the profile popout without the
@@ -2926,12 +2990,17 @@ function initDashboardView() {
     popout.style.left = finalLeft + 'px';
     popout.style.top = finalTop + 'px';
     popout.style.display = 'block';
+    const otherEffect = popout.querySelector('.profile-effect-host');
+    if (otherEffect) { otherEffect.classList.remove('profile-effect-active'); void otherEffect.offsetWidth; otherEffect.classList.add('profile-effect-active'); }
     popout.classList.remove('pp-open'); void popout.offsetWidth; popout.classList.add('pp-open');
     document.getElementById('up-name-display').textContent = 'Loading…';
     document.getElementById('up-username-display').textContent = '';
     document.getElementById('up-bio-display').style.display = 'none';
     document.getElementById('up-pronouns-display').style.display = 'none';
     document.getElementById('up-badges-display').style.display = 'none';
+    applyAvatarDecoration(document.getElementById('up-avatar-decoration'), 'none');
+    applyCardDecoration(popout, 'none');
+    applyProfileEffect(popout, false);
     const avatarEl = document.getElementById('up-avatar-large');
     avatarEl.innerHTML = '…';
     avatarEl.style.background = '#fd6671';
@@ -2964,6 +3033,11 @@ function initDashboardView() {
         avatarEl.innerHTML = letter;
         avatarEl.style.background = hashColor(user.display_name || user.username);
       }
+      applyAvatarDecoration(document.getElementById('up-avatar-decoration'), user.avatar_decoration);
+      applyCardDecoration(popout, user.card_decoration);
+      applyProfileEffect(popout, user.profile_effect);
+      popout.dataset.profileEffect = user.profile_effect ? '1' : '0';
+      updateProfileEffectMenu();
       const status = user.status || 'offline';
       const pip = document.getElementById('up-status-pip-display');
       pip.className = 'up-avatar-status ' + pipClass(status);
@@ -3145,6 +3219,7 @@ function initDashboardView() {
     avEl.style.background = color;
     if (currentUser.avatar) avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
     else { avEl.innerHTML = letter; avEl.style.background = color; }
+    applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent = '@' + currentUser.username;
     const pronounsEl = document.getElementById('pp-pronouns');
@@ -3169,6 +3244,8 @@ function initDashboardView() {
     document.getElementById('pp-status-submenu').style.display = 'none';
     document.getElementById('pp-status-menu-row').setAttribute('aria-expanded', 'false');
     pp.style.display = 'block';
+    const selfEffect = pp.querySelector('.profile-effect-host');
+    if (selfEffect) { selfEffect.classList.remove('profile-effect-active'); void selfEffect.offsetWidth; selfEffect.classList.add('profile-effect-active'); }
     pp.classList.remove('pp-open'); void pp.offsetWidth; pp.classList.add('pp-open');
   }
   function copyUserId(id) {
@@ -3266,6 +3343,25 @@ function initDashboardView() {
   }
   // Admin shortcut: profile → Manage Badges. Opens the Admin panel's Badges
   // tab with this user already selected (see initAdminPanel in admin.js).
+  // Admin-only menu item on another user's card. Cosmetic gate: the
+  // PUT /api/admin/profile-effects endpoint re-checks the admin role.
+  function updateProfileEffectMenu() {
+    const btn = document.getElementById('up-profile-effect-btn');
+    if (!btn) return;
+    const popout = document.getElementById('user-profile-popout');
+    btn.style.display = currentUser.role === 'ADMIN' ? '' : 'none';
+    const on = popout.dataset.profileEffect === '1';
+    document.getElementById('up-profile-effect-label').textContent = on ? 'Revoke Profile Effect' : 'Grant Profile Effect';
+  }
+  async function toggleProfileEffectFromProfile() {
+    if (!_profileUserId || currentUser.role !== 'ADMIN') return;
+    const popout = document.getElementById('user-profile-popout');
+    const enable = popout.dataset.profileEffect !== '1';
+    const res = await api('PUT', `/admin/profile-effects/users/${encodeURIComponent(_profileUserId)}`, { enabled: enable });
+    if (!res || res.error) { toast(res?.error || 'Failed to update profile effect'); return; }
+    toast(enable ? 'Profile effect granted' : 'Profile effect revoked');
+    // The server also broadcasts profile_updated, which refreshes the card.
+  }
   function manageBadgesFromProfile() {
     if (!_profileUserId || currentUser.role !== 'ADMIN') return;
     window._adminInitialTab = 'badges';
@@ -3891,6 +3987,7 @@ function initDashboardView() {
   window.removeProfileFriend = removeProfileFriend;
   window.toggleProfileBlock = toggleProfileBlock;
   window.manageBadgesFromProfile = manageBadgesFromProfile;
+  window.toggleProfileEffectFromProfile = toggleProfileEffectFromProfile;
   // Lets notifications.js (a separate, non-module script that has no
   // access to this IIFE's closure) check the current manually-picked
   // status without duplicating any state — used to mute the one-shot
