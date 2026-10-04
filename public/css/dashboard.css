@@ -249,12 +249,12 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .dm-avatar-wrap .status-pip {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 16px;
-  height: 16px;
+  right: -2px;
+  bottom: -2px;
+  width: var(--dm-pip-size, 14px);
+  height: var(--dm-pip-size, 14px);
   box-sizing: border-box;
-  border: 3px solid var(--pip-bg);
+  border: 2px solid var(--pip-bg);
 }
 
 #view-app .dm-content {
@@ -571,12 +571,12 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .fr-avatar-wrap .status-pip {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 16px;
-  height: 16px;
+  right: -2px;
+  bottom: -2px;
+  width: var(--dm-pip-size, 14px);
+  height: var(--dm-pip-size, 14px);
   box-sizing: border-box;
-  border: 3px solid var(--pip-bg);
+  border: 2px solid var(--pip-bg);
   --pip-bg: var(--bg-secondary);
 }
 #view-app .fr-info {
@@ -4015,21 +4015,30 @@ body.image-lightbox-open {
 #view-app #up-avatar svg,
 #view-app #pp-avatar-letter svg { width: 100%; height: 100%; display: block; }
 
-/* ── Typing indicator in the DM list (Discord-style bouncing dots) ── */
-#view-app .dm-preview.is-typing { color: var(--text-primary); font-weight: 600; }
-#view-app .dm-typing { display: inline-flex; align-items: center; gap: 6px; }
-#view-app .typing-dots { display: inline-flex; align-items: center; gap: 3px; }
-#view-app .typing-dots i {
-  width: 5px; height: 5px; border-radius: 50%;
-  background: currentColor; opacity: .45;
-  animation: dm-typing-bounce 1.2s infinite ease-in-out;
+/* ── Typing: the status circle turns into a gray pill with 3 bouncing dots ── */
+#view-app .status-pip.pip-typing {
+  width: 26px;
+  border-radius: 99px;
+  background: #80848e !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  right: -4px;
+  transition: width .15s ease;
 }
-#view-app .typing-dots i:nth-child(2) { animation-delay: .15s; }
-#view-app .typing-dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes dm-typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: .35; }
-  30% { transform: translateY(-3px); opacity: 1; }
+#view-app .status-pip.pip-typing::after { display: none !important; }
+#view-app .status-pip.pip-typing i {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: #fff;
+  animation: pip-typing-bounce 1.2s infinite ease-in-out;
+}
+#view-app .status-pip.pip-typing i:nth-child(2) { animation-delay: .15s; }
+#view-app .status-pip.pip-typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes pip-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-2px); opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #view-app .typing-dots i { animation: none; opacity: .7; }
+  #view-app .status-pip.pip-typing i { animation: none; opacity: .85; }
 }

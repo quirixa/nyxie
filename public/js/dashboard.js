@@ -927,7 +927,7 @@ function initDashboardView() {
           if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id) {
             showTyping(msg.display_name || msg.username);
           }
-          if (msg.user_id !== currentUser.id) setDmTyping(msg.room_id, msg.display_name || msg.username);
+          if (msg.user_id !== currentUser.id) setDmTyping(msg.room_id);
           break;
 
         case 'presence_update': {
@@ -1597,40 +1597,39 @@ function initDashboardView() {
     'Shared key failed': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
   };
 
-  // ─── DM LIST TYPING INDICATOR (Discord-style bouncing dots) ───
-  const dmTyping = {};   // roomId -> display name of whoever is typing
+  // ─── DM LIST TYPING INDICATOR ─────────────────────────────────
+  // While someone is typing, their status circle in the DM list turns
+  // into a small pill with three bouncing dots (like Discord). The
+  // preview text is left alone.
+  const dmTyping = {};   // roomId -> true while someone is typing
   const dmTypingTimers = {};
-  function dmTypingHtml(name, isGroup) {
-    return `<span class="dm-typing"><span class="typing-dots"><i></i><i></i><i></i></span>` +
-      `<span class="dm-typing-text">${isGroup ? escapeHtml(name) + ' is typing' : 'typing'}</span></span>`;
+  const TYPING_PIP_HTML = '<i></i><i></i><i></i>';
+  function applyTypingPip(roomId, on) {
+    const wrap = document.querySelector(`.dm-item[data-room-id="${roomId}"] .dm-avatar-wrap`);
+    if (!wrap) return;
+    let pip = wrap.querySelector('.status-pip');
+    if (on) {
+      if (!pip) { pip = document.createElement('div'); pip.className = 'status-pip'; pip.dataset.tempPip = '1'; wrap.appendChild(pip); }
+      pip.classList.add('pip-typing');
+      pip.innerHTML = TYPING_PIP_HTML;
+    } else if (pip) {
+      if (pip.dataset.tempPip) { pip.remove(); return; }
+      pip.classList.remove('pip-typing');
+      pip.innerHTML = '';
+    }
   }
-  function setDmTyping(roomId, name) {
-    const dm = dms.find(d => d.id === roomId);
-    if (!dm) return;
-    dmTyping[roomId] = name;
+  function setDmTyping(roomId) {
+    if (!dms.find(d => d.id === roomId)) return;
+    dmTyping[roomId] = true;
     clearTimeout(dmTypingTimers[roomId]);
     dmTypingTimers[roomId] = setTimeout(() => clearDmTyping(roomId), 3500);
-    const el = document.querySelector(`.dm-item[data-room-id="${roomId}"] .dm-preview`);
-    if (el && !el.classList.contains('is-typing')) {
-      el.classList.add('is-typing');
-      el.innerHTML = dmTypingHtml(name, !!dm.is_group);
-    }
+    applyTypingPip(roomId, true);
   }
   function clearDmTyping(roomId) {
     delete dmTyping[roomId];
     clearTimeout(dmTypingTimers[roomId]);
     delete dmTypingTimers[roomId];
-    const el = document.querySelector(`.dm-item[data-room-id="${roomId}"] .dm-preview`);
-    if (el) { el.classList.remove('is-typing'); el.innerHTML = dmPreviewHtml(dms.find(d => d.id === roomId)); }
-  }
-  function dmPreviewHtml(dm) {
-    if (!dm) return '';
-    const previewIcon = dm.last_message ? DM_PREVIEW_ICONS[dm.last_message] : null;
-    return dm.last_message
-      ? (previewIcon
-        ? `<span style="display:inline-flex;align-items:center;gap:4px;">${previewIcon}${escapeHtml(dm.last_message)}</span>`
-        : escapeHtml(dm.last_message.slice(0, 50)))
-      : '<i style="color:var(--text-muted)">No messages yet</i>';
+    applyTypingPip(roomId, false);
   }
 
   function renderDMList() {
@@ -1663,7 +1662,7 @@ function initDashboardView() {
         ${chk}
         <div class="dm-avatar-wrap">
           ${dmAvatar}
-          ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
+          ${dm.is_group ? (dmTyping[dm.id] ? `<div class="status-pip pip-typing" data-temp-pip="1">${TYPING_PIP_HTML}</div>` : '') : `<div class="status-pip ${pipClass(status)}${dmTyping[dm.id] ? ' pip-typing' : ''}" data-uid-pip="${dm._otherId||''}">${dmTyping[dm.id] ? TYPING_PIP_HTML : ''}</div>`}
         </div>
         <div class="dm-content">
           <div class="dm-top">
@@ -1673,7 +1672,7 @@ function initDashboardView() {
               <span class="dm-time">${time}</span>
             </div>
           </div>
-          <div class="dm-preview${dmTyping[dm.id] ? ' is-typing' : ''}">${dmTyping[dm.id] ? dmTypingHtml(dmTyping[dm.id], !!dm.is_group) : preview}</div>
+          <div class="dm-preview">${preview}</div>
         </div>
         <div class="dm-actions">
           <button class="dm-action-btn danger" onclick="event.stopPropagation();hideDM('${dm.id}')" title="Hide">
@@ -1707,7 +1706,7 @@ function initDashboardView() {
   // ─── PRESENCE (with null checks) ──────────────────────────
   function updatePresence(userId, status) {
     document.querySelectorAll(`[data-uid-pip="${userId}"]`).forEach(el => {
-      if (el) el.className = `status-pip ${pipClass(status)}`;
+      if (el) el.className = `status-pip ${pipClass(status)}` + (el.querySelector('i') ? ' pip-typing' : '');
     });
     const activeDm = dms.find(d => d.id === currentRoom?.id);
     if (activeDm && activeDm._otherId === userId) {
