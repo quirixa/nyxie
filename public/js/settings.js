@@ -110,7 +110,7 @@ function initSettingsView() {
     } else if (user.banner_color) {
       el.style.background = user.banner_color;
     } else {
-      window.applyDefaultBanner(el, user);
+      applyDefaultBanner(el, user);
     }
   }
 
@@ -137,7 +137,7 @@ function initSettingsView() {
       avatarEl.innerHTML = `<span id="profile-avatar-letter" style="display:none"></span><img src="${escapeHtml(versionedMediaUrl(currentUser.avatar))}" style="width:100%;height:100%;object-fit:cover;" />`;
       avatarEl.style.background = 'transparent';
     } else {
-      avatarEl.innerHTML = `<span id="profile-avatar-letter" style="display:none"></span>` + window.defaultAvatarHtml(window.avatarSeedOf(currentUser, name));
+      avatarEl.innerHTML = `<span id="profile-avatar-letter" style="display:none"></span>` + defaultAvatarHtml(avatarSeedOf(currentUser, name));
       avatarEl.style.background = 'transparent';
     }
 

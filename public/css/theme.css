@@ -312,9 +312,6 @@ mark,
   -webkit-text-fill-color: transparent !important;
   font-weight: 700;
 }
-.pp-banner {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
-}
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar {
