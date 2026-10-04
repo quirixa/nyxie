@@ -13,7 +13,7 @@ router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
   ensureBlocksTable(db);
   const friends = all(db, `
-    SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.last_seen
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_seed, u.status, u.last_seen
     FROM friends f
     JOIN users u ON u.id = CASE WHEN f.user_a = ? THEN f.user_b ELSE f.user_a END
     WHERE (f.user_a = ? OR f.user_b = ?) AND f.status = 'accepted'
@@ -36,7 +36,7 @@ router.get('/requests', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const incoming = all(db, `
     SELECT fr.id, fr.from_id, fr.created_at,
-           u.username AS from_username, u.display_name AS from_name, u.avatar AS from_avatar
+           u.username AS from_username, u.display_name AS from_name, u.avatar AS from_avatar, u.avatar_seed AS from_avatar_seed
     FROM friend_requests fr
     JOIN users u ON u.id = fr.from_id
     WHERE fr.to_id = ? AND fr.status = 'pending'
@@ -44,7 +44,7 @@ router.get('/requests', requireAuth, async (req, res) => {
   `, [req.user.id]);
   const outgoing = all(db, `
     SELECT fr.id, fr.to_id, fr.created_at,
-           u.username AS to_username, u.display_name AS to_name, u.avatar AS to_avatar
+           u.username AS to_username, u.display_name AS to_name, u.avatar AS to_avatar, u.avatar_seed AS to_avatar_seed
     FROM friend_requests fr
     JOIN users u ON u.id = fr.to_id
     WHERE fr.from_id = ? AND fr.status = 'pending'

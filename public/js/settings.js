@@ -123,9 +123,8 @@ function initSettingsView() {
       avatarEl.innerHTML = `<img src="${escapeHtml(versionedMediaUrl(currentUser.avatar))}" style="width:100%;height:100%;object-fit:cover;" />`;
       letterEl.style.display = 'none';
     } else {
-      avatarEl.innerHTML = `<span id="profile-avatar-letter">${name[0].toUpperCase()}</span>`;
-      avatarEl.style.background = hashColor(name);
-      letterEl.style.display = 'block';
+      avatarEl.innerHTML = `<span id="profile-avatar-letter" style="display:none"></span>` + window.defaultAvatarHtml(window.avatarSeedOf(currentUser, name));
+      avatarEl.style.background = 'transparent';
     }
 
     applyBannerStyle(document.getElementById('profile-banner-preview'), currentUser);

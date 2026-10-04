@@ -64,9 +64,9 @@ router.post('/register', async (req, res) => {
     const role = trimmedUsername.toLowerCase() === 'admin' ? 'ADMIN' : 'USER';
 
     run(db,
-      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, banner, banner_color, bio, status, created_at, last_seen, role)
-       VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'online', ?, ?, ?)`,
-      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now, role]
+      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, banner, banner_color, bio, status, created_at, last_seen, role, avatar_seed)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'online', ?, ?, ?, ?)`,
+      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now, role, crypto.randomBytes(8).toString('hex')]
     );
 
     // New users start in zero servers. Servers are opt-in: create one
@@ -78,7 +78,7 @@ router.post('/register', async (req, res) => {
     const token = signToken(userId, createSession(db, userId, req));
     res.status(201).json({
       token,
-      user: { id: userId, username: trimmedUsername, email: trimmedEmail, display_name: displayName, avatar: null, banner: null, banner_color: null, bio: null, status: 'online' }
+      user: { id: userId, username: trimmedUsername, email: trimmedEmail, display_name: displayName, avatar: null, avatar_seed: null, banner: null, banner_color: null, bio: null, status: 'online' }
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -157,6 +157,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         display_name: user.display_name,
         avatar: user.avatar || null,
+        avatar_seed: user.avatar_seed || null,
         banner: user.banner || null,
         banner_color: user.banner_color || null,
         bio: user.bio || null,
@@ -194,7 +195,7 @@ router.get('/me', async (req, res) => {
     // response above) — dashboard.js refreshes currentUser from this
     // endpoint on every app load, so it's the other place the client's
     // cached role can go stale without this.
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, avatar_seed, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     if (!tokenIsLive(db, payload, user.tokens_invalid_before)) {
       return res.status(401).json({ error: 'Session expired or revoked' });

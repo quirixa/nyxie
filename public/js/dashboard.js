@@ -313,10 +313,10 @@ function initDashboardView() {
       const letter = (name[0] || '?').toUpperCase();
       const avatarHtml = m.avatar
         ? `<img src="${escapeHtml(versionedMediaUrl(m.avatar))}" alt="" />`
-        : letter;
+        : defaultAvatarHtml(avatarSeedOf(m, name));
       const active = i === mnSelectedIndex ? 'active' : '';
       html += `<div class="sc-item mn-item ${active}" data-index="${i}" onclick="selectMention(${i})">
-        <span class="mn-avatar" style="${m.avatar ? '' : 'background:' + hashColor(name) + ';'}">${avatarHtml}</span>
+        <span class="mn-avatar" style="${m.avatar ? '' : 'background:transparent;'}">${avatarHtml}</span>
         <span class="mn-name">${escapeHtml(name)}</span>
         <span class="mn-username">@${escapeHtml(m.username)}</span>
       </div>`;
@@ -509,6 +509,54 @@ function initDashboardView() {
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
     return colors[Math.abs(h) % colors.length];
   }
+
+  // ─── DEFAULT AVATARS (GitHub-style identicons) ───────────────
+  // A 5x5 mirrored grid drawn from a random per-account seed
+  // (users.avatar_seed, generated once at registration). The color comes
+  // from the seed too, so every account gets its own random color that
+  // stays the same everywhere. The SVG paints its own background, so
+  // nothing here ever tints an uploaded profile picture.
+  function seededRng(seed) {
+    let h = 1779033703 ^ String(seed).length;
+    for (let i = 0; i < String(seed).length; i++) {
+      h = Math.imul(h ^ String(seed).charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      h ^= h >>> 16;
+      return (h >>> 0) / 4294967296;
+    };
+  }
+  const _identiconCache = {};
+  function defaultAvatarHtml(seed) {
+    seed = String(seed || '?');
+    if (_identiconCache[seed]) return _identiconCache[seed];
+    const rnd = seededRng(seed);
+    const hue = Math.floor(rnd() * 360);
+    const color = `hsl(${hue},${55 + Math.floor(rnd() * 25)}%,${48 + Math.floor(rnd() * 10)}%)`;
+    let cells = '';
+    for (let y = 0; y < 5; y++) {
+      for (let x = 0; x < 3; x++) {
+        if (rnd() < 0.5) continue;
+        cells += `<rect x="${x + 1}" y="${y + 1}" width="1" height="1"/>`;
+        if (x < 2) cells += `<rect x="${5 - x}" y="${y + 1}" width="1" height="1"/>`;
+      }
+    }
+    const svg = `<svg viewBox="0 0 7 7" width="100%" height="100%" shape-rendering="crispEdges" style="display:block"><rect width="7" height="7" fill="#f0f0f0"/><g fill="${color}">${cells}</g></svg>`;
+    return (_identiconCache[seed] = svg);
+  }
+  function avatarSeedOf(u, fallbackName) {
+    return (u && (u.avatar_seed || u.id)) || fallbackName || '?';
+  }
+  function setDefaultAvatar(el, seed) {
+    if (!el) return;
+    el.style.background = 'transparent';
+    el.innerHTML = defaultAvatarHtml(seed);
+  }
+  window.defaultAvatarHtml = defaultAvatarHtml;
+  window.avatarSeedOf = avatarSeedOf;
   const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
   const PRESENCE_PIP_CLASS = { online: 'pip-online', idle: 'pip-idle', dnd: 'pip-dnd', invisible: 'pip-offline', offline: 'pip-offline' };
   function pipClass(status) { return PRESENCE_PIP_CLASS[status] || 'pip-offline'; }
@@ -673,11 +721,7 @@ function initDashboardView() {
 
     const name = room.display_name || room.name || 'Unknown';
     const chAvatar = document.getElementById('ch-avatar');
-    chAvatar.textContent = name[0].toUpperCase();
-    chAvatar.style.background = hashColor(name);
-    chAvatar.innerHTML = '';
-    chAvatar.textContent = name[0].toUpperCase();
-    chAvatar.style.background = hashColor(name);
+    setDefaultAvatar(chAvatar, room._avatarSeed || room._otherId || name);
     document.getElementById('chat-room-name-text').textContent = room.is_group ? name : ('@' + name);
     document.getElementById('msg-input').placeholder = 'Message ' + (room.is_group ? name : ('@' + name));
 
@@ -693,10 +737,10 @@ function initDashboardView() {
           if (text) text.textContent = statusText;
           const chAvatarEl = document.getElementById('ch-avatar');
           if (udata.user.avatar) {
+            chAvatarEl.style.background = 'transparent';
             chAvatarEl.innerHTML = `<img src="${versionedMediaUrl(udata.user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           } else {
-            chAvatarEl.textContent = name[0].toUpperCase();
-            chAvatarEl.style.background = hashColor(name);
+            setDefaultAvatar(chAvatarEl, avatarSeedOf(udata.user, name));
           }
         }
       });
@@ -772,6 +816,7 @@ function initDashboardView() {
       switch (msg.type) {
         case 'new_message': {
           const m = msg.message;
+          { const _rid = msg.room_id || m?.room_id; if (_rid && dmTyping[_rid]) clearDmTyping(_rid); }
           // WS and POST can race for the sender. Do not discard our own
           // broadcast; appendMessage() is idempotent and will de-duplicate
           // against an already-rendered row.
@@ -882,6 +927,7 @@ function initDashboardView() {
           if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id) {
             showTyping(msg.display_name || msg.username);
           }
+          if (msg.user_id !== currentUser.id) setDmTyping(msg.room_id, msg.display_name || msg.username);
           break;
 
         case 'presence_update': {
@@ -1520,6 +1566,7 @@ function initDashboardView() {
         const udata = await api('GET', `/users/${dm._otherId}`);
         dm._status = udata?.user?.status || 'offline';
         dm._avatar = udata?.user?.avatar || null;
+        dm._avatarSeed = avatarSeedOf(udata?.user, dm._otherId);
         otherPublicKey = udata?.user?.public_key || null;
       } else if (dm.is_group) {
         dm._avatar = dm.icon || null;
@@ -1550,6 +1597,42 @@ function initDashboardView() {
     'Shared key failed': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
   };
 
+  // ─── DM LIST TYPING INDICATOR (Discord-style bouncing dots) ───
+  const dmTyping = {};   // roomId -> display name of whoever is typing
+  const dmTypingTimers = {};
+  function dmTypingHtml(name, isGroup) {
+    return `<span class="dm-typing"><span class="typing-dots"><i></i><i></i><i></i></span>` +
+      `<span class="dm-typing-text">${isGroup ? escapeHtml(name) + ' is typing' : 'typing'}</span></span>`;
+  }
+  function setDmTyping(roomId, name) {
+    const dm = dms.find(d => d.id === roomId);
+    if (!dm) return;
+    dmTyping[roomId] = name;
+    clearTimeout(dmTypingTimers[roomId]);
+    dmTypingTimers[roomId] = setTimeout(() => clearDmTyping(roomId), 3500);
+    const el = document.querySelector(`.dm-item[data-room-id="${roomId}"] .dm-preview`);
+    if (el && !el.classList.contains('is-typing')) {
+      el.classList.add('is-typing');
+      el.innerHTML = dmTypingHtml(name, !!dm.is_group);
+    }
+  }
+  function clearDmTyping(roomId) {
+    delete dmTyping[roomId];
+    clearTimeout(dmTypingTimers[roomId]);
+    delete dmTypingTimers[roomId];
+    const el = document.querySelector(`.dm-item[data-room-id="${roomId}"] .dm-preview`);
+    if (el) { el.classList.remove('is-typing'); el.innerHTML = dmPreviewHtml(dms.find(d => d.id === roomId)); }
+  }
+  function dmPreviewHtml(dm) {
+    if (!dm) return '';
+    const previewIcon = dm.last_message ? DM_PREVIEW_ICONS[dm.last_message] : null;
+    return dm.last_message
+      ? (previewIcon
+        ? `<span style="display:inline-flex;align-items:center;gap:4px;">${previewIcon}${escapeHtml(dm.last_message)}</span>`
+        : escapeHtml(dm.last_message.slice(0, 50)))
+      : '<i style="color:var(--text-muted)">No messages yet</i>';
+  }
+
   function renderDMList() {
     const list = document.getElementById('dm-list');
     if (!dms.length) {
@@ -1568,11 +1651,11 @@ function initDashboardView() {
         : '<i style="color:var(--text-muted)">No messages yet</i>';
       const time = dm.last_message_at ? fmtTime(dm.last_message_at) : '';
       const isActive = currentRoom?.id === dm.id;
-      let avatarHtml = name[0].toUpperCase();
+      let avatarHtml = defaultAvatarHtml(dm._avatarSeed || dm._otherId || dm.id || name);
       if (dm._avatar) {
         avatarHtml = `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       }
-      const dmAvatar = `<div class="dm-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>`;
+      const dmAvatar = `<div class="dm-avatar" style="background:transparent">${avatarHtml}</div>`;
       const chk = `<div class="dm-checkbox" onclick="event.stopPropagation();toggleDMSelect('${dm.id}',this.closest('.dm-item'))"></div>`;
       return `<div class="dm-item${isActive ? ' active' : ''}" data-room-id="${dm.id}"
         onclick="window.selectModeActive?toggleDMSelect('${dm.id}',this):openRoom('${dm.id}')"
@@ -1590,7 +1673,7 @@ function initDashboardView() {
               <span class="dm-time">${time}</span>
             </div>
           </div>
-          <div class="dm-preview">${preview}</div>
+          <div class="dm-preview${dmTyping[dm.id] ? ' is-typing' : ''}">${dmTyping[dm.id] ? dmTypingHtml(dmTyping[dm.id], !!dm.is_group) : preview}</div>
         </div>
         <div class="dm-actions">
           <button class="dm-action-btn danger" onclick="event.stopPropagation();hideDM('${dm.id}')" title="Hide">
@@ -3029,9 +3112,7 @@ function initDashboardView() {
         avatarEl.innerHTML = `<img src="${versionedMediaUrl(user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
         avatarEl.style.background = 'none';
       } else {
-        const letter = (user.display_name || user.username)[0].toUpperCase();
-        avatarEl.innerHTML = letter;
-        avatarEl.style.background = hashColor(user.display_name || user.username);
+        setDefaultAvatar(avatarEl, avatarSeedOf(user));
       }
       applyAvatarDecoration(document.getElementById('up-avatar-decoration'), user.avatar_decoration);
       applyCardDecoration(popout, user.card_decoration);
@@ -3212,13 +3293,9 @@ function initDashboardView() {
     const pp = document.getElementById('profile-popout');
     if (pp.style.display === 'block') { pp.style.display = 'none'; pp.classList.remove('pp-open'); return; }
     const name = currentUser.display_name || currentUser.username;
-    const letter = name[0].toUpperCase();
-    const color = hashColor(name);
     const avEl = document.getElementById('pp-avatar-letter');
-    avEl.textContent = letter;
-    avEl.style.background = color;
-    if (currentUser.avatar) avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else { avEl.innerHTML = letter; avEl.style.background = color; }
+    if (currentUser.avatar) { avEl.style.background = 'transparent'; avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`; }
+    else setDefaultAvatar(avEl, avatarSeedOf(currentUser, name));
     applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent = '@' + currentUser.username;
@@ -3482,11 +3559,11 @@ function initDashboardView() {
   }
   function updateAvatarUI(avatarUrl) {
     const upAv = document.getElementById('up-avatar');
-    if (avatarUrl) upAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else { const name = currentUser.display_name || currentUser.username; upAv.textContent = name[0].toUpperCase(); upAv.style.background = hashColor(name); upAv.innerHTML = name[0].toUpperCase(); }
+    if (avatarUrl) upAv.style.background = 'transparent', upAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
+    else setDefaultAvatar(upAv, avatarSeedOf(currentUser));
     const ppAv = document.getElementById('pp-avatar-letter');
-    if (avatarUrl) ppAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else { const name = currentUser.display_name || currentUser.username; ppAv.textContent = name[0].toUpperCase(); ppAv.style.background = hashColor(name); }
+    if (avatarUrl) ppAv.style.background = 'transparent', ppAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
+    else setDefaultAvatar(ppAv, avatarSeedOf(currentUser));
   }
 
   // ─── FRIENDS AND DMs ──────────────────────────────────────
@@ -3533,9 +3610,9 @@ function initDashboardView() {
       results.innerHTML = res.users.map(u => {
         const name = u.display_name || u.username;
         const letter = name[0].toUpperCase();
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : letter;
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : defaultAvatarHtml(avatarSeedOf(u, name));
         return `<div class="search-result-item" onclick="startDM('${u.id}','${escapeJs(name)}')">
-          <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
+          <div class="mini-avatar" style="background:transparent">${avatarHtml}</div>
           <div>
             <div style="font-size:.88rem;font-weight:600">${escapeHtml(name)}</div>
             <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
@@ -3587,11 +3664,11 @@ function initDashboardView() {
         out += `<div style="padding:6px 16px 4px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Incoming — ${incoming.length}</div>`;
         out += incoming.map(r => {
           const name = r.from_name || r.from_username;
-          let avatarHtml = name[0].toUpperCase();
+          let avatarHtml = defaultAvatarHtml(r.from_avatar_seed || r.from_id || name);
           if (r.from_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.from_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
-              <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
+              <div class="fr-avatar" style="background:transparent">${avatarHtml}</div>
             </div>
             <div class="fr-info">
               <div class="fr-name">${escapeHtml(name)}</div>
@@ -3617,11 +3694,11 @@ function initDashboardView() {
         out += `<div style="padding:6px 16px 4px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Outgoing — ${outgoing.length}</div>`;
         out += outgoing.map(r => {
           const name = r.to_name || r.to_username;
-          let avatarHtml = name[0].toUpperCase();
+          let avatarHtml = defaultAvatarHtml(r.to_avatar_seed || r.to_id || name);
           if (r.to_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.to_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
-              <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
+              <div class="fr-avatar" style="background:transparent">${avatarHtml}</div>
             </div>
             <div class="fr-info">
               <div class="fr-name">${escapeHtml(name)}</div>
@@ -3651,11 +3728,11 @@ function initDashboardView() {
     if (!list.length) { el.innerHTML = `<div class="friends-empty">${currentFriendsTab === 'online' ? 'No friends online' : 'No friends yet'}</div>`; return; }
     el.innerHTML = list.map(f => {
       const name = f.display_name || f.username;
-      let avatarHtml = name[0].toUpperCase();
+      let avatarHtml = defaultAvatarHtml(avatarSeedOf(f, name));
       if (f.avatar) avatarHtml = `<img src="${versionedMediaUrl(f.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
-          <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
+          <div class="fr-avatar" style="background:transparent">${avatarHtml}</div>
           <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-secondary)"></div>
         </div>
         <div class="fr-info">
@@ -3757,10 +3834,10 @@ function initDashboardView() {
         const isFriend = friends.some(f => f.id === u.id);
         const hasPendingOut = friendRequests.outgoing.some(r => r.to_id === u.id);
         const hasPendingIn = friendRequests.incoming.some(r => r.from_id === u.id);
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : name[0].toUpperCase();
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : defaultAvatarHtml(avatarSeedOf(u, name));
         return `<div class="search-result-item" style="justify-content:space-between">
           <div style="display:flex;align-items:center;gap:8px">
-            <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
+            <div class="mini-avatar" style="background:transparent">${avatarHtml}</div>
             <div>
               <div style="font-size:.85rem;font-weight:600">${escapeHtml(name)}</div>
               <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
@@ -3837,11 +3914,9 @@ function initDashboardView() {
       currentUser._status = STATUSES.includes(currentUser.status) ? currentUser.status : 'online';
       localStorage.setItem('nyxie_status', currentUser._status);
       const name = currentUser.display_name || currentUser.username;
-      const letter = name[0].toUpperCase();
-      const color = hashColor(name);
       const upAvatar = document.getElementById('up-avatar');
-      if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
-      else { upAvatar.textContent = letter; upAvatar.style.background = color; }
+      if (currentUser.avatar) upAvatar.style.background = 'transparent', upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
+      else setDefaultAvatar(upAvatar, avatarSeedOf(currentUser, name));
       document.getElementById('up-name').textContent = name;
       updateUserPanelStatus(currentUser._status);
       // Cosmetic only — hides the nav link for non-admins so it doesn't

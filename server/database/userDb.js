@@ -122,6 +122,19 @@ async function getUserDb() {
   // starting from server startup. Adding it here too guarantees it exists
   // before any request can hit that query.
   try { db.run("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'USER'"); } catch (e) {}
+  // avatar_seed: random value generated once per account. The client turns
+  // it into the default GitHub-style identicon (shape + colour), so the
+  // default avatar is random but identical for every viewer. Existing
+  // accounts are backfilled below.
+  try { db.run("ALTER TABLE users ADD COLUMN avatar_seed TEXT"); } catch (e) {}
+  try {
+    const crypto = require('crypto');
+    const stmt = db.prepare("SELECT id FROM users WHERE avatar_seed IS NULL OR avatar_seed = ''");
+    const ids = [];
+    while (stmt.step()) ids.push(stmt.getAsObject().id);
+    stmt.free();
+    for (const id of ids) db.run("UPDATE users SET avatar_seed = ? WHERE id = ?", [crypto.randomBytes(8).toString('hex'), id]);
+  } catch (e) { console.error('avatar_seed backfill failed:', e); }
 
   // ── Cosmetics ownership ───────────────────────────────────────────
   // Avatar/card decorations are only obtainable by buying them with NX
