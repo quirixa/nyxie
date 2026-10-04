@@ -120,6 +120,23 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
   }
 });
 
+// ─── DELETE AVATAR (back to the generated default avatar) ───
+router.delete('/avatar', requireAuth, async (req, res) => {
+  try {
+    const db = await getUserDb();
+    const oldUser = get(db, 'SELECT avatar FROM users WHERE id = ?', [req.user.id]);
+    if (oldUser && oldUser.avatar) {
+      const oldPath = path.join(AVATAR_DIR, path.basename(oldUser.avatar));
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+    run(db, 'UPDATE users SET avatar = NULL WHERE id = ?', [req.user.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Avatar delete error:', err);
+    res.status(500).json({ error: 'Failed to remove avatar' });
+  }
+});
+
 // ─── BANNER UPLOAD ──────────────────────────────────────────
 router.post('/banner', requireAuth, uploadBanner.single('banner'), async (req, res) => {
   try {

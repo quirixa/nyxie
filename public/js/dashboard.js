@@ -557,6 +557,75 @@ function initDashboardView() {
   }
   window.defaultAvatarHtml = defaultAvatarHtml;
   window.avatarSeedOf = avatarSeedOf;
+
+  // ─── DEFAULT BANNERS THEMED FROM THE AVATAR ───────────────────
+  // No banner / banner colour set -> the banner is a gradient built from
+  // the avatar's colour: the identicon's own colour for default avatars,
+  // or the dominant colour of the uploaded picture.
+  function identiconColor(seed) {
+    const rnd = seededRng(String(seed || '?'));
+    const hue = Math.floor(rnd() * 360);
+    const sat = 55 + Math.floor(rnd() * 25);
+    const light = 48 + Math.floor(rnd() * 10);
+    return { hue, sat, light };
+  }
+  function bannerGradient(h, s, l) {
+    h = Math.round(h); s = Math.round(s); l = Math.round(l);
+    return `linear-gradient(135deg, hsl(${h},${s}%,${l}%), hsl(${(h + 28) % 360},${s}%,${Math.max(l - 14, 25)}%))`;
+  }
+  function defaultBannerFor(user) {
+    const c = identiconColor(avatarSeedOf(user));
+    return bannerGradient(c.hue, c.sat, c.light);
+  }
+  const _avatarThemeCache = {};
+  function avatarThemeFromImage(url) {
+    if (_avatarThemeCache[url]) return _avatarThemeCache[url];
+    return (_avatarThemeCache[url] = new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = c.height = 24;
+          const ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, 24, 24);
+          const d = ctx.getImageData(0, 0, 24, 24).data;
+          let r = 0, g = 0, b = 0, w = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] < 128) continue;
+            const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+            const wt = 0.05 + (mx - mn) / 255;   // favour colourful pixels over grey ones
+            r += d[i] * wt; g += d[i + 1] * wt; b += d[i + 2] * wt; w += wt;
+          }
+          if (!w) return resolve(null);
+          r /= w; g /= w; b /= w;
+          const mx = Math.max(r, g, b) / 255, mn = Math.min(r, g, b) / 255, dl = mx - mn;
+          let h = 0;
+          if (dl) {
+            if (mx === r / 255) h = ((g - b) / 255 / dl) % 6;
+            else if (mx === g / 255) h = (b - r) / 255 / dl + 2;
+            else h = (r - g) / 255 / dl + 4;
+            h *= 60; if (h < 0) h += 360;
+          }
+          const l = (mx + mn) / 2;
+          const sat = dl ? dl / (1 - Math.abs(2 * l - 1)) : 0;
+          resolve(bannerGradient(h, Math.min(Math.max(sat * 100, 40), 80), Math.min(Math.max(l * 100, 38), 56)));
+        } catch (e) { resolve(null); }   // tainted canvas etc. -> keep the fallback
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    }));
+  }
+  function applyDefaultBanner(el, user) {
+    if (!el || !user) return;
+    el.style.background = defaultBannerFor(user);
+    if (!user.avatar) return;
+    const set = el.style.background;
+    avatarThemeFromImage(versionedMediaUrl(user.avatar)).then(g => {
+      if (g && el.isConnected && el.style.background === set) el.style.background = g;
+    });
+  }
+  window.applyDefaultBanner = applyDefaultBanner;
   const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
   const PRESENCE_PIP_CLASS = { online: 'pip-online', idle: 'pip-idle', dnd: 'pip-dnd', invisible: 'pip-offline', offline: 'pip-offline' };
   function pipClass(status) { return PRESENCE_PIP_CLASS[status] || 'pip-offline'; }
@@ -3106,7 +3175,7 @@ function initDashboardView() {
       const bannerEl = document.getElementById('up-banner');
       if (user.banner) bannerEl.style.background = `url("${versionedMediaUrl(user.banner)}") center/cover no-repeat`;
       else if (user.banner_color) bannerEl.style.background = user.banner_color;
-      else bannerEl.style.background = 'linear-gradient(135deg, var(--accent), var(--accent-hover))';
+      else applyDefaultBanner(bannerEl, user);
       if (user.avatar) {
         avatarEl.innerHTML = `<img src="${versionedMediaUrl(user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
         avatarEl.style.background = 'none';
@@ -3306,7 +3375,7 @@ function initDashboardView() {
     const bannerEl = document.getElementById('pp-banner');
     if (currentUser.banner) bannerEl.style.background = `url("${versionedMediaUrl(currentUser.banner)}") center/cover no-repeat`;
     else if (currentUser.banner_color) bannerEl.style.background = currentUser.banner_color;
-    else bannerEl.style.background = `linear-gradient(135deg, ${hashColor(currentUser.username)}, #fd6671)`;
+    else applyDefaultBanner(bannerEl, currentUser);
     const curStatus = currentUser._status || currentUser.status || 'online';
     const curDot = document.getElementById('pp-cur-dot');
     if (curDot) curDot.className = `pp-dot ${pipClass(curStatus)}`;
