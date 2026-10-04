@@ -1651,7 +1651,8 @@ body.select-mode #view-app .dm-checkbox {
 /* ── Banner + overlapping avatar ── */
 #view-app .pp-banner,
 #view-app .up-banner {
-  height: 108px;
+  height: auto;
+  aspect-ratio: 5 / 2;   /* Discord's banner shape: 300px card -> 120px banner */
   background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   background-size: cover;
   background-position: center;
