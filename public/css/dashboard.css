@@ -251,10 +251,7 @@ body.select-mode #view-app .dm-checkbox {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  width: var(--dm-pip-size, 14px);
-  height: var(--dm-pip-size, 14px);
-  box-sizing: border-box;
-  border: 2px solid var(--pip-bg);
+  border: 2px solid var(--bg-sidebar);
 }
 
 #view-app .dm-content {
@@ -571,13 +568,9 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .fr-avatar-wrap .status-pip {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: var(--dm-pip-size, 14px);
-  height: var(--dm-pip-size, 14px);
-  box-sizing: border-box;
-  border: 2px solid var(--pip-bg);
-  --pip-bg: var(--bg-secondary);
+  right: -1px;
+  bottom: -1px;
+  border: 2px solid var(--bg-sidebar);
 }
 #view-app .fr-info {
   flex: 1;
@@ -1651,8 +1644,7 @@ body.select-mode #view-app .dm-checkbox {
 /* ── Banner + overlapping avatar ── */
 #view-app .pp-banner,
 #view-app .up-banner {
-  height: auto;
-  aspect-ratio: 5 / 2;   /* Discord's banner shape: 300px card -> 120px banner */
+  height: 108px;
   background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   background-size: cover;
   background-position: center;
@@ -3942,133 +3934,4 @@ body.image-lightbox-open {
   .avatar-decoration,
   .avatar-decoration::before,
   .avatar-decoration::after { animation: none !important; }
-}
-
-
-/* ─────────────────────────────────────────────────────────
-   Discord-style status icons: online = solid, idle = crescent,
-   do-not-disturb = bar, offline/invisible = hollow ring.
-   --pip-bg is the colour behind the avatar so the cut-outs match.
-   ───────────────────────────────────────────────────────── */
-#view-app { --pip-bg: var(--bg-sidebar); }
-#view-app .dm-item:hover,
-#view-app .friend-row:hover { --pip-bg: color-mix(in srgb, var(--bg-sidebar) 95%, var(--text-primary) 5%); }
-#view-app .dm-item.active { --pip-bg: color-mix(in srgb, var(--bg-sidebar) 92%, var(--text-primary) 8%); }
-#view-app .friend-row:hover .fr-avatar-wrap .status-pip { --pip-bg: color-mix(in srgb, var(--bg-secondary) 95%, var(--text-primary) 5%); }
-#view-app #up-status-pip,
-#view-app .pp-avatar-status,
-#view-app .up-avatar-status { --pip-bg: var(--bg-modal-card, var(--bg-secondary)); }
-#view-app #up-status-pip { --pip-bg: var(--bg-sidebar); border-color: var(--pip-bg); }
-#view-app .pp-avatar-status,
-#view-app .up-avatar-status { border-color: var(--pip-bg); }
-
-#view-app .dm-avatar-wrap .status-pip::after,
-#view-app .fr-avatar-wrap .status-pip::after,
-#view-app #up-status-pip::after,
-#view-app .pp-avatar-status::after,
-#view-app .up-avatar-status::after {
-  content: '';
-  position: absolute;
-  display: none;
-  background: var(--pip-bg);
-}
-/* idle: crescent moon */
-#view-app .dm-avatar-wrap .pip-idle::after,
-#view-app .fr-avatar-wrap .pip-idle::after,
-#view-app #up-status-pip.pip-idle::after,
-#view-app .pp-avatar-status.pip-idle::after,
-#view-app .up-avatar-status.pip-idle::after {
-  display: block;
-  width: 62%; height: 62%;
-  top: -12%; left: -12%;
-  border-radius: 50%;
-}
-/* dnd: horizontal bar */
-#view-app .dm-avatar-wrap .pip-dnd::after,
-#view-app .fr-avatar-wrap .pip-dnd::after,
-#view-app #up-status-pip.pip-dnd::after,
-#view-app .pp-avatar-status.pip-dnd::after,
-#view-app .up-avatar-status.pip-dnd::after {
-  display: block;
-  width: 64%; height: 22%;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 99px;
-}
-/* offline / invisible: hollow ring */
-#view-app .dm-avatar-wrap .pip-offline::after,
-#view-app .fr-avatar-wrap .pip-offline::after,
-#view-app #up-status-pip.pip-offline::after,
-#view-app .pp-avatar-status.pip-offline::after,
-#view-app .up-avatar-status.pip-offline::after {
-  display: block;
-  width: 42%; height: 42%;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-}
-
-/* ── Default (identicon) avatars never carry a tint of their own ── */
-#view-app .dm-avatar svg,
-#view-app .fr-avatar svg,
-#view-app .mini-avatar svg,
-#view-app .mn-avatar svg,
-#view-app #up-avatar svg,
-#view-app #pp-avatar-letter svg { width: 100%; height: 100%; display: block; }
-
-/* ── Typing: the status circle turns into a pill (keeps the status colour) with 3 bouncing dots ── */
-#view-app .status-pip.pip-typing {
-  width: 26px;
-  border-radius: 99px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  right: -4px;
-  transition: width .15s ease;
-}
-#view-app .status-pip.pip-typing::after { display: none !important; }
-#view-app .status-pip.pip-typing i {
-  width: 3px; height: 3px; border-radius: 50%;
-  background: #fff;
-  animation: pip-typing-bounce 1.2s infinite ease-in-out;
-}
-#view-app .status-pip.pip-typing i:nth-child(2) { animation-delay: .15s; }
-#view-app .status-pip.pip-typing i:nth-child(3) { animation-delay: .3s; }
-@keyframes pip-typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
-  30% { transform: translateY(-2px); opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-  #view-app .status-pip.pip-typing i { animation: none; opacity: .85; }
-}
-
-
-/* ── Status dots in the profile popout + status submenu: same Discord
-   shapes as the avatar pips. Cut-outs are real transparent masks, so they
-   look right on the hover/active backgrounds too. ── */
-#view-app .pp-dot {
-  width: 12px;
-  height: 12px;
-  display: inline-block;
-}
-#view-app .pp-dot.pip-idle {
-  -webkit-mask: radial-gradient(circle at 28% 28%, transparent 0 34%, #000 36%);
-          mask: radial-gradient(circle at 28% 28%, transparent 0 34%, #000 36%);
-}
-#view-app .pp-dot.pip-dnd {
-  -webkit-mask: linear-gradient(#000, #000), linear-gradient(#000, #000);
-  -webkit-mask-size: 100% 100%, 68% 24%;
-  -webkit-mask-position: 0 0, 50% 50%;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-composite: xor;
-          mask: linear-gradient(#000, #000), linear-gradient(#000, #000);
-          mask-size: 100% 100%, 68% 24%;
-          mask-position: 0 0, 50% 50%;
-          mask-repeat: no-repeat;
-          mask-composite: exclude;
-}
-#view-app .pp-dot.pip-offline {
-  -webkit-mask: radial-gradient(circle, transparent 0 24%, #000 26%);
-          mask: radial-gradient(circle, transparent 0 24%, #000 26%);
 }

@@ -313,10 +313,10 @@ function initDashboardView() {
       const letter = (name[0] || '?').toUpperCase();
       const avatarHtml = m.avatar
         ? `<img src="${escapeHtml(versionedMediaUrl(m.avatar))}" alt="" />`
-        : defaultAvatarHtml(avatarSeedOf(m, name));
+        : letter;
       const active = i === mnSelectedIndex ? 'active' : '';
       html += `<div class="sc-item mn-item ${active}" data-index="${i}" onclick="selectMention(${i})">
-        <span class="mn-avatar" style="${m.avatar ? '' : 'background:transparent;'}">${avatarHtml}</span>
+        <span class="mn-avatar" style="${m.avatar ? '' : 'background:' + hashColor(name) + ';'}">${avatarHtml}</span>
         <span class="mn-name">${escapeHtml(name)}</span>
         <span class="mn-username">@${escapeHtml(m.username)}</span>
       </div>`;
@@ -509,7 +509,6 @@ function initDashboardView() {
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
     return colors[Math.abs(h) % colors.length];
   }
-
   const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
   const PRESENCE_PIP_CLASS = { online: 'pip-online', idle: 'pip-idle', dnd: 'pip-dnd', invisible: 'pip-offline', offline: 'pip-offline' };
   function pipClass(status) { return PRESENCE_PIP_CLASS[status] || 'pip-offline'; }
@@ -674,7 +673,11 @@ function initDashboardView() {
 
     const name = room.display_name || room.name || 'Unknown';
     const chAvatar = document.getElementById('ch-avatar');
-    setDefaultAvatar(chAvatar, room._avatarSeed || room._otherId || name);
+    chAvatar.textContent = name[0].toUpperCase();
+    chAvatar.style.background = hashColor(name);
+    chAvatar.innerHTML = '';
+    chAvatar.textContent = name[0].toUpperCase();
+    chAvatar.style.background = hashColor(name);
     document.getElementById('chat-room-name-text').textContent = room.is_group ? name : ('@' + name);
     document.getElementById('msg-input').placeholder = 'Message ' + (room.is_group ? name : ('@' + name));
 
@@ -690,10 +693,10 @@ function initDashboardView() {
           if (text) text.textContent = statusText;
           const chAvatarEl = document.getElementById('ch-avatar');
           if (udata.user.avatar) {
-            chAvatarEl.style.background = 'transparent';
             chAvatarEl.innerHTML = `<img src="${versionedMediaUrl(udata.user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           } else {
-            setDefaultAvatar(chAvatarEl, avatarSeedOf(udata.user, name));
+            chAvatarEl.textContent = name[0].toUpperCase();
+            chAvatarEl.style.background = hashColor(name);
           }
         }
       });
@@ -769,7 +772,6 @@ function initDashboardView() {
       switch (msg.type) {
         case 'new_message': {
           const m = msg.message;
-          { const _rid = msg.room_id || m?.room_id; if (_rid && dmTyping[_rid]) clearDmTyping(_rid); }
           // WS and POST can race for the sender. Do not discard our own
           // broadcast; appendMessage() is idempotent and will de-duplicate
           // against an already-rendered row.
@@ -880,7 +882,6 @@ function initDashboardView() {
           if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id) {
             showTyping(msg.display_name || msg.username);
           }
-          if (msg.user_id !== currentUser.id) setDmTyping(msg.room_id);
           break;
 
         case 'presence_update': {
@@ -960,6 +961,7 @@ function initDashboardView() {
             api('GET', `/users/${other.id}`).then(u => {
               newDm._status = u?.user?.status || 'offline';
               newDm._avatar = u?.user?.avatar || null;
+              newDm._profileEffect = !!u?.user?.profile_effect;
               renderDMList();
             });
           }
@@ -1519,7 +1521,7 @@ function initDashboardView() {
         const udata = await api('GET', `/users/${dm._otherId}`);
         dm._status = udata?.user?.status || 'offline';
         dm._avatar = udata?.user?.avatar || null;
-        dm._avatarSeed = avatarSeedOf(udata?.user, dm._otherId);
+        dm._profileEffect = !!udata?.user?.profile_effect;
         otherPublicKey = udata?.user?.public_key || null;
       } else if (dm.is_group) {
         dm._avatar = dm.icon || null;
@@ -1550,41 +1552,6 @@ function initDashboardView() {
     'Shared key failed': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
   };
 
-  // ─── DM LIST TYPING INDICATOR ─────────────────────────────────
-  // While someone is typing, their status circle in the DM list turns
-  // into a small pill with three bouncing dots (like Discord). The
-  // preview text is left alone.
-  const dmTyping = {};   // roomId -> true while someone is typing
-  const dmTypingTimers = {};
-  const TYPING_PIP_HTML = '<i></i><i></i><i></i>';
-  function applyTypingPip(roomId, on) {
-    const wrap = document.querySelector(`.dm-item[data-room-id="${roomId}"] .dm-avatar-wrap`);
-    if (!wrap) return;
-    let pip = wrap.querySelector('.status-pip');
-    if (on) {
-      if (!pip) { pip = document.createElement('div'); pip.className = 'status-pip'; pip.dataset.tempPip = '1'; wrap.appendChild(pip); }
-      pip.classList.add('pip-typing');
-      pip.innerHTML = TYPING_PIP_HTML;
-    } else if (pip) {
-      if (pip.dataset.tempPip) { pip.remove(); return; }
-      pip.classList.remove('pip-typing');
-      pip.innerHTML = '';
-    }
-  }
-  function setDmTyping(roomId) {
-    if (!dms.find(d => d.id === roomId)) return;
-    dmTyping[roomId] = true;
-    clearTimeout(dmTypingTimers[roomId]);
-    dmTypingTimers[roomId] = setTimeout(() => clearDmTyping(roomId), 3500);
-    applyTypingPip(roomId, true);
-  }
-  function clearDmTyping(roomId) {
-    delete dmTyping[roomId];
-    clearTimeout(dmTypingTimers[roomId]);
-    delete dmTypingTimers[roomId];
-    applyTypingPip(roomId, false);
-  }
-
   function renderDMList() {
     const list = document.getElementById('dm-list');
     if (!dms.length) {
@@ -1603,19 +1570,20 @@ function initDashboardView() {
         : '<i style="color:var(--text-muted)">No messages yet</i>';
       const time = dm.last_message_at ? fmtTime(dm.last_message_at) : '';
       const isActive = currentRoom?.id === dm.id;
-      let avatarHtml = defaultAvatarHtml(dm._avatarSeed || dm._otherId || dm.id || name);
+      let avatarHtml = name[0].toUpperCase();
       if (dm._avatar) {
         avatarHtml = `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       }
-      const dmAvatar = `<div class="dm-avatar" style="background:transparent">${avatarHtml}</div>`;
+      const dmAvatar = `<div class="dm-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>`;
       const chk = `<div class="dm-checkbox" onclick="event.stopPropagation();toggleDMSelect('${dm.id}',this.closest('.dm-item'))"></div>`;
       return `<div class="dm-item${isActive ? ' active' : ''}" data-room-id="${dm.id}"
         onclick="window.selectModeActive?toggleDMSelect('${dm.id}',this):openRoom('${dm.id}')"
         oncontextmenu="showCtxMenu(event,'${dm.id}')">
         ${chk}
-        <div class="dm-avatar-wrap">
+        <div class="dm-avatar-wrap"${dm._otherId ? ` data-fx-uid="${dm._otherId}"` : ''}>
+          ${dm._profileEffect ? AVATAR_FX_HTML : ''}
           ${dmAvatar}
-          ${dm.is_group ? (dmTyping[dm.id] ? `<div class="status-pip pip-typing" data-temp-pip="1">${TYPING_PIP_HTML}</div>` : '') : `<div class="status-pip ${pipClass(status)}${dmTyping[dm.id] ? ' pip-typing' : ''}" data-uid-pip="${dm._otherId||''}">${dmTyping[dm.id] ? TYPING_PIP_HTML : ''}</div>`}
+          ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
         </div>
         <div class="dm-content">
           <div class="dm-top">
@@ -1659,7 +1627,7 @@ function initDashboardView() {
   // ─── PRESENCE (with null checks) ──────────────────────────
   function updatePresence(userId, status) {
     document.querySelectorAll(`[data-uid-pip="${userId}"]`).forEach(el => {
-      if (el) el.className = `status-pip ${pipClass(status)}` + (el.querySelector('i') ? ' pip-typing' : '');
+      if (el) el.className = `status-pip ${pipClass(status)}`;
     });
     const activeDm = dms.find(d => d.id === currentRoom?.id);
     if (activeDm && activeDm._otherId === userId) {
@@ -2970,11 +2938,37 @@ function initDashboardView() {
     if (host) host.classList.toggle('has-profile-effect', !!enabled);
   }
 
+  // ── Compact profile effect on small avatars ─────────────────────────
+  // Only users an admin authorised (profile_effect) get the element at all.
+  // Wrappers opt in with data-fx-uid="<user id>" so syncAvatarFx() can
+  // add/remove it live when an admin grants or revokes the effect.
+  const AVATAR_FX_HTML = '<span class="avatar-fx" aria-hidden="true"><span class="avatar-fx-ring"></span><i class="avatar-fx-spark s1"></i><i class="avatar-fx-spark s2"></i><i class="avatar-fx-spark s3"></i></span>';
+  function setAvatarFx(wrap, on, large) {
+    if (!wrap) return;
+    const existing = wrap.querySelector(':scope > .avatar-fx');
+    if (on && !existing) {
+      wrap.insertAdjacentHTML('afterbegin', AVATAR_FX_HTML);
+      if (large) wrap.firstElementChild.classList.add('avatar-fx-lg');
+    } else if (!on && existing) existing.remove();
+  }
+  function syncAvatarFx(userId, on) {
+    if (!userId) return;
+    document.querySelectorAll('[data-fx-uid]').forEach(el => {
+      if (el.dataset.fxUid === userId) setAvatarFx(el, !!on, el.classList.contains('avatar-fx-host'));
+    });
+  }
+  window.NyxFx = { setAvatarFx, syncAvatarFx };
+
   // WebSocket 'profile_updated': someone equipped/unequipped a decoration.
   // Keeps our own cached user in sync across sessions, and live-updates any
   // profile card that's currently open for that user.
   function handleProfileUpdated(msg) {
     if (!msg || !msg.user_id) return;
+    if (msg.profile_effect !== undefined) {
+      syncAvatarFx(msg.user_id, msg.profile_effect);
+      // keep the DM list's cached copy current so a re-render doesn't drop it
+      dms.forEach(d => { if (d._otherId === msg.user_id) d._profileEffect = !!msg.profile_effect; });
+    }
     if (msg.user_id === currentUser.id) {
       currentUser.avatar_decoration = cosmeticId(msg.avatar_decoration);
       currentUser.card_decoration = cosmeticId(msg.card_decoration);
@@ -2983,8 +2977,6 @@ function initDashboardView() {
       const pp = document.getElementById('profile-popout');
       if (pp && pp.style.display === 'block') {
         applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
-    applyCardDecoration(pp, currentUser.card_decoration);
-    applyProfileEffect(pp, currentUser.profile_effect);
         applyCardDecoration(pp, currentUser.card_decoration);
         applyProfileEffect(pp, currentUser.profile_effect);
       }
@@ -3059,12 +3051,14 @@ function initDashboardView() {
       const bannerEl = document.getElementById('up-banner');
       if (user.banner) bannerEl.style.background = `url("${versionedMediaUrl(user.banner)}") center/cover no-repeat`;
       else if (user.banner_color) bannerEl.style.background = user.banner_color;
-      else applyDefaultBanner(bannerEl, user);
+      else bannerEl.style.background = 'linear-gradient(135deg, var(--accent), var(--accent-hover))';
       if (user.avatar) {
         avatarEl.innerHTML = `<img src="${versionedMediaUrl(user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
         avatarEl.style.background = 'none';
       } else {
-        setDefaultAvatar(avatarEl, avatarSeedOf(user));
+        const letter = (user.display_name || user.username)[0].toUpperCase();
+        avatarEl.innerHTML = letter;
+        avatarEl.style.background = hashColor(user.display_name || user.username);
       }
       applyAvatarDecoration(document.getElementById('up-avatar-decoration'), user.avatar_decoration);
       applyCardDecoration(popout, user.card_decoration);
@@ -3245,10 +3239,16 @@ function initDashboardView() {
     const pp = document.getElementById('profile-popout');
     if (pp.style.display === 'block') { pp.style.display = 'none'; pp.classList.remove('pp-open'); return; }
     const name = currentUser.display_name || currentUser.username;
+    const letter = name[0].toUpperCase();
+    const color = hashColor(name);
     const avEl = document.getElementById('pp-avatar-letter');
-    if (currentUser.avatar) { avEl.style.background = 'transparent'; avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`; }
-    else setDefaultAvatar(avEl, avatarSeedOf(currentUser, name));
+    avEl.textContent = letter;
+    avEl.style.background = color;
+    if (currentUser.avatar) avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
+    else { avEl.innerHTML = letter; avEl.style.background = color; }
     applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
+    applyCardDecoration(pp, currentUser.card_decoration);
+    applyProfileEffect(pp, currentUser.profile_effect);
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent = '@' + currentUser.username;
     const pronounsEl = document.getElementById('pp-pronouns');
@@ -3259,7 +3259,7 @@ function initDashboardView() {
     const bannerEl = document.getElementById('pp-banner');
     if (currentUser.banner) bannerEl.style.background = `url("${versionedMediaUrl(currentUser.banner)}") center/cover no-repeat`;
     else if (currentUser.banner_color) bannerEl.style.background = currentUser.banner_color;
-    else applyDefaultBanner(bannerEl, currentUser);
+    else bannerEl.style.background = `linear-gradient(135deg, ${hashColor(currentUser.username)}, #fd6671)`;
     const curStatus = currentUser._status || currentUser.status || 'online';
     const curDot = document.getElementById('pp-cur-dot');
     if (curDot) curDot.className = `pp-dot ${pipClass(curStatus)}`;
@@ -3511,11 +3511,11 @@ function initDashboardView() {
   }
   function updateAvatarUI(avatarUrl) {
     const upAv = document.getElementById('up-avatar');
-    if (avatarUrl) upAv.style.background = 'transparent', upAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else setDefaultAvatar(upAv, avatarSeedOf(currentUser));
+    if (avatarUrl) upAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
+    else { const name = currentUser.display_name || currentUser.username; upAv.textContent = name[0].toUpperCase(); upAv.style.background = hashColor(name); upAv.innerHTML = name[0].toUpperCase(); }
     const ppAv = document.getElementById('pp-avatar-letter');
-    if (avatarUrl) ppAv.style.background = 'transparent', ppAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else setDefaultAvatar(ppAv, avatarSeedOf(currentUser));
+    if (avatarUrl) ppAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
+    else { const name = currentUser.display_name || currentUser.username; ppAv.textContent = name[0].toUpperCase(); ppAv.style.background = hashColor(name); }
   }
 
   // ─── FRIENDS AND DMs ──────────────────────────────────────
@@ -3562,9 +3562,9 @@ function initDashboardView() {
       results.innerHTML = res.users.map(u => {
         const name = u.display_name || u.username;
         const letter = name[0].toUpperCase();
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : defaultAvatarHtml(avatarSeedOf(u, name));
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : letter;
         return `<div class="search-result-item" onclick="startDM('${u.id}','${escapeJs(name)}')">
-          <div class="mini-avatar" style="background:transparent">${avatarHtml}</div>
+          <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div>
             <div style="font-size:.88rem;font-weight:600">${escapeHtml(name)}</div>
             <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
@@ -3616,11 +3616,11 @@ function initDashboardView() {
         out += `<div style="padding:6px 16px 4px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Incoming — ${incoming.length}</div>`;
         out += incoming.map(r => {
           const name = r.from_name || r.from_username;
-          let avatarHtml = defaultAvatarHtml(r.from_avatar_seed || r.from_id || name);
+          let avatarHtml = name[0].toUpperCase();
           if (r.from_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.from_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
-              <div class="fr-avatar" style="background:transparent">${avatarHtml}</div>
+              <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             </div>
             <div class="fr-info">
               <div class="fr-name">${escapeHtml(name)}</div>
@@ -3646,11 +3646,11 @@ function initDashboardView() {
         out += `<div style="padding:6px 16px 4px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Outgoing — ${outgoing.length}</div>`;
         out += outgoing.map(r => {
           const name = r.to_name || r.to_username;
-          let avatarHtml = defaultAvatarHtml(r.to_avatar_seed || r.to_id || name);
+          let avatarHtml = name[0].toUpperCase();
           if (r.to_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.to_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
-              <div class="fr-avatar" style="background:transparent">${avatarHtml}</div>
+              <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             </div>
             <div class="fr-info">
               <div class="fr-name">${escapeHtml(name)}</div>
@@ -3680,11 +3680,11 @@ function initDashboardView() {
     if (!list.length) { el.innerHTML = `<div class="friends-empty">${currentFriendsTab === 'online' ? 'No friends online' : 'No friends yet'}</div>`; return; }
     el.innerHTML = list.map(f => {
       const name = f.display_name || f.username;
-      let avatarHtml = defaultAvatarHtml(avatarSeedOf(f, name));
+      let avatarHtml = name[0].toUpperCase();
       if (f.avatar) avatarHtml = `<img src="${versionedMediaUrl(f.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
-          <div class="fr-avatar" style="background:transparent">${avatarHtml}</div>
+          <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-secondary)"></div>
         </div>
         <div class="fr-info">
@@ -3786,10 +3786,10 @@ function initDashboardView() {
         const isFriend = friends.some(f => f.id === u.id);
         const hasPendingOut = friendRequests.outgoing.some(r => r.to_id === u.id);
         const hasPendingIn = friendRequests.incoming.some(r => r.from_id === u.id);
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : defaultAvatarHtml(avatarSeedOf(u, name));
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : name[0].toUpperCase();
         return `<div class="search-result-item" style="justify-content:space-between">
           <div style="display:flex;align-items:center;gap:8px">
-            <div class="mini-avatar" style="background:transparent">${avatarHtml}</div>
+            <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             <div>
               <div style="font-size:.85rem;font-weight:600">${escapeHtml(name)}</div>
               <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
@@ -3866,9 +3866,14 @@ function initDashboardView() {
       currentUser._status = STATUSES.includes(currentUser.status) ? currentUser.status : 'online';
       localStorage.setItem('nyxie_status', currentUser._status);
       const name = currentUser.display_name || currentUser.username;
+      const letter = name[0].toUpperCase();
+      const color = hashColor(name);
       const upAvatar = document.getElementById('up-avatar');
-      if (currentUser.avatar) upAvatar.style.background = 'transparent', upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
-      else setDefaultAvatar(upAvatar, avatarSeedOf(currentUser, name));
+      if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
+      else { upAvatar.textContent = letter; upAvatar.style.background = color; }
+      const upWrap = document.getElementById('up-avatar-wrap');
+      upWrap.dataset.fxUid = currentUser.id;
+      setAvatarFx(upWrap, !!currentUser.profile_effect);
       document.getElementById('up-name').textContent = name;
       updateUserPanelStatus(currentUser._status);
       // Cosmetic only — hides the nav link for non-admins so it doesn't
@@ -4657,9 +4662,12 @@ function initDashboardView() {
         : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase());
       const role = getDisplayedRole(m) || m.role;
       return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
+        <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
+        ${m.profile_effect ? AVATAR_FX_HTML : ''}
         <div class="ml-avatar">
           ${avatarHtml}
           <span class="ml-status-dot pip-${isOfflineMember ? 'offline' : (status === 'idle' ? 'idle' : status === 'dnd' ? 'dnd' : 'online')}"></span>
+        </div>
         </div>
         <div class="ml-info">
           <div class="ml-name-row">

@@ -110,35 +110,22 @@ function initSettingsView() {
     } else if (user.banner_color) {
       el.style.background = user.banner_color;
     } else {
-      applyDefaultBanner(el, user);
+      el.style.background = 'linear-gradient(135deg, var(--accent), var(--accent-hover))';
     }
   }
 
   // ---- Profile form functions ----
-  async function ensureAvatarSeed() {
-    if (currentUser.avatar_seed) return;
-    try {
-      const res = await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
-      const data = await res.json();
-      if (data && data.user && data.user.avatar_seed) {
-        currentUser.avatar_seed = data.user.avatar_seed;
-        localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
-        loadProfileForm();
-      }
-    } catch (e) {}
-  }
-
   function loadProfileForm() {
     const name = currentUser.display_name || currentUser.username;
-    if (!currentUser.avatar_seed) ensureAvatarSeed();
     const avatarEl = document.getElementById('profile-avatar-preview');
     const letterEl = document.getElementById('profile-avatar-letter');
     if (currentUser.avatar) {
-      avatarEl.innerHTML = `<span id="profile-avatar-letter" style="display:none"></span><img src="${escapeHtml(versionedMediaUrl(currentUser.avatar))}" style="width:100%;height:100%;object-fit:cover;" />`;
-      avatarEl.style.background = 'transparent';
+      avatarEl.innerHTML = `<img src="${escapeHtml(versionedMediaUrl(currentUser.avatar))}" style="width:100%;height:100%;object-fit:cover;" />`;
+      letterEl.style.display = 'none';
     } else {
-      avatarEl.innerHTML = `<span id="profile-avatar-letter" style="display:none"></span>` + defaultAvatarHtml(avatarSeedOf(currentUser, name));
-      avatarEl.style.background = 'transparent';
+      avatarEl.innerHTML = `<span id="profile-avatar-letter">${name[0].toUpperCase()}</span>`;
+      avatarEl.style.background = hashColor(name);
+      letterEl.style.display = 'block';
     }
 
     applyBannerStyle(document.getElementById('profile-banner-preview'), currentUser);
@@ -153,6 +140,12 @@ function initSettingsView() {
     updateDisplayNameCounter();
     document.getElementById('profile-bio').value = currentUser.bio || '';
     updateBioCounter();
+    // Profile effect preview: only for admin-authorised users.
+    const fxHost = document.getElementById('profile-avatar-fx-host');
+    if (fxHost && window.NyxFx) {
+      fxHost.dataset.fxUid = currentUser.id;
+      window.NyxFx.setAvatarFx(fxHost, !!currentUser.profile_effect, true);
+    }
     _pendingAvatarDecoration = currentUser.avatar_decoration || 'none';
     _pendingCardDecoration = currentUser.card_decoration || 'none';
     renderShop();   // paint immediately from whatever we have...
@@ -293,17 +286,7 @@ function initSettingsView() {
   }
 
   async function removeProfileAvatar() {
-    if (!currentUser.avatar) { toast('You are already using your default avatar'); return; }
-    try {
-      const res = await fetch('/api/users/avatar', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { toast(data.error || 'Failed to remove avatar'); return; }
-      currentUser.avatar = null;
-      localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
-      loadProfileForm();
-      if (typeof updateAvatarUI === 'function') updateAvatarUI(null);
-      toast('Avatar removed');
-    } catch (e) { toast('Error removing avatar'); }
+    toast('Remove avatar not implemented, but you can upload a new one.');
   }
 
   async function uploadProfileBanner(file) {

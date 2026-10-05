@@ -156,3 +156,66 @@
    .has-profile-effect on the .profile-effect-host. */
 .profile-effect-host:not(.has-profile-effect) .profile-effect,
 .profile-effect-host:not(.has-profile-effect) .profile-effect-ring { display: none !important; }
+
+/* ── Compact profile effect for small avatars ─────────────────────────
+   Same look as the big card effect (spinning ring + sparkles) but sized
+   from the avatar it wraps, for: the bottom-left user panel, DM list,
+   member list and the Settings avatar preview. The element only exists in
+   the DOM for admin-authorised users (dashboard.js: setAvatarFx), so there's
+   nothing to gate here. The wrapper must be position:relative. */
+.avatar-fx {
+  --fx-inset: 5px;
+  position: absolute;
+  inset: calc(var(--fx-inset) * -1);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+.avatar-fx-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: .9;
+  background: conic-gradient(from 0deg,
+    transparent 0deg, rgba(253,102,113,.08) 35deg, rgba(253,102,113,.85) 85deg,
+    rgba(255,190,196,.98) 125deg, transparent 175deg, transparent 235deg,
+    rgba(253,102,113,.6) 290deg, transparent 330deg);
+  -webkit-mask: radial-gradient(circle, transparent 63%, #000 65%, #000 71%, transparent 73%);
+  mask: radial-gradient(circle, transparent 63%, #000 65%, #000 71%, transparent 73%);
+  animation: profile-effect-spin 4.8s linear infinite;
+}
+.avatar-fx::after {
+  content: "";
+  position: absolute;
+  inset: calc(var(--fx-inset) * .6);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(253,102,113,.45);
+  animation: profile-effect-pulse 2.2s ease-in-out infinite;
+}
+.avatar-fx-spark {
+  position: absolute;
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 5px rgba(255,255,255,.95), 0 0 9px rgba(253,102,113,.85);
+  opacity: 0;
+  animation: profile-effect-float 2.8s ease-in-out infinite;
+}
+.avatar-fx-spark.s1 { left: 6%;  top: 16%;    animation-delay: -.2s; }
+.avatar-fx-spark.s2 { right: 4%; top: 6%;     animation-delay: -1.1s; }
+.avatar-fx-spark.s3 { right: 12%; bottom: 4%; animation-delay: -2s; }
+/* The Settings avatar preview is 80px, so give it a roomier ring + bigger sparks. */
+.avatar-fx.avatar-fx-lg { --fx-inset: 8px; }
+.avatar-fx.avatar-fx-lg .avatar-fx-spark { width: 5px; height: 5px; }
+
+/* wrappers */
+.avatar-fx-host { position: relative; flex-shrink: 0; }
+#view-app .ml-avatar-wrap { position: relative; flex-shrink: 0; width: 32px; height: 32px; }
+#view-app .ml-avatar-wrap .avatar-fx { --fx-inset: 4px; }
+#view-app #up-avatar-wrap .avatar-fx { --fx-inset: 4px; }
+#view-app .ml-row.offline .avatar-fx { opacity: .55; }
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-fx-ring, .avatar-fx::after, .avatar-fx-spark { animation: none !important; }
+  .avatar-fx-spark { opacity: .7; }
+}

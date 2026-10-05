@@ -67,7 +67,7 @@ router.get('/search', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   const users = all(db, `
-    SELECT id, username, display_name, avatar, avatar_seed, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, last_seen, status
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, last_seen, status
     FROM users
     WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?
     LIMIT 20
@@ -81,7 +81,7 @@ router.get('/search', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const user = get(db, `
-    SELECT id, username, display_name, avatar, avatar_seed, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status, created_at, last_seen
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status, created_at, last_seen
     FROM users WHERE id = ?
   `, [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -117,23 +117,6 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
   } catch (err) {
     console.error('Avatar upload error:', err);
     res.status(500).json({ error: 'Failed to upload avatar' });
-  }
-});
-
-// ─── DELETE AVATAR (back to the generated default avatar) ───
-router.delete('/avatar', requireAuth, async (req, res) => {
-  try {
-    const db = await getUserDb();
-    const oldUser = get(db, 'SELECT avatar FROM users WHERE id = ?', [req.user.id]);
-    if (oldUser && oldUser.avatar) {
-      const oldPath = path.join(AVATAR_DIR, path.basename(oldUser.avatar));
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-    }
-    run(db, 'UPDATE users SET avatar = NULL WHERE id = ?', [req.user.id]);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Avatar delete error:', err);
-    res.status(500).json({ error: 'Failed to remove avatar' });
   }
 });
 
@@ -343,7 +326,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
   run(db, sql, params);
 
-  const updated = get(db, 'SELECT id, username, email, display_name, avatar, avatar_seed, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
+  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
   // Tell every connected client (including this user's other sessions)
   // that this profile's cosmetics changed, so open profile cards update
   // live. Carries only public cosmetic ids — same approach as the

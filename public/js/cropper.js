@@ -17,10 +17,7 @@
   // ─── State ──────────────────────────────────────────────
   let imageObj = null;
   let targetType = 'avatar';
-  // Avatars are cropped square (512x512). Banners use Discord's 5:2 shape
-  // (1000x400) so what you crop is exactly what the profile card shows.
-  const BANNER_RATIO = 2.5;
-  let canvasW = 512, canvasH = 512;
+  const canvasSize = 512;
   let baseScale = 1;
   let zoomFactor = 1;
   let offsetX = 0, offsetY = 0;
@@ -103,10 +100,8 @@
       const img = new Image();
       img.onload = function() {
         imageObj = img;
-        if (type === 'banner') { canvasW = 1000; canvasH = Math.round(1000 / BANNER_RATIO); }
-        else { canvasW = 512; canvasH = 512; }
-        canvas.width = canvasW;
-        canvas.height = canvasH;
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
         ctx = canvas.getContext('2d');
 
         const container = canvas.parentElement;
@@ -119,19 +114,12 @@
         // what's actually available instead, same as desktop just with a
         // smaller number.
         const wrap = container.parentElement; // .cropper-preview-wrap
-        if (wrap) wrap.style.aspectRatio = type === 'banner' ? '5 / 2' : '1 / 1';
         const available = (wrap && wrap.clientWidth) || (window.innerWidth - 64);
-        let boxW, boxH;
-        if (type === 'banner') {
-          boxW = Math.max(240, Math.floor(available));
-          boxH = Math.round(boxW / BANNER_RATIO);
-        } else {
-          boxW = boxH = Math.max(220, Math.min(400, Math.floor(available)));
-        }
-        container.style.width = boxW + 'px';
-        container.style.height = boxH + 'px';
-        canvas.style.width = boxW + 'px';
-        canvas.style.height = boxH + 'px';
+        const size = Math.max(220, Math.min(400, Math.floor(available)));
+        container.style.width = size + 'px';
+        container.style.height = size + 'px';
+        canvas.style.width = size + 'px';
+        canvas.style.height = size + 'px';
 
         const mask = document.getElementById('cropper-mask');
         if (mask) {
@@ -146,7 +134,6 @@
         baseScale = computeBaseScale();
         zoomFactor = 1;
         offsetX = 0; offsetY = 0;
-        zoomSlider.min = type === 'banner' ? '1' : '0.5';   // a banner must always fill the frame
         zoomSlider.value = zoomFactor;
         zoomLabel.textContent = zoomFactor.toFixed(1) + 'x';
 
@@ -226,14 +213,14 @@
 
     try {
       const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = canvasW;
-      finalCanvas.height = canvasH;
+      finalCanvas.width = canvasSize;
+      finalCanvas.height = canvasSize;
       const finalCtx = finalCanvas.getContext('2d');
 
       const scale = baseScale * zoomFactor;
       const imgW = imageObj.width, imgH = imageObj.height;
-      const drawX = (canvasW - imgW * scale) / 2 + offsetX;
-      const drawY = (canvasH - imgH * scale) / 2 + offsetY;
+      const drawX = (canvasSize - imgW * scale) / 2 + offsetX;
+      const drawY = (canvasSize - imgH * scale) / 2 + offsetY;
       finalCtx.drawImage(imageObj, drawX, drawY, imgW * scale, imgH * scale);
 
       const mimeType = targetType === 'avatar' ? 'image/jpeg' : 'image/png';
