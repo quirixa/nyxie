@@ -378,7 +378,7 @@ router.get('/:serverId/members', requireAuth, requireServerPermission(null), asy
   ensureServerRoles(db, serverId);
   const members = all(db, `
     SELECT sm.user_id, sm.joined_at, sm.nickname, sm.muted, sm.role_id,
-           u.username, u.display_name, u.avatar, u.status, u.profile_effect
+           u.username, u.display_name, u.avatar, u.avatar_decoration, u.status
     FROM server_members sm
     JOIN users u ON u.id = sm.user_id
     WHERE sm.server_id = ?
@@ -395,7 +395,7 @@ router.get('/:serverId/members', requireAuth, requireServerPermission(null), asy
         display_name: m.nickname || m.display_name,
         global_display_name: m.display_name,
         avatar: m.avatar,
-        profile_effect: m.profile_effect ? 1 : 0,
+        avatar_decoration: m.avatar_decoration || 'none',
         status: effectiveStatus(m.status, { connected: isUserConnected(m.user_id), isSelf: m.user_id === req.user.id }),
         nickname: m.nickname,
         muted: !!m.muted,

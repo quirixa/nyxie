@@ -337,6 +337,7 @@ body.select-mode #view-app .dm-checkbox {
   cursor: pointer;
   flex-shrink: 0;
 }
+#view-app #up-avatar-wrap > .avatar-decoration { z-index: 4; }
 #view-app #up-avatar {
   width: 36px;
   height: 36px;
@@ -1684,147 +1685,20 @@ body.select-mode #view-app .dm-checkbox {
   flex-shrink: 0;
 }
 
-/* ── Animated profile effect ──────────────────────────────
-   Discord-style cosmetic layer around profile avatars.
-   CSS-only: no external assets, libraries, or network requests.
-*/
-#view-app .profile-effect-host {
+/* Profile card avatar stacking (kept from the removed profile effect so the
+   avatar, decoration and status dot layer exactly as before). */
+#view-app .pp-avatar-wrap,
+#view-app .up-avatar-wrap {
   isolation: isolate;
   z-index: 2;
 }
-
-#view-app .profile-effect {
-  position: absolute;
-  inset: -14px;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0;
-  transform: scale(.82);
-  transition: opacity .2s ease;
-}
-
-#view-app .profile-effect-active .profile-effect {
-  opacity: 1;
-  animation: profile-effect-enter .65s cubic-bezier(.2,.8,.2,1) forwards;
-}
-
-#view-app .profile-effect-ring {
-  position: absolute;
-  width: 94px;
-  height: 94px;
-  left: -5px;
-  top: -5px;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-  opacity: .85;
-  background:
-    conic-gradient(
-      from 0deg,
-      transparent 0deg,
-      rgba(253,102,113,.05) 35deg,
-      rgba(253,102,113,.8) 85deg,
-      rgba(255,190,196,.95) 125deg,
-      transparent 175deg,
-      transparent 235deg,
-      rgba(253,102,113,.55) 290deg,
-      transparent 330deg
-    );
-  -webkit-mask: radial-gradient(circle, transparent 63%, #000 65%, #000 70%, transparent 72%);
-  mask: radial-gradient(circle, transparent 63%, #000 65%, #000 70%, transparent 72%);
-  animation: profile-effect-spin 4.8s linear infinite;
-}
-
-#view-app .profile-effect-ring::after {
-  content: "";
-  position: absolute;
-  inset: 8px;
-  border-radius: 50%;
-  box-shadow: 0 0 14px rgba(253,102,113,.42);
-  animation: profile-effect-pulse 2.2s ease-in-out infinite;
-}
-
-#view-app .profile-effect-spark {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 7px rgba(255,255,255,.95), 0 0 13px rgba(253,102,113,.8);
-  opacity: 0;
-  animation: profile-effect-float 2.8s ease-in-out infinite;
-}
-
-#view-app .profile-effect-spark::before,
-#view-app .profile-effect-spark::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 1px;
-  height: 12px;
-  transform: translate(-50%,-50%);
-  background: rgba(255,255,255,.9);
-  border-radius: 999px;
-}
-
-#view-app .profile-effect-spark::after {
-  transform: translate(-50%,-50%) rotate(90deg);
-}
-
-#view-app .spark-1 { left: 7px; top: 18px; animation-delay: -.2s; }
-#view-app .spark-2 { right: 4px; top: 8px; animation-delay: -.9s; transform: scale(.7); }
-#view-app .spark-3 { right: -1px; top: 51px; animation-delay: -1.6s; transform: scale(.55); }
-#view-app .spark-4 { right: 19px; bottom: 1px; animation-delay: -2.1s; transform: scale(.8); }
-#view-app .spark-5 { left: 5px; bottom: 15px; animation-delay: -1.25s; transform: scale(.65); }
-#view-app .spark-6 { left: 35px; top: -1px; animation-delay: -2.5s; transform: scale(.5); }
-
-#view-app .profile-effect-host > .pp-avatar,
-#view-app .profile-effect-host > .up-avatar-large {
+#view-app .pp-avatar-wrap > .pp-avatar,
+#view-app .up-avatar-wrap > .up-avatar-large {
   z-index: 2;
 }
-
-#view-app .profile-effect-host > .pp-avatar-status,
-#view-app .profile-effect-host > .up-avatar-status {
+#view-app .pp-avatar-wrap > .pp-avatar-status,
+#view-app .up-avatar-wrap > .up-avatar-status {
   z-index: 6;
-}
-#view-app .profile-effect-host > .pp-avatar-status {
-  z-index: 6;
-}
-
-@keyframes profile-effect-enter {
-  0% { opacity: 0; transform: scale(.72) rotate(-8deg); }
-  65% { opacity: 1; transform: scale(1.06) rotate(2deg); }
-  100% { opacity: 1; transform: scale(1) rotate(0deg); }
-}
-
-@keyframes profile-effect-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes profile-effect-pulse {
-  0%, 100% { opacity: .35; transform: scale(.9); }
-  50% { opacity: .8; transform: scale(1.08); }
-}
-
-@keyframes profile-effect-float {
-  0%, 100% { opacity: 0; transform: translateY(7px) scale(.55); }
-  25% { opacity: 1; }
-  55% { opacity: .8; transform: translateY(-2px) scale(1); }
-  80% { opacity: .15; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #view-app .profile-effect-ring,
-  #view-app .profile-effect-ring::after,
-  #view-app .profile-effect-spark,
-  #view-app .profile-effect-active .profile-effect {
-    animation: none !important;
-  }
-  #view-app .profile-effect,
-  #view-app .profile-effect-spark {
-    opacity: .7;
-  }
 }
 
 #view-app .pp-avatar-status,

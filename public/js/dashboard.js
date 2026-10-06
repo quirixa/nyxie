@@ -952,6 +952,7 @@ function initDashboardView() {
               _otherId: other.id,
               _status: 'offline',
               _avatar: other.avatar || null,
+              _avatarDecoration: cosmeticId(other.avatar_decoration),
               last_message: null,
               last_message_at: null
             };
@@ -961,7 +962,7 @@ function initDashboardView() {
             api('GET', `/users/${other.id}`).then(u => {
               newDm._status = u?.user?.status || 'offline';
               newDm._avatar = u?.user?.avatar || null;
-              newDm._profileEffect = !!u?.user?.profile_effect;
+              newDm._avatarDecoration = cosmeticId(u?.user?.avatar_decoration);
               renderDMList();
             });
           }
@@ -1521,7 +1522,7 @@ function initDashboardView() {
         const udata = await api('GET', `/users/${dm._otherId}`);
         dm._status = udata?.user?.status || 'offline';
         dm._avatar = udata?.user?.avatar || null;
-        dm._profileEffect = !!udata?.user?.profile_effect;
+        dm._avatarDecoration = cosmeticId(udata?.user?.avatar_decoration);
         otherPublicKey = udata?.user?.public_key || null;
       } else if (dm.is_group) {
         dm._avatar = dm.icon || null;
@@ -1580,8 +1581,8 @@ function initDashboardView() {
         onclick="window.selectModeActive?toggleDMSelect('${dm.id}',this):openRoom('${dm.id}')"
         oncontextmenu="showCtxMenu(event,'${dm.id}')">
         ${chk}
-        <div class="dm-avatar-wrap"${dm._otherId ? ` data-fx-uid="${dm._otherId}"` : ''}>
-          ${dm._profileEffect ? AVATAR_FX_HTML : ''}
+        <div class="dm-avatar-wrap"${dm._otherId ? ` data-deco-uid="${dm._otherId}"` : ''}>
+          ${dm._otherId ? avatarDecorationHtml(dm._avatarDecoration, dm._otherId) : ''}
           ${dmAvatar}
           ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
         </div>
@@ -2932,64 +2933,52 @@ function initDashboardView() {
     else element.dataset.cardDecoration = v;
   }
 
-  // The ring + sparks only draw for users an admin has authorised.
-  function applyProfileEffect(popout, enabled) {
-    const host = popout && popout.querySelector('.profile-effect-host');
-    if (host) host.classList.toggle('has-profile-effect', !!enabled);
+  // Small-avatar decorations (DM list, friends, server members, user panel).
+  // Same art as the profile cards, scaled down by CSS (.avatar-decoration-compact).
+  // data-deco-uid lets handleProfileUpdated() restyle them live when someone
+  // equips or unequips a decoration.
+  function avatarDecorationHtml(decoration, uid) {
+    const id = cosmeticId(decoration);
+    const uidAttr = uid ? ` data-deco-uid="${escapeHtml(String(uid))}"` : '';
+    return `<span class="avatar-decoration avatar-decoration-compact" data-decoration="${escapeHtml(id)}"${uidAttr} aria-hidden="true"></span>`;
   }
-
-  // ── Compact profile effect on small avatars ─────────────────────────
-  // Only users an admin authorised (profile_effect) get the element at all.
-  // Wrappers opt in with data-fx-uid="<user id>" so syncAvatarFx() can
-  // add/remove it live when an admin grants or revokes the effect.
-  const AVATAR_FX_HTML = '<span class="avatar-fx" aria-hidden="true"><span class="avatar-fx-ring"></span><i class="avatar-fx-spark s1"></i><i class="avatar-fx-spark s2"></i><i class="avatar-fx-spark s3"></i></span>';
-  function setAvatarFx(wrap, on, large) {
-    if (!wrap) return;
-    const existing = wrap.querySelector(':scope > .avatar-fx');
-    if (on && !existing) {
-      wrap.insertAdjacentHTML('afterbegin', AVATAR_FX_HTML);
-      if (large) wrap.firstElementChild.classList.add('avatar-fx-lg');
-    } else if (!on && existing) existing.remove();
-  }
-  function syncAvatarFx(userId, on) {
+  function syncAvatarDecoration(userId, decoration) {
     if (!userId) return;
-    document.querySelectorAll('[data-fx-uid]').forEach(el => {
-      if (el.dataset.fxUid === userId) setAvatarFx(el, !!on, el.classList.contains('avatar-fx-host'));
+    const id = cosmeticId(decoration);
+    document.querySelectorAll('.avatar-decoration[data-deco-uid]').forEach(el => {
+      if (el.dataset.decoUid === String(userId)) el.dataset.decoration = id;
     });
   }
-  window.NyxFx = { setAvatarFx, syncAvatarFx };
 
   // WebSocket 'profile_updated': someone equipped/unequipped a decoration.
   // Keeps our own cached user in sync across sessions, and live-updates any
   // profile card that's currently open for that user.
   function handleProfileUpdated(msg) {
     if (!msg || !msg.user_id) return;
-    if (msg.profile_effect !== undefined) {
-      syncAvatarFx(msg.user_id, msg.profile_effect);
-      // keep the DM list's cached copy current so a re-render doesn't drop it
-      dms.forEach(d => { if (d._otherId === msg.user_id) d._profileEffect = !!msg.profile_effect; });
+    if (msg.avatar_decoration !== undefined) {
+      // keep cached copies current so a re-render doesn't drop the decoration
+      dms.forEach(d => { if (d._otherId === msg.user_id) d._avatarDecoration = cosmeticId(msg.avatar_decoration); });
+      if (typeof friends !== 'undefined' && Array.isArray(friends)) {
+        friends.forEach(f => { if (f.id === msg.user_id) f.avatar_decoration = cosmeticId(msg.avatar_decoration); });
+      }
+      syncAvatarDecoration(msg.user_id, msg.avatar_decoration);
     }
     if (msg.user_id === currentUser.id) {
       currentUser.avatar_decoration = cosmeticId(msg.avatar_decoration);
       currentUser.card_decoration = cosmeticId(msg.card_decoration);
-      if (msg.profile_effect !== undefined) currentUser.profile_effect = msg.profile_effect ? 1 : 0;
       try { localStorage.setItem('nyxie_user', JSON.stringify(currentUser)); } catch {}
       const pp = document.getElementById('profile-popout');
       if (pp && pp.style.display === 'block') {
         applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
         applyCardDecoration(pp, currentUser.card_decoration);
-        applyProfileEffect(pp, currentUser.profile_effect);
       }
+      applyAvatarDecoration(document.getElementById('user-panel-avatar-decoration'), currentUser.avatar_decoration);
+      applyAvatarDecoration(document.getElementById('profile-avatar-decoration'), currentUser.avatar_decoration);
     }
     const up = document.getElementById('user-profile-popout');
     if (up && up.style.display === 'block' && _profileUserId === msg.user_id) {
       applyAvatarDecoration(document.getElementById('up-avatar-decoration'), msg.avatar_decoration);
       applyCardDecoration(up, msg.card_decoration);
-      if (msg.profile_effect !== undefined) {
-        applyProfileEffect(up, msg.profile_effect);
-        up.dataset.profileEffect = msg.profile_effect ? '1' : '0';
-        updateProfileEffectMenu();
-      }
     }
   }
 
@@ -3017,8 +3006,6 @@ function initDashboardView() {
     popout.style.left = finalLeft + 'px';
     popout.style.top = finalTop + 'px';
     popout.style.display = 'block';
-    const otherEffect = popout.querySelector('.profile-effect-host');
-    if (otherEffect) { otherEffect.classList.remove('profile-effect-active'); void otherEffect.offsetWidth; otherEffect.classList.add('profile-effect-active'); }
     popout.classList.remove('pp-open'); void popout.offsetWidth; popout.classList.add('pp-open');
     document.getElementById('up-name-display').textContent = 'Loading…';
     document.getElementById('up-username-display').textContent = '';
@@ -3027,7 +3014,6 @@ function initDashboardView() {
     document.getElementById('up-badges-display').style.display = 'none';
     applyAvatarDecoration(document.getElementById('up-avatar-decoration'), 'none');
     applyCardDecoration(popout, 'none');
-    applyProfileEffect(popout, false);
     const avatarEl = document.getElementById('up-avatar-large');
     avatarEl.innerHTML = '…';
     avatarEl.style.background = '#fd6671';
@@ -3062,9 +3048,6 @@ function initDashboardView() {
       }
       applyAvatarDecoration(document.getElementById('up-avatar-decoration'), user.avatar_decoration);
       applyCardDecoration(popout, user.card_decoration);
-      applyProfileEffect(popout, user.profile_effect);
-      popout.dataset.profileEffect = user.profile_effect ? '1' : '0';
-      updateProfileEffectMenu();
       const status = user.status || 'offline';
       const pip = document.getElementById('up-status-pip-display');
       pip.className = 'up-avatar-status ' + pipClass(status);
@@ -3248,7 +3231,6 @@ function initDashboardView() {
     else { avEl.innerHTML = letter; avEl.style.background = color; }
     applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
     applyCardDecoration(pp, currentUser.card_decoration);
-    applyProfileEffect(pp, currentUser.profile_effect);
     document.getElementById('pp-name').textContent = name;
     document.getElementById('pp-tag').textContent = '@' + currentUser.username;
     const pronounsEl = document.getElementById('pp-pronouns');
@@ -3273,8 +3255,6 @@ function initDashboardView() {
     document.getElementById('pp-status-submenu').style.display = 'none';
     document.getElementById('pp-status-menu-row').setAttribute('aria-expanded', 'false');
     pp.style.display = 'block';
-    const selfEffect = pp.querySelector('.profile-effect-host');
-    if (selfEffect) { selfEffect.classList.remove('profile-effect-active'); void selfEffect.offsetWidth; selfEffect.classList.add('profile-effect-active'); }
     pp.classList.remove('pp-open'); void pp.offsetWidth; pp.classList.add('pp-open');
   }
   function copyUserId(id) {
@@ -3372,25 +3352,6 @@ function initDashboardView() {
   }
   // Admin shortcut: profile → Manage Badges. Opens the Admin panel's Badges
   // tab with this user already selected (see initAdminPanel in admin.js).
-  // Admin-only menu item on another user's card. Cosmetic gate: the
-  // PUT /api/admin/profile-effects endpoint re-checks the admin role.
-  function updateProfileEffectMenu() {
-    const btn = document.getElementById('up-profile-effect-btn');
-    if (!btn) return;
-    const popout = document.getElementById('user-profile-popout');
-    btn.style.display = currentUser.role === 'ADMIN' ? '' : 'none';
-    const on = popout.dataset.profileEffect === '1';
-    document.getElementById('up-profile-effect-label').textContent = on ? 'Revoke Profile Effect' : 'Grant Profile Effect';
-  }
-  async function toggleProfileEffectFromProfile() {
-    if (!_profileUserId || currentUser.role !== 'ADMIN') return;
-    const popout = document.getElementById('user-profile-popout');
-    const enable = popout.dataset.profileEffect !== '1';
-    const res = await api('PUT', `/admin/profile-effects/users/${encodeURIComponent(_profileUserId)}`, { enabled: enable });
-    if (!res || res.error) { toast(res?.error || 'Failed to update profile effect'); return; }
-    toast(enable ? 'Profile effect granted' : 'Profile effect revoked');
-    // The server also broadcasts profile_updated, which refreshes the card.
-  }
   function manageBadgesFromProfile() {
     if (!_profileUserId || currentUser.role !== 'ADMIN') return;
     window._adminInitialTab = 'badges';
@@ -3620,6 +3581,7 @@ function initDashboardView() {
           if (r.from_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.from_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
+              ${avatarDecorationHtml(r.from_avatar_decoration, r.from_id)}
               <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             </div>
             <div class="fr-info">
@@ -3650,6 +3612,7 @@ function initDashboardView() {
           if (r.to_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.to_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
+              ${avatarDecorationHtml(r.to_avatar_decoration, r.to_id)}
               <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             </div>
             <div class="fr-info">
@@ -3684,6 +3647,7 @@ function initDashboardView() {
       if (f.avatar) avatarHtml = `<img src="${versionedMediaUrl(f.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
+          ${avatarDecorationHtml(f.avatar_decoration, f.id)}
           <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-secondary)"></div>
         </div>
@@ -3871,9 +3835,7 @@ function initDashboardView() {
       const upAvatar = document.getElementById('up-avatar');
       if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       else { upAvatar.textContent = letter; upAvatar.style.background = color; }
-      const upWrap = document.getElementById('up-avatar-wrap');
-      upWrap.dataset.fxUid = currentUser.id;
-      setAvatarFx(upWrap, !!currentUser.profile_effect);
+      applyAvatarDecoration(document.getElementById('user-panel-avatar-decoration'), currentUser.avatar_decoration);
       document.getElementById('up-name').textContent = name;
       updateUserPanelStatus(currentUser._status);
       // Cosmetic only — hides the nav link for non-admins so it doesn't
@@ -4019,7 +3981,6 @@ function initDashboardView() {
   window.removeProfileFriend = removeProfileFriend;
   window.toggleProfileBlock = toggleProfileBlock;
   window.manageBadgesFromProfile = manageBadgesFromProfile;
-  window.toggleProfileEffectFromProfile = toggleProfileEffectFromProfile;
   // Lets notifications.js (a separate, non-module script that has no
   // access to this IIFE's closure) check the current manually-picked
   // status without duplicating any state — used to mute the one-shot
@@ -4662,8 +4623,8 @@ function initDashboardView() {
         : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase());
       const role = getDisplayedRole(m) || m.role;
       return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
-        <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
-        ${m.profile_effect ? AVATAR_FX_HTML : ''}
+        <div class="ml-avatar-wrap">
+        ${avatarDecorationHtml(m.avatar_decoration, m.id)}
         <div class="ml-avatar">
           ${avatarHtml}
           <span class="ml-status-dot pip-${isOfflineMember ? 'offline' : (status === 'idle' ? 'idle' : status === 'dnd' ? 'dnd' : 'online')}"></span>
