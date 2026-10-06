@@ -140,12 +140,9 @@ function initSettingsView() {
     updateDisplayNameCounter();
     document.getElementById('profile-bio').value = currentUser.bio || '';
     updateBioCounter();
-    // Profile effect preview: only for admin-authorised users.
-    const fxHost = document.getElementById('profile-avatar-fx-host');
-    if (fxHost && window.NyxFx) {
-      fxHost.dataset.fxUid = currentUser.id;
-      window.NyxFx.setAvatarFx(fxHost, !!currentUser.profile_effect, true);
-    }
+    // Avatar preview shows the equipped decoration (and the selected one live, below).
+    const previewDeco = document.getElementById('profile-avatar-decoration');
+    if (previewDeco) previewDeco.dataset.decoration = currentUser.avatar_decoration || 'none';
     _pendingAvatarDecoration = currentUser.avatar_decoration || 'none';
     _pendingCardDecoration = currentUser.card_decoration || 'none';
     renderShop();   // paint immediately from whatever we have...
@@ -224,6 +221,8 @@ function initSettingsView() {
   function selectAvatarDecoration(id) {
     if (!ownsInShop(id)) return;
     _pendingAvatarDecoration = id;
+    const previewDeco = document.getElementById('profile-avatar-decoration');
+    if (previewDeco) previewDeco.dataset.decoration = id || 'none';
     renderShop();
   }
   function selectCardDecoration(id) {

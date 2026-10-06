@@ -153,3 +153,31 @@
 /* wrappers (avatar layout; unchanged) */
 .avatar-fx-host { position: relative; flex-shrink: 0; }
 #view-app .ml-avatar-wrap { position: relative; flex-shrink: 0; width: 32px; height: 32px; }
+
+/* ── Compact avatar decorations ───────────────────────────────────────
+   The decoration art (.avatar-decoration in dashboard.css) is drawn for the
+   84px profile-card avatar inside a 108px box. On smaller avatars that box is
+   centred on the avatar wrapper and scaled by --deco-scale (= avatar px / 84).
+   Wrappers are position:relative and isolated so the art can't leak over
+   neighbouring UI. */
+.avatar-decoration.avatar-decoration-compact {
+  --deco-scale: .5;
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: 108px;
+  height: 108px;
+  /* translate (not negative margins) so reset rules like
+     "#view-settings * { margin: 0 }" can't knock it off-centre */
+  transform: translate(-50%, -50%) scale(var(--deco-scale));
+  transform-origin: 50% 50%;
+}
+#view-app .dm-avatar-wrap, #view-app .fr-avatar-wrap,
+#view-app .ml-avatar-wrap, #view-app #up-avatar-wrap,
+#view-settings .avatar-fx-host { isolation: isolate; }
+#view-app .dm-avatar-wrap > .avatar-decoration-compact,
+#view-app .fr-avatar-wrap > .avatar-decoration-compact { --deco-scale: .5; }      /* 42px */
+#view-app .ml-avatar-wrap > .avatar-decoration-compact { --deco-scale: .381; }    /* 32px */
+#view-app #up-avatar-wrap > .avatar-decoration-compact { --deco-scale: .429; }    /* 36px */
+#view-settings .avatar-fx-host > .avatar-decoration-compact { --deco-scale: .952; } /* 80px */
+#view-app .ml-row.offline .avatar-decoration { opacity: .55; }

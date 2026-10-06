@@ -953,6 +953,7 @@ function initDashboardView() {
               _otherId: other.id,
               _status: 'offline',
               _avatar: other.avatar || null,
+              _avatarDecoration: cosmeticId(other.avatar_decoration),
               last_message: null,
               last_message_at: null
             };
@@ -963,6 +964,7 @@ function initDashboardView() {
               newDm._status = u?.user?.status || 'offline';
               newDm._avatar = u?.user?.avatar || null;
               newDm._profileEffect = !!u?.user?.profile_effect;
+              newDm._avatarDecoration = cosmeticId(u?.user?.avatar_decoration);
               renderDMList();
             });
           }
@@ -1523,6 +1525,7 @@ function initDashboardView() {
         dm._status = udata?.user?.status || 'offline';
         dm._avatar = udata?.user?.avatar || null;
         dm._profileEffect = !!udata?.user?.profile_effect;
+        dm._avatarDecoration = cosmeticId(udata?.user?.avatar_decoration);
         otherPublicKey = udata?.user?.public_key || null;
       } else if (dm.is_group) {
         dm._avatar = dm.icon || null;
@@ -1582,7 +1585,7 @@ function initDashboardView() {
         oncontextmenu="showCtxMenu(event,'${dm.id}')">
         ${chk}
         <div class="dm-avatar-wrap"${dm._otherId ? ` data-fx-uid="${dm._otherId}"` : ''}>
-          ${dm._profileEffect ? AVATAR_FX_HTML : ''}
+          ${dm._otherId ? avatarDecorationHtml(dm._avatarDecoration, dm._otherId) : ''}
           ${dmAvatar}
           ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
         </div>
@@ -2925,6 +2928,21 @@ function initDashboardView() {
     if (!element) return;
     element.dataset.decoration = cosmeticId(decoration);
   }
+  // Decoration on a small avatar (DM list, friends, server members). The art is
+  // scaled down by CSS (.avatar-decoration-compact); data-deco-uid lets
+  // syncAvatarDecoration() restyle it live when that user changes decoration.
+  function avatarDecorationHtml(decoration, uid) {
+    const id = cosmeticId(decoration);
+    const uidAttr = uid ? ` data-deco-uid="${escapeHtml(String(uid))}"` : '';
+    return `<span class="avatar-decoration avatar-decoration-compact" data-decoration="${escapeHtml(id)}"${uidAttr} aria-hidden="true"></span>`;
+  }
+  function syncAvatarDecoration(userId, decoration) {
+    if (!userId) return;
+    const id = cosmeticId(decoration);
+    document.querySelectorAll('.avatar-decoration[data-deco-uid]').forEach(el => {
+      if (el.dataset.decoUid === String(userId)) el.dataset.decoration = id;
+    });
+  }
   // Card decorations style the whole popout via [data-card-decoration] (cosmetics.css).
   function applyCardDecoration(element, decoration) {
     if (!element) return;
@@ -2964,8 +2982,15 @@ function initDashboardView() {
       // keep the DM list's cached copy current so a re-render doesn't drop it
       dms.forEach(d => { if (d._otherId === msg.user_id) d._profileEffect = !!msg.profile_effect; });
     }
+    if (msg.avatar_decoration !== undefined) {
+      // keep cached copies current so a re-render doesn't drop the decoration
+      dms.forEach(d => { if (d._otherId === msg.user_id) d._avatarDecoration = cosmeticId(msg.avatar_decoration); });
+      friends.forEach(f => { if (f.id === msg.user_id) f.avatar_decoration = cosmeticId(msg.avatar_decoration); });
+      syncAvatarDecoration(msg.user_id, msg.avatar_decoration);
+    }
     if (msg.user_id === currentUser.id) {
       currentUser.avatar_decoration = cosmeticId(msg.avatar_decoration);
+      applyAvatarDecoration(document.getElementById('user-panel-avatar-decoration'), currentUser.avatar_decoration);
       currentUser.card_decoration = cosmeticId(msg.card_decoration);
       if (msg.profile_effect !== undefined) currentUser.profile_effect = msg.profile_effect ? 1 : 0;
       try { localStorage.setItem('nyxie_user', JSON.stringify(currentUser)); } catch {}
@@ -3614,6 +3639,7 @@ function initDashboardView() {
           if (r.from_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.from_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
+              ${avatarDecorationHtml(r.from_avatar_decoration, r.from_id)}
               <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             </div>
             <div class="fr-info">
@@ -3644,6 +3670,7 @@ function initDashboardView() {
           if (r.to_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.to_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
+              ${avatarDecorationHtml(r.to_avatar_decoration, r.to_id)}
               <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
             </div>
             <div class="fr-info">
@@ -3678,6 +3705,7 @@ function initDashboardView() {
       if (f.avatar) avatarHtml = `<img src="${versionedMediaUrl(f.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
+          ${avatarDecorationHtml(f.avatar_decoration, f.id)}
           <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-secondary)"></div>
         </div>
@@ -3865,9 +3893,7 @@ function initDashboardView() {
       const upAvatar = document.getElementById('up-avatar');
       if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       else { upAvatar.innerHTML = identiconImg(currentUser.id); upAvatar.style.background = color; }
-      const upWrap = document.getElementById('up-avatar-wrap');
-      upWrap.dataset.fxUid = currentUser.id;
-      setAvatarFx(upWrap, !!currentUser.profile_effect);
+      applyAvatarDecoration(document.getElementById('user-panel-avatar-decoration'), currentUser.avatar_decoration);
       document.getElementById('up-name').textContent = name;
       updateUserPanelStatus(currentUser._status);
       // Cosmetic only — hides the nav link for non-admins so it doesn't
@@ -4656,8 +4682,8 @@ function initDashboardView() {
         : identiconImg(m.id);
       const role = getDisplayedRole(m) || m.role;
       return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
-        <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
-        ${m.profile_effect ? AVATAR_FX_HTML : ''}
+        <div class="ml-avatar-wrap">
+        ${avatarDecorationHtml(m.avatar_decoration, m.id)}
         <div class="ml-avatar">
           ${avatarHtml}
           <span class="ml-status-dot pip-${isOfflineMember ? 'offline' : (status === 'idle' ? 'idle' : status === 'dnd' ? 'dnd' : 'online')}"></span>

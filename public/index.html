@@ -571,6 +571,7 @@ __    __  __      __  __    __  ______  ________
                 </div>
                 <div id="user-panel" role="button" tabindex="0" aria-label="Open your profile" onclick="toggleProfilePopout(event)" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleProfilePopout(event); }">
                     <div id="up-avatar-wrap">
+                        <div class="avatar-decoration avatar-decoration-compact" id="user-panel-avatar-decoration" aria-hidden="true"></div>
                         <div id="up-avatar">U</div>
                         <div id="up-status-pip" class="pip-online"></div>
                     </div>
@@ -1859,6 +1860,7 @@ __    __  __      __  __    __  ______  ________
                             <label>Avatar</label>
                             <div class="avatar-edit-row">
                                 <div class="avatar-fx-host" id="profile-avatar-fx-host">
+                                    <div class="avatar-decoration avatar-decoration-compact" id="profile-avatar-decoration" aria-hidden="true"></div>
                                     <div class="avatar-preview-large" id="profile-avatar-preview">
                                         <span id="profile-avatar-letter">U</span>
                                     </div>
