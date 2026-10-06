@@ -350,7 +350,7 @@ function adminBadgeThumb(u) {
   const letter = escapeHtml((u.display_name || u.username || '?').charAt(0).toUpperCase());
   return u.avatar
     ? `<div class="mp-row-thumb"><img src="${escapeHtml(versionedMediaUrl(u.avatar))}" alt="" class="admin-badge-avatar" /></div>`
-    : `<div class="mp-row-thumb">${letter}</div>`;
+    : `<div class="mp-row-thumb">${identiconImg(u.id)}</div>`;
 }
 
 function adminBadgeChips(ids) {

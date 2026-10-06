@@ -881,7 +881,7 @@ function initVoiceFeatures() {
 
     nameEl.textContent = callPeerName || 'Unknown';
     avatarEl.innerHTML = avatarUrl ? `<img src="${escapeHtml(avatarUrl)}">` : '';
-    if (!avatarUrl) avatarEl.textContent = (callPeerName || '?')[0].toUpperCase();
+    if (!avatarUrl) { if (callPeerId) avatarEl.innerHTML = identiconImg(callPeerId); else avatarEl.textContent = (callPeerName || '?')[0].toUpperCase(); }
 
     if (state === 'outgoing') {
       overlay.classList.add('open');

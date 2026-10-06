@@ -12,6 +12,47 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// identicon — GitHub-style generated default avatar. Used wherever a user has
+// no uploaded avatar. Deterministic: the same seed (always the user's id) gives
+// the same picture everywhere. 5x5 grid, left-right mirrored, one colour per
+// seed on a light-grey tile with enough margin to survive a round crop. Returns an SVG data: URI (no network, no assets).
+const _identiconCache = new Map();
+function identiconUrl(seed) {
+  seed = String(seed == null ? '' : seed);
+  const hit = _identiconCache.get(seed);
+  if (hit) return hit;
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  h = Math.imul(h ^ (h >>> 16), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  let s = (h ^ (h >>> 16)) >>> 0;
+  const rand = () => {            // mulberry32
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const hue = Math.floor(rand() * 360);
+  const rect = (x, y) => `<rect x="${x + 1.1}" y="${y + 1.1}" width="1" height="1"/>`;
+  let cells = '', on = 0;
+  for (let y = 0; y < 5; y++) {
+    for (let x = 0; x < 3; x++) {
+      if (rand() < 0.5) { cells += rect(x, y) + (x < 2 ? rect(4 - x, y) : ''); on += x < 2 ? 2 : 1; }
+    }
+  }
+  if (on < 7) for (let y = 0; y < 5; y++) cells += rect(2, y);   // never leave it nearly blank
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7.2 7.2" shape-rendering="crispEdges"><rect width="7.2" height="7.2" fill="#f0f0f0"/><g fill="hsl(${hue},65%,50%)">${cells}</g></svg>`;
+  const url = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  _identiconCache.set(seed, url);
+  return url;
+}
+function identiconImg(seed) {
+  return `<img class="identicon" src="${identiconUrl(seed)}" alt="" draggable="false" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;" />`;
+}
+
 function escapeJs(str) {
   if (str === null || str === undefined) return '';
   return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n');

@@ -121,11 +121,11 @@ function initSettingsView() {
     const letterEl = document.getElementById('profile-avatar-letter');
     if (currentUser.avatar) {
       avatarEl.innerHTML = `<img src="${escapeHtml(versionedMediaUrl(currentUser.avatar))}" style="width:100%;height:100%;object-fit:cover;" />`;
-      letterEl.style.display = 'none';
+      if (letterEl) letterEl.style.display = 'none';
     } else {
-      avatarEl.innerHTML = `<span id="profile-avatar-letter">${name[0].toUpperCase()}</span>`;
+      avatarEl.innerHTML = identiconImg(currentUser.id);
       avatarEl.style.background = hashColor(name);
-      letterEl.style.display = 'block';
+      if (letterEl) letterEl.style.display = 'block';
     }
 
     applyBannerStyle(document.getElementById('profile-banner-preview'), currentUser);

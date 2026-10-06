@@ -313,7 +313,7 @@ function initDashboardView() {
       const letter = (name[0] || '?').toUpperCase();
       const avatarHtml = m.avatar
         ? `<img src="${escapeHtml(versionedMediaUrl(m.avatar))}" alt="" />`
-        : letter;
+        : identiconImg(m.id || m.username);
       const active = i === mnSelectedIndex ? 'active' : '';
       html += `<div class="sc-item mn-item ${active}" data-index="${i}" onclick="selectMention(${i})">
         <span class="mn-avatar" style="${m.avatar ? '' : 'background:' + hashColor(name) + ';'}">${avatarHtml}</span>
@@ -678,6 +678,7 @@ function initDashboardView() {
     chAvatar.innerHTML = '';
     chAvatar.textContent = name[0].toUpperCase();
     chAvatar.style.background = hashColor(name);
+    if (room._otherId) chAvatar.innerHTML = identiconImg(room._otherId);
     document.getElementById('chat-room-name-text').textContent = room.is_group ? name : ('@' + name);
     document.getElementById('msg-input').placeholder = 'Message ' + (room.is_group ? name : ('@' + name));
 
@@ -695,7 +696,7 @@ function initDashboardView() {
           if (udata.user.avatar) {
             chAvatarEl.innerHTML = `<img src="${versionedMediaUrl(udata.user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           } else {
-            chAvatarEl.textContent = name[0].toUpperCase();
+            chAvatarEl.innerHTML = identiconImg(room._otherId);
             chAvatarEl.style.background = hashColor(name);
           }
         }
@@ -1570,7 +1571,7 @@ function initDashboardView() {
         : '<i style="color:var(--text-muted)">No messages yet</i>';
       const time = dm.last_message_at ? fmtTime(dm.last_message_at) : '';
       const isActive = currentRoom?.id === dm.id;
-      let avatarHtml = name[0].toUpperCase();
+      let avatarHtml = dm._otherId ? identiconImg(dm._otherId) : name[0].toUpperCase();
       if (dm._avatar) {
         avatarHtml = `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       }
@@ -3050,8 +3051,7 @@ function initDashboardView() {
         avatarEl.innerHTML = `<img src="${versionedMediaUrl(user.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
         avatarEl.style.background = 'none';
       } else {
-        const letter = (user.display_name || user.username)[0].toUpperCase();
-        avatarEl.innerHTML = letter;
+        avatarEl.innerHTML = identiconImg(user.id || user.username);
         avatarEl.style.background = hashColor(user.display_name || user.username);
       }
       applyAvatarDecoration(document.getElementById('up-avatar-decoration'), user.avatar_decoration);
@@ -3239,7 +3239,7 @@ function initDashboardView() {
     avEl.textContent = letter;
     avEl.style.background = color;
     if (currentUser.avatar) avEl.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else { avEl.innerHTML = letter; avEl.style.background = color; }
+    else { avEl.innerHTML = identiconImg(currentUser.id); avEl.style.background = color; }
     applyAvatarDecoration(document.getElementById('pp-avatar-decoration'), currentUser.avatar_decoration);
     applyCardDecoration(pp, currentUser.card_decoration);
     applyProfileEffect(pp, currentUser.profile_effect);
@@ -3506,10 +3506,10 @@ function initDashboardView() {
   function updateAvatarUI(avatarUrl) {
     const upAv = document.getElementById('up-avatar');
     if (avatarUrl) upAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else { const name = currentUser.display_name || currentUser.username; upAv.textContent = name[0].toUpperCase(); upAv.style.background = hashColor(name); upAv.innerHTML = name[0].toUpperCase(); }
+    else { const name = currentUser.display_name || currentUser.username; upAv.style.background = hashColor(name); upAv.innerHTML = identiconImg(currentUser.id); }
     const ppAv = document.getElementById('pp-avatar-letter');
     if (avatarUrl) ppAv.innerHTML = `<img src="${versionedMediaUrl(avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />`;
-    else { const name = currentUser.display_name || currentUser.username; ppAv.textContent = name[0].toUpperCase(); ppAv.style.background = hashColor(name); }
+    else { const name = currentUser.display_name || currentUser.username; ppAv.style.background = hashColor(name); ppAv.innerHTML = identiconImg(currentUser.id); }
   }
 
   // ─── FRIENDS AND DMs ──────────────────────────────────────
@@ -3556,7 +3556,7 @@ function initDashboardView() {
       results.innerHTML = res.users.map(u => {
         const name = u.display_name || u.username;
         const letter = name[0].toUpperCase();
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : letter;
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(u.id);
         return `<div class="search-result-item" onclick="startDM('${u.id}','${escapeJs(name)}')">
           <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
           <div>
@@ -3610,7 +3610,7 @@ function initDashboardView() {
         out += `<div style="padding:6px 16px 4px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Incoming — ${incoming.length}</div>`;
         out += incoming.map(r => {
           const name = r.from_name || r.from_username;
-          let avatarHtml = name[0].toUpperCase();
+          let avatarHtml = identiconImg(r.from_id);
           if (r.from_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.from_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
@@ -3640,7 +3640,7 @@ function initDashboardView() {
         out += `<div style="padding:6px 16px 4px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Outgoing — ${outgoing.length}</div>`;
         out += outgoing.map(r => {
           const name = r.to_name || r.to_username;
-          let avatarHtml = name[0].toUpperCase();
+          let avatarHtml = identiconImg(r.to_id);
           if (r.to_avatar) avatarHtml = `<img src="${versionedMediaUrl(r.to_avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
           return `<div class="friend-row">
             <div class="fr-avatar-wrap">
@@ -3674,7 +3674,7 @@ function initDashboardView() {
     if (!list.length) { el.innerHTML = `<div class="friends-empty">${currentFriendsTab === 'online' ? 'No friends online' : 'No friends yet'}</div>`; return; }
     el.innerHTML = list.map(f => {
       const name = f.display_name || f.username;
-      let avatarHtml = name[0].toUpperCase();
+      let avatarHtml = identiconImg(f.id);
       if (f.avatar) avatarHtml = `<img src="${versionedMediaUrl(f.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       return `<div class="friend-row" onclick="messageFriend('${f.id}','${escapeJs(name)}')">
         <div class="fr-avatar-wrap">
@@ -3780,7 +3780,7 @@ function initDashboardView() {
         const isFriend = friends.some(f => f.id === u.id);
         const hasPendingOut = friendRequests.outgoing.some(r => r.to_id === u.id);
         const hasPendingIn = friendRequests.incoming.some(r => r.from_id === u.id);
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : name[0].toUpperCase();
+        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(u.id);
         return `<div class="search-result-item" style="justify-content:space-between">
           <div style="display:flex;align-items:center;gap:8px">
             <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
@@ -3864,7 +3864,7 @@ function initDashboardView() {
       const color = hashColor(name);
       const upAvatar = document.getElementById('up-avatar');
       if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
-      else { upAvatar.textContent = letter; upAvatar.style.background = color; }
+      else { upAvatar.innerHTML = identiconImg(currentUser.id); upAvatar.style.background = color; }
       const upWrap = document.getElementById('up-avatar-wrap');
       upWrap.dataset.fxUid = currentUser.id;
       setAvatarFx(upWrap, !!currentUser.profile_effect);
@@ -4653,7 +4653,7 @@ function initDashboardView() {
       const isOfflineMember = status === 'offline';
       const avatarHtml = m.avatar
         ? `<img src="${versionedMediaUrl(m.avatar)}" />`
-        : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase());
+        : identiconImg(m.id);
       const role = getDisplayedRole(m) || m.role;
       return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
         <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
@@ -4745,7 +4745,7 @@ function initDashboardView() {
     const roleOptions = currentServerRoles.slice().sort((a, b) => b.position - a.position);
 
     container.innerHTML = members.map(m => {
-      const avatarHtml = m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : escapeHtml((m.display_name || '?')[0].toUpperCase());
+      const avatarHtml = m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : identiconImg(m.id);
       const assignedRoleIds = new Set((m.roles || []).map(r => r.id));
       const roleSelect = (canManage && !m.is_owner)
         ? `<details class="picker-role-menu">
@@ -4892,7 +4892,7 @@ function initDashboardView() {
       list.innerHTML = friends.map(f => `
         <label class="picker-row" style="cursor:pointer">
           <input type="checkbox" value="${f.id}" class="new-group-friend-check" style="margin-right:2px" />
-          <div class="picker-avatar">${f.avatar ? `<img src="${versionedMediaUrl(f.avatar)}" />` : escapeHtml((f.display_name || f.username || '?')[0].toUpperCase())}</div>
+          <div class="picker-avatar">${f.avatar ? `<img src="${versionedMediaUrl(f.avatar)}" />` : identiconImg(f.id)}</div>
           <div class="picker-info">
             <div class="picker-name">${escapeHtml(f.display_name || f.username)}</div>
             <div class="picker-sub">@${escapeHtml(f.username)}</div>
@@ -4941,7 +4941,7 @@ function initDashboardView() {
 
     const memberRows = group.members.map(m => `
       <div class="picker-row">
-        <div class="picker-avatar">${m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : escapeHtml((m.display_name || m.username || '?')[0].toUpperCase())}</div>
+        <div class="picker-avatar">${m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : identiconImg(m.id)}</div>
         <div class="picker-info">
           <div class="picker-name">${escapeHtml(m.display_name || m.username)}${m.user_id === group.created_by ? ' <span class="picker-owner-tag">Creator</span>' : ''}</div>
           <div class="picker-sub">@${escapeHtml(m.username)}</div>
@@ -4957,7 +4957,7 @@ function initDashboardView() {
           ${addable.map(f => `
             <label class="picker-row" style="cursor:pointer">
               <input type="checkbox" value="${f.id}" class="group-add-friend-check" style="margin-right:2px" />
-              <div class="picker-avatar">${f.avatar ? `<img src="${versionedMediaUrl(f.avatar)}" />` : escapeHtml((f.display_name || f.username || '?')[0].toUpperCase())}</div>
+              <div class="picker-avatar">${f.avatar ? `<img src="${versionedMediaUrl(f.avatar)}" />` : identiconImg(f.id)}</div>
               <div class="picker-info"><div class="picker-name">${escapeHtml(f.display_name || f.username)}</div></div>
             </label>
           `).join('')}
