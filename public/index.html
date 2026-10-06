@@ -571,7 +571,6 @@ __    __  __      __  __    __  ______  ________
                 </div>
                 <div id="user-panel" role="button" tabindex="0" aria-label="Open your profile" onclick="toggleProfilePopout(event)" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleProfilePopout(event); }">
                     <div id="up-avatar-wrap">
-                        <div class="avatar-decoration avatar-decoration-compact" id="user-panel-avatar-decoration" aria-hidden="true"></div>
                         <div id="up-avatar">U</div>
                         <div id="up-status-pip" class="pip-online"></div>
                     </div>
@@ -1190,7 +1189,7 @@ __    __  __      __  __    __  ______  ________
         <!-- Profile Popout (self) -->
         <div id="profile-popout" class="profile-surface" role="dialog" aria-label="Your profile">
             <div class="pp-banner" id="pp-banner"></div>
-            <div class="pp-avatar-wrap">
+            <div class="pp-avatar-wrap profile-effect-host">
                 <div class="avatar-decoration" id="pp-avatar-decoration" aria-hidden="true"></div>
                 <div class="pp-avatar" id="pp-avatar-letter">U</div>
                 <div class="pp-avatar-status pip-online" id="pp-avatar-status" aria-hidden="true"></div>
@@ -1543,7 +1542,7 @@ __    __  __      __  __    __  ______  ________
                     </button>
                 </div>
             </div>
-            <div class="up-avatar-wrap">
+            <div class="up-avatar-wrap profile-effect-host">
                 <div class="avatar-decoration" id="up-avatar-decoration" aria-hidden="true"></div>
                 <div class="up-avatar-large" id="up-avatar-large">?</div>
                 <div class="up-avatar-status pip-offline" id="up-status-pip-display" aria-hidden="true"></div>
@@ -1574,6 +1573,14 @@ __    __  __      __  __    __  ______  ________
                         </svg>
                     </span>
                     <span>Manage Badges</span>
+                </button>
+                <button type="button" class="pp-menu-item" id="up-profile-effect-btn" style="display:none" onclick="toggleProfileEffectFromProfile()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>
+                        </svg>
+                    </span>
+                    <span id="up-profile-effect-label">Grant Profile Effect</span>
                 </button>
             </div>
         </div>
@@ -1851,8 +1858,7 @@ __    __  __      __  __    __  ______  ________
                         <div class="profile-edit-section">
                             <label>Avatar</label>
                             <div class="avatar-edit-row">
-                                <div class="avatar-deco-host" id="profile-avatar-deco-host">
-                                    <div class="avatar-decoration avatar-decoration-compact" id="profile-avatar-decoration" aria-hidden="true"></div>
+                                <div class="avatar-fx-host" id="profile-avatar-fx-host">
                                     <div class="avatar-preview-large" id="profile-avatar-preview">
                                         <span id="profile-avatar-letter">U</span>
                                     </div>

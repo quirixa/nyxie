@@ -13,7 +13,7 @@ router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
   ensureBlocksTable(db);
   const friends = all(db, `
-    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_decoration, u.status, u.last_seen
+    SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.last_seen
     FROM friends f
     JOIN users u ON u.id = CASE WHEN f.user_a = ? THEN f.user_b ELSE f.user_a END
     WHERE (f.user_a = ? OR f.user_b = ?) AND f.status = 'accepted'
@@ -36,7 +36,7 @@ router.get('/requests', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const incoming = all(db, `
     SELECT fr.id, fr.from_id, fr.created_at,
-           u.username AS from_username, u.display_name AS from_name, u.avatar AS from_avatar, u.avatar_decoration AS from_avatar_decoration
+           u.username AS from_username, u.display_name AS from_name, u.avatar AS from_avatar
     FROM friend_requests fr
     JOIN users u ON u.id = fr.from_id
     WHERE fr.to_id = ? AND fr.status = 'pending'
@@ -44,7 +44,7 @@ router.get('/requests', requireAuth, async (req, res) => {
   `, [req.user.id]);
   const outgoing = all(db, `
     SELECT fr.id, fr.to_id, fr.created_at,
-           u.username AS to_username, u.display_name AS to_name, u.avatar AS to_avatar, u.avatar_decoration AS to_avatar_decoration
+           u.username AS to_username, u.display_name AS to_name, u.avatar AS to_avatar
     FROM friend_requests fr
     JOIN users u ON u.id = fr.to_id
     WHERE fr.from_id = ? AND fr.status = 'pending'
@@ -135,7 +135,7 @@ router.post('/request', requireAuth, async (req, res) => {
       run(db, 'INSERT OR IGNORE INTO friends (id, user_a, user_b, status, created_at) VALUES (?, ?, ?, \'accepted\', ?)',
           [friendId, req.user.id, to_id, Date.now()]);
       // Fetch the friend's full profile (including avatar)
-      const me = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration, status, last_seen FROM users WHERE id = ?', [req.user.id]);
+      const me = get(db, 'SELECT id, username, display_name, avatar, status, last_seen FROM users WHERE id = ?', [req.user.id]);
       me.status = effectiveStatus(me.status, { connected: (req.app.locals.isUserConnected || (() => false))(me.id), isSelf: false });
       req.app.locals.broadcastToUser(to_id, { type: 'friend_accepted', request_id: pending.id, friend: me });
       return res.json({ ok: true, auto_accepted: true });
@@ -148,7 +148,7 @@ router.post('/request', requireAuth, async (req, res) => {
       [reqId, req.user.id, to_id, Date.now()]);
 
   // Send the request notification with avatar
-  const fromUser = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration FROM users WHERE id = ?', [req.user.id]);
+  const fromUser = get(db, 'SELECT id, username, display_name, avatar FROM users WHERE id = ?', [req.user.id]);
   req.app.locals.broadcastToUser(to_id, {
     type: 'friend_request',
     request: {
@@ -157,8 +157,7 @@ router.post('/request', requireAuth, async (req, res) => {
       created_at: Date.now(),
       from_username: fromUser.username,
       from_name: fromUser.display_name,
-      from_avatar: fromUser.avatar,
-      from_avatar_decoration: fromUser.avatar_decoration || 'none'
+      from_avatar: fromUser.avatar
     }
   });
   res.status(201).json({ ok: true, request_id: reqId });
@@ -176,7 +175,7 @@ router.post('/requests/:id/accept', requireAuth, async (req, res) => {
   run(db, 'INSERT OR IGNORE INTO friends (id, user_a, user_b, status, created_at) VALUES (?, ?, ?, \'accepted\', ?)',
       [friendId, fr.from_id, fr.to_id, Date.now()]);
 
-  const me = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration, status, last_seen FROM users WHERE id = ?', [req.user.id]);
+  const me = get(db, 'SELECT id, username, display_name, avatar, status, last_seen FROM users WHERE id = ?', [req.user.id]);
   me.status = effectiveStatus(me.status, { connected: (req.app.locals.isUserConnected || (() => false))(me.id), isSelf: false });
   req.app.locals.broadcastToUser(fr.from_id, { type: 'friend_accepted', request_id: fr.id, friend: me });
   res.json({ ok: true });

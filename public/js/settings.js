@@ -140,9 +140,12 @@ function initSettingsView() {
     updateDisplayNameCounter();
     document.getElementById('profile-bio').value = currentUser.bio || '';
     updateBioCounter();
-    // Settings avatar preview shows the equipped avatar decoration.
-    const previewDecoration = document.getElementById('profile-avatar-decoration');
-    if (previewDecoration) previewDecoration.dataset.decoration = currentUser.avatar_decoration || 'none';
+    // Profile effect preview: only for admin-authorised users.
+    const fxHost = document.getElementById('profile-avatar-fx-host');
+    if (fxHost && window.NyxFx) {
+      fxHost.dataset.fxUid = currentUser.id;
+      window.NyxFx.setAvatarFx(fxHost, !!currentUser.profile_effect, true);
+    }
     _pendingAvatarDecoration = currentUser.avatar_decoration || 'none';
     _pendingCardDecoration = currentUser.card_decoration || 'none';
     renderShop();   // paint immediately from whatever we have...

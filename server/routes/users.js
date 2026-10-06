@@ -67,7 +67,7 @@ router.get('/search', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   const users = all(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, role, public_key, last_seen, status
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, last_seen, status
     FROM users
     WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?
     LIMIT 20
@@ -81,7 +81,7 @@ router.get('/search', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const user = get(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, role, public_key, status, created_at, last_seen
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status, created_at, last_seen
     FROM users WHERE id = ?
   `, [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -326,7 +326,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
   run(db, sql, params);
 
-  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
+  const updated = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, encrypted_private_key, key_salt, key_nonce, status FROM users WHERE id = ?', [userId]);
   // Tell every connected client (including this user's other sessions)
   // that this profile's cosmetics changed, so open profile cards update
   // live. Carries only public cosmetic ids — same approach as the
@@ -337,6 +337,7 @@ router.patch('/me', requireAuth, async (req, res) => {
       user_id: userId,
       avatar_decoration: updated.avatar_decoration || 'none',
       card_decoration: updated.card_decoration || 'none',
+      profile_effect: updated.profile_effect ? 1 : 0,
     });
   }
   res.json({ ok: true, user: updated });

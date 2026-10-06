@@ -337,7 +337,6 @@ body.select-mode #view-app .dm-checkbox {
   cursor: pointer;
   flex-shrink: 0;
 }
-#view-app #up-avatar-wrap > .avatar-decoration { z-index: 4; }
 #view-app #up-avatar {
   width: 36px;
   height: 36px;
@@ -1685,19 +1684,21 @@ body.select-mode #view-app .dm-checkbox {
   flex-shrink: 0;
 }
 
-/* Profile card avatar stacking (kept from the removed profile effect so the
-   avatar, decoration and status dot layer exactly as before). */
-#view-app .pp-avatar-wrap,
-#view-app .up-avatar-wrap {
+#view-app .profile-effect-host {
   isolation: isolate;
   z-index: 2;
 }
-#view-app .pp-avatar-wrap > .pp-avatar,
-#view-app .up-avatar-wrap > .up-avatar-large {
+
+#view-app .profile-effect-host > .pp-avatar,
+#view-app .profile-effect-host > .up-avatar-large {
   z-index: 2;
 }
-#view-app .pp-avatar-wrap > .pp-avatar-status,
-#view-app .up-avatar-wrap > .up-avatar-status {
+
+#view-app .profile-effect-host > .pp-avatar-status,
+#view-app .profile-effect-host > .up-avatar-status {
+  z-index: 6;
+}
+#view-app .profile-effect-host > .pp-avatar-status {
   z-index: 6;
 }
 

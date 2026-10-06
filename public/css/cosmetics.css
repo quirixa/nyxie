@@ -150,29 +150,6 @@
 }
 #view-settings .shop-error { color: #ff6b6b; font-size: .78rem; margin-top: 8px; }
 
-/* ── Compact avatar decorations ───────────────────────────────────────
-   The decoration art (halo, crown, flowers, headphones) is drawn for the
-   84px profile avatar (see .avatar-decoration in dashboard.css). On smaller
-   avatars the same art is centred on the wrapper and scaled down by
-   --deco-scale (= avatar size / 84px). The wrapper must be position:relative. */
-.avatar-decoration.avatar-decoration-compact {
-  --deco-scale: .5;
-  inset: auto;
-  left: 50%;
-  top: 50%;
-  width: 108px;
-  height: 108px;
-  margin: -54px 0 0 -54px;
-  transform: scale(var(--deco-scale));
-  transform-origin: 50% 50%;
-}
-#view-app .dm-avatar-wrap > .avatar-decoration-compact,
-#view-app .fr-avatar-wrap > .avatar-decoration-compact { --deco-scale: .5; }       /* 42px avatars */
-#view-app .ml-avatar-wrap > .avatar-decoration-compact { --deco-scale: .381; }     /* 32px avatars */
-#view-app #up-avatar-wrap > .avatar-decoration-compact { --deco-scale: .429; }     /* 36px avatar  */
-#view-settings .avatar-deco-host > .avatar-decoration-compact { --deco-scale: .952; } /* 80px preview */
-
-/* wrappers */
-.avatar-deco-host { position: relative; flex-shrink: 0; }
+/* wrappers (avatar layout; unchanged) */
+.avatar-fx-host { position: relative; flex-shrink: 0; }
 #view-app .ml-avatar-wrap { position: relative; flex-shrink: 0; width: 32px; height: 32px; }
-#view-app .ml-row.offline .avatar-decoration { opacity: .55; }
