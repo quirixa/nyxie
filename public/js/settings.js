@@ -187,7 +187,7 @@ function initSettingsView() {
   const FX_PREVIEW_HTML = '<span class="avatar-fx" aria-hidden="true"><span class="avatar-fx-ring"></span><i class="avatar-fx-spark s1"></i><i class="avatar-fx-spark s2"></i><i class="avatar-fx-spark s3"></i></span>';
 
   function shopSlot(type) {
-    if (type === 'profile_effect') return { pending: () => _pendingProfileEffect, el: 'profile-effect-picker', pick: 'selectProfileEffect', label: 'None' };
+    if (type === 'profile_effect') return { pending: () => _pendingProfileEffect, el: 'avatar-decoration-picker', pick: 'selectProfileEffect', label: 'None' };
     return type === 'avatar_decoration'
       ? { pending: () => _pendingAvatarDecoration, el: 'avatar-decoration-picker', pick: 'selectAvatarDecoration', label: 'None' }
       : { pending: () => _pendingCardDecoration, el: 'card-decoration-picker', pick: 'selectCardDecoration', label: 'None' };
@@ -218,11 +218,17 @@ function initSettingsView() {
   function renderShop() {
     const bal = document.getElementById('shop-balance');
     if (bal) bal.innerHTML = `Balance: <strong>${_shop ? escapeHtml(_shop.balanceDisplay) : '…'}</strong> NX`;
-    ['avatar_decoration', 'card_decoration', 'profile_effect'].forEach(type => {
+    ['avatar_decoration', 'card_decoration'].forEach(type => {
       const grid = document.getElementById(shopSlot(type).el);
       if (!grid) return;
       const items = _shop ? _shop.items.filter(i => i.type === type) : [];
-      grid.innerHTML = tileHtml(type, null) + items.map(i => tileHtml(type, i)).join('');
+      let html = tileHtml(type, null) + items.map(i => tileHtml(type, i)).join('');
+      // The profile effect (Sparkle Ring) lives in the avatar decoration grid.
+      // It's independent of the decoration choice, so its tiles toggle on/off.
+      if (type === 'avatar_decoration' && _shop) {
+        html += _shop.items.filter(i => i.type === 'profile_effect').map(i => tileHtml('profile_effect', i)).join('');
+      }
+      grid.innerHTML = html;
     });
   }
 
@@ -246,9 +252,9 @@ function initSettingsView() {
   }
   function selectProfileEffect(id) {
     if (!ownsInShop(id)) return;
-    _pendingProfileEffect = id;
+    _pendingProfileEffect = (_pendingProfileEffect === id) ? 'none' : id;   // tap again to turn off
     const fxHost = document.getElementById('profile-avatar-fx-host');
-    if (fxHost && window.NyxFx) window.NyxFx.setAvatarFx(fxHost, id !== 'none', true);   // live preview
+    if (fxHost && window.NyxFx) window.NyxFx.setAvatarFx(fxHost, _pendingProfileEffect !== 'none', true);   // live preview
     renderShop();
   }
   function selectCardDecoration(id) {
