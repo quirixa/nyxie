@@ -1191,6 +1191,15 @@ __    __  __      __  __    __  ______  ________
         <div id="profile-popout" class="profile-surface" role="dialog" aria-label="Your profile">
             <div class="pp-banner" id="pp-banner"></div>
             <div class="pp-avatar-wrap profile-effect-host">
+                <div class="profile-effect" aria-hidden="true">
+                    <span class="profile-effect-spark spark-1"></span>
+                    <span class="profile-effect-spark spark-2"></span>
+                    <span class="profile-effect-spark spark-3"></span>
+                    <span class="profile-effect-spark spark-4"></span>
+                    <span class="profile-effect-spark spark-5"></span>
+                    <span class="profile-effect-spark spark-6"></span>
+                </div>
+                <div class="profile-effect-ring" aria-hidden="true"></div>
                 <div class="avatar-decoration" id="pp-avatar-decoration" aria-hidden="true"></div>
                 <div class="pp-avatar" id="pp-avatar-letter">U</div>
                 <div class="pp-avatar-status pip-online" id="pp-avatar-status" aria-hidden="true"></div>
@@ -1544,6 +1553,15 @@ __    __  __      __  __    __  ______  ________
                 </div>
             </div>
             <div class="up-avatar-wrap profile-effect-host">
+                <div class="profile-effect" aria-hidden="true">
+                    <span class="profile-effect-spark spark-1"></span>
+                    <span class="profile-effect-spark spark-2"></span>
+                    <span class="profile-effect-spark spark-3"></span>
+                    <span class="profile-effect-spark spark-4"></span>
+                    <span class="profile-effect-spark spark-5"></span>
+                    <span class="profile-effect-spark spark-6"></span>
+                </div>
+                <div class="profile-effect-ring" aria-hidden="true"></div>
                 <div class="avatar-decoration" id="up-avatar-decoration" aria-hidden="true"></div>
                 <div class="up-avatar-large" id="up-avatar-large">?</div>
                 <div class="up-avatar-status pip-offline" id="up-status-pip-display" aria-hidden="true"></div>
@@ -1574,14 +1592,6 @@ __    __  __      __  __    __  ______  ________
                         </svg>
                     </span>
                     <span>Manage Badges</span>
-                </button>
-                <button type="button" class="pp-menu-item" id="up-profile-effect-btn" style="display:none" onclick="toggleProfileEffectFromProfile()">
-                    <span class="pp-menu-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>
-                        </svg>
-                    </span>
-                    <span id="up-profile-effect-label">Grant Profile Effect</span>
                 </button>
             </div>
         </div>
@@ -1882,6 +1892,11 @@ __    __  __      __  __    __  ______  ________
                             </div>
                             <div class="shop-grid" id="avatar-decoration-picker"></div>
                             <div class="section-desc">Animated cosmetics over your avatar in profile cards. Buy with NX, then pick one and Save.</div>
+                        </div>
+                        <div class="profile-edit-section">
+                            <label>Profile Effect</label>
+                            <div class="shop-grid" id="profile-effect-picker"></div>
+                            <div class="section-desc">A glowing ring and sparkles around your avatar. Buy with NX, then pick it and Save.</div>
                         </div>
                         <div class="profile-edit-section">
                             <label>Card Decoration</label>

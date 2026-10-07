@@ -32,9 +32,9 @@ class CosmeticsError extends Error {
   }
 }
 
-const TYPES = ['avatar_decoration', 'card_decoration'];
-// users-table column each item type equips into.
-const TYPE_COLUMN = { avatar_decoration: 'avatar_decoration', card_decoration: 'card_decoration' };
+const TYPES = ['avatar_decoration', 'card_decoration', 'profile_effect'];
+// users-table column each item type equips into (profile_effect is a 0/1 flag).
+const TYPE_COLUMN = { avatar_decoration: 'avatar_decoration', card_decoration: 'card_decoration', profile_effect: 'profile_effect' };
 
 // ── Catalog ─────────────────────────────────────────────────────────
 // Loaded once and validated up front so a typo in the JSON fails at boot
@@ -54,6 +54,8 @@ function loadCatalog() {
 }
 const CATALOG = loadCatalog();
 const BY_ID = new Map(CATALOG.map(i => [i.id, i]));
+// users.profile_effect is a 0/1 flag; this is the catalog item that sets it.
+const PROFILE_EFFECT_ITEM = CATALOG.find(i => i.type === 'profile_effect') || null;
 
 function getItem(id) { return BY_ID.get(id) || null; }
 
@@ -81,7 +83,7 @@ function listShop(db, userId) {
   ensureWalletTables(db);
   const w = wallet.getOrCreateWallet(db, userId);
   const owned = ownedIds(db, userId);
-  const me = get(db, 'SELECT avatar_decoration, card_decoration FROM users WHERE id = ?', [userId]) || {};
+  const me = get(db, 'SELECT avatar_decoration, card_decoration, profile_effect FROM users WHERE id = ?', [userId]) || {};
   return {
     balance: w.balance,
     balanceDisplay: formatCurrency(w.balance),
@@ -89,6 +91,7 @@ function listShop(db, userId) {
     equipped: {
       avatar_decoration: me.avatar_decoration || 'none',
       card_decoration: me.card_decoration || 'none',
+      profile_effect: me.profile_effect && PROFILE_EFFECT_ITEM ? PROFILE_EFFECT_ITEM.id : 'none',
     },
     items: CATALOG.map(i => ({
       id: i.id,
@@ -130,7 +133,7 @@ function purchaseItem(db, userId, itemId) {
       status: 'COMPLETED',
       senderWalletDbId: w.id,
       amount: item.price,
-      description: `Shop: ${item.name} (${item.type === 'avatar_decoration' ? 'avatar' : 'card'} decoration)`,
+      description: `Shop: ${item.name} (${item.type === 'avatar_decoration' ? 'avatar decoration' : item.type === 'profile_effect' ? 'profile effect' : 'card decoration'})`,
       metadata: { itemId: item.id, type: item.type },
       legs: [{ walletDbId: w.id, amount: item.price, direction: 'DEBIT' }],
     });

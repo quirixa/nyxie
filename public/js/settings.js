@@ -13,6 +13,7 @@ function initSettingsView() {
   currentUser = JSON.parse(localStorage.getItem('nyxie_user') || 'null');
   let emailVisible = false;
   let _pendingAvatarDecoration = null;
+  let _pendingProfileEffect = null;   // 'none' or the shop item id (e.g. 'sparkle-ring')
   let _pendingCardDecoration = null;
   let _shop = null; // last GET /api/shop response
 
@@ -143,8 +144,14 @@ function initSettingsView() {
     // Avatar preview shows the equipped decoration (and the selected one live, below).
     const previewDeco = document.getElementById('profile-avatar-decoration');
     if (previewDeco) previewDeco.dataset.decoration = currentUser.avatar_decoration || 'none';
+    const fxHost = document.getElementById('profile-avatar-fx-host');
+    if (fxHost && window.NyxFx) {
+      fxHost.dataset.fxUid = currentUser.id;
+      window.NyxFx.setAvatarFx(fxHost, !!currentUser.profile_effect, true);
+    }
     _pendingAvatarDecoration = currentUser.avatar_decoration || 'none';
     _pendingCardDecoration = currentUser.card_decoration || 'none';
+    _pendingProfileEffect = equippedProfileEffect();
     renderShop();   // paint immediately from whatever we have...
     loadShop();     // ...then refresh ownership/balance from the server
   }
@@ -170,7 +177,17 @@ function initSettingsView() {
     }
   }
 
+  function profileEffectItemId() {
+    const it = _shop && _shop.items.find(i => i.type === 'profile_effect');
+    return it ? it.id : 'sparkle-ring';
+  }
+  function equippedProfileEffect() {
+    return currentUser.profile_effect ? profileEffectItemId() : 'none';
+  }
+  const FX_PREVIEW_HTML = '<span class="avatar-fx" aria-hidden="true"><span class="avatar-fx-ring"></span><i class="avatar-fx-spark s1"></i><i class="avatar-fx-spark s2"></i><i class="avatar-fx-spark s3"></i></span>';
+
   function shopSlot(type) {
+    if (type === 'profile_effect') return { pending: () => _pendingProfileEffect, el: 'profile-effect-picker', pick: 'selectProfileEffect', label: 'None' };
     return type === 'avatar_decoration'
       ? { pending: () => _pendingAvatarDecoration, el: 'avatar-decoration-picker', pick: 'selectAvatarDecoration', label: 'None' }
       : { pending: () => _pendingCardDecoration, el: 'card-decoration-picker', pick: 'selectCardDecoration', label: 'None' };
@@ -184,7 +201,9 @@ function initSettingsView() {
     const active = slot.pending() === id;
     const preview = type === 'avatar_decoration'
       ? `<span class="decoration-preview decoration-${id}"><span></span></span>`
-      : `<span class="card-deco-preview" data-card-decoration="${id}"></span>`;
+      : type === 'profile_effect'
+        ? `<span class="effect-preview">${item ? FX_PREVIEW_HTML : ''}</span>`
+        : `<span class="card-deco-preview" data-card-decoration="${id}"></span>`;
     let footer;
     if (owned) {
       footer = `<span class="shop-state">${active ? 'Selected' : (item ? 'Owned' : '')}</span>`;
@@ -199,7 +218,7 @@ function initSettingsView() {
   function renderShop() {
     const bal = document.getElementById('shop-balance');
     if (bal) bal.innerHTML = `Balance: <strong>${_shop ? escapeHtml(_shop.balanceDisplay) : '…'}</strong> NX`;
-    ['avatar_decoration', 'card_decoration'].forEach(type => {
+    ['avatar_decoration', 'card_decoration', 'profile_effect'].forEach(type => {
       const grid = document.getElementById(shopSlot(type).el);
       if (!grid) return;
       const items = _shop ? _shop.items.filter(i => i.type === type) : [];
@@ -223,6 +242,13 @@ function initSettingsView() {
     _pendingAvatarDecoration = id;
     const previewDeco = document.getElementById('profile-avatar-decoration');
     if (previewDeco) previewDeco.dataset.decoration = id || 'none';
+    renderShop();
+  }
+  function selectProfileEffect(id) {
+    if (!ownsInShop(id)) return;
+    _pendingProfileEffect = id;
+    const fxHost = document.getElementById('profile-avatar-fx-host');
+    if (fxHost && window.NyxFx) window.NyxFx.setAvatarFx(fxHost, id !== 'none', true);   // live preview
     renderShop();
   }
   function selectCardDecoration(id) {
@@ -365,6 +391,10 @@ function initSettingsView() {
     if (selectedDecoration !== (currentUser.avatar_decoration || 'none')) {
       payload.avatar_decoration = selectedDecoration;
     }
+    const selectedEffect = _pendingProfileEffect || 'none';
+    if (selectedEffect !== equippedProfileEffect()) {
+      payload.profile_effect = selectedEffect;
+    }
     const selectedCard = _pendingCardDecoration || 'none';
     if (selectedCard !== (currentUser.card_decoration || 'none')) {
       payload.card_decoration = selectedCard;
@@ -392,6 +422,7 @@ function initSettingsView() {
         currentUser.banner = res.user.banner;
         currentUser.avatar_decoration = res.user.avatar_decoration || 'none';
         currentUser.card_decoration = res.user.card_decoration || 'none';
+        currentUser.profile_effect = res.user.profile_effect ? 1 : 0;
         localStorage.setItem('nyxie_user', JSON.stringify(currentUser));
         _pendingBannerColor = null;
         toast('Profile updated');
@@ -1285,6 +1316,7 @@ function initSettingsView() {
   window.updateBioCounter = updateBioCounter;
   window.selectAvatarDecoration = selectAvatarDecoration;
   window.selectCardDecoration = selectCardDecoration;
+  window.selectProfileEffect = selectProfileEffect;
   window.buyCosmetic = buyCosmetic;
   window.loadProfileForm = loadProfileForm;
   window.loadUserData = loadUserData;

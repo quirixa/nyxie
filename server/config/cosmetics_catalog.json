@@ -1,5 +1,5 @@
 {
-  "_comment": "Shop catalog for profile cosmetics. Prices are in NX (the wallet's currency, up to 2 decimals). 'id' is what gets stored in users.avatar_decoration / users.card_decoration and is also the CSS hook (data-decoration / data-card-decoration), so renaming an id means renaming it in public/css too. Removing an item here does NOT delete what people already own, it just stops it being sold or equippable.",
+  "_comment": "Shop catalog for profile cosmetics. Prices are in NX (the wallet's currency, up to 2 decimals). 'id' is what gets stored in users.avatar_decoration / users.card_decoration (a profile_effect item sets users.profile_effect to 1 while equipped) and is also the CSS hook (data-decoration / data-card-decoration), so renaming an id means renaming it in public/css too. Removing an item here does NOT delete what people already own, it just stops it being sold or equippable.",
   "items": [
     { "id": "halo",       "type": "avatar_decoration", "name": "Halo",        "description": "A softly floating golden halo.",            "price_nx": "250" },
     { "id": "flowers",    "type": "avatar_decoration", "name": "Flowers",     "description": "Swaying blossoms on your avatar.",          "price_nx": "300" },
@@ -9,6 +9,8 @@
     { "id": "aurora",     "type": "card_decoration",   "name": "Aurora",      "description": "Drifting northern-lights glow and frame.",  "price_nx": "400" },
     { "id": "neon",       "type": "card_decoration",   "name": "Neon Edge",   "description": "A pulsing neon outline around your card.",  "price_nx": "450" },
     { "id": "sakura",     "type": "card_decoration",   "name": "Sakura Drift","description": "Petals falling across your card.",          "price_nx": "500" },
-    { "id": "starfield",  "type": "card_decoration",   "name": "Starfield",   "description": "A twinkling night sky behind your card.",   "price_nx": "600" }
+    { "id": "starfield",  "type": "card_decoration",   "name": "Starfield",   "description": "A twinkling night sky behind your card.",   "price_nx": "600" },
+
+    { "id": "sparkle-ring", "type": "profile_effect",  "name": "Sparkle Ring", "description": "A spinning glow ring with floating sparkles around your avatar.", "price_nx": "700" }
   ]
 }

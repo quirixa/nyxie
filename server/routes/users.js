@@ -161,7 +161,7 @@ router.delete('/banner', requireAuth, async (req, res) => {
 // ─── UPDATE PROFILE (PATCH /me) ────────────────────────────
 router.patch('/me', requireAuth, async (req, res) => {
   const db = await getUserDb();
-  const { username, email, display_name, bio, pronouns, avatar_decoration, card_decoration, banner_color, public_key, encrypted_private_key, key_salt, key_nonce, current_password, new_password } = req.body;
+  const { username, email, display_name, bio, pronouns, avatar_decoration, card_decoration, profile_effect, banner_color, public_key, encrypted_private_key, key_salt, key_nonce, current_password, new_password } = req.body;
   const userId = req.user.id;
 
   const updates = [];
@@ -234,6 +234,21 @@ router.patch('/me', requireAuth, async (req, res) => {
     }
     updates.push(`${type} = ?`);
     params.push(value);
+  }
+
+  // Profile effect (ring + sparkles) — bought in the shop like the decorations.
+  // 'none' (or false) unequips; anything else must be an owned profile_effect
+  // item. Stored as the 0/1 flag users.profile_effect.
+  if (profile_effect !== undefined) {
+    const effectValue = (profile_effect === false || profile_effect === 0 || profile_effect === null) ? 'none' : String(profile_effect);
+    try {
+      assertCanEquip(db, userId, 'profile_effect', effectValue);
+    } catch (e) {
+      if (e instanceof CosmeticsError) return res.status(e.status).json({ error: e.message, code: e.code });
+      throw e;
+    }
+    updates.push('profile_effect = ?');
+    params.push(effectValue === 'none' ? 0 : 1);
   }
 
   // Banner color
@@ -331,7 +346,7 @@ router.patch('/me', requireAuth, async (req, res) => {
   // that this profile's cosmetics changed, so open profile cards update
   // live. Carries only public cosmetic ids — same approach as the
   // 'badges_updated' event in routes/adminBadges.js.
-  if ((avatar_decoration !== undefined || card_decoration !== undefined) && typeof req.app.locals.broadcastAll === 'function') {
+  if ((avatar_decoration !== undefined || card_decoration !== undefined || profile_effect !== undefined) && typeof req.app.locals.broadcastAll === 'function') {
     req.app.locals.broadcastAll({
       type: 'profile_updated',
       user_id: userId,

@@ -109,10 +109,10 @@ async function getUserDb() {
   // Like avatar_decoration it's only ever set to an id the user OWNS (see
   // user_cosmetics below + services/cosmetics.js).
   try { db.run("ALTER TABLE users ADD COLUMN card_decoration TEXT DEFAULT 'none'"); } catch (e) {}
-  // profile_effect: the animated ring + sparks around the avatar on profile
-  // cards. Off for everyone by default; ONLY an admin can switch it on for a
-  // user (routes/adminProfileEffects.js or scripts/setProfileEffect.js).
-  // Deliberately not writable through PATCH /users/me.
+  // profile_effect: the animated ring + sparks around the avatar. Off by
+  // default (0/1 flag). Users switch it on by buying the "Sparkle Ring" item in
+  // the shop and equipping it (PATCH /users/me checks ownership; see
+  // services/cosmetics.js).
   try { db.run("ALTER TABLE users ADD COLUMN profile_effect INTEGER NOT NULL DEFAULT 0"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN status_updated_at INTEGER"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0"); } catch (e) {}

@@ -24,7 +24,6 @@ const walletRoutes = require('./routes/wallet');
 const accountRoutes = require('./routes/account');
 const marketplaceRoutes = require('./routes/marketplace');
 const shopRoutes = require('./routes/shop');
-const adminProfileEffectRoutes = require('./routes/adminProfileEffects');
 const adminMarketplaceRoutes = require('./routes/adminMarketplace');
 const badgeRoutes = require('./routes/badges');
 const adminBadgeRoutes = require('./routes/adminBadges');
@@ -239,8 +238,6 @@ app.use('/api/account', accountRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 // NX cosmetics shop (avatar + profile-card decorations).
 app.use('/api/shop', shopRoutes);
-// Admin-only: authorise/revoke the animated profile effect for a user.
-app.use('/api/admin/profile-effects', adminProfileEffectRoutes);
 app.use('/api/admin/marketplace', adminMarketplaceRoutes);
 app.use('/api/badges', badgeRoutes);
 // Badge ownership changes: requireAuth + requireAdmin inside the router.

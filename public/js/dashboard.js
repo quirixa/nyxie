@@ -1585,6 +1585,7 @@ function initDashboardView() {
         oncontextmenu="showCtxMenu(event,'${dm.id}')">
         ${chk}
         <div class="dm-avatar-wrap"${dm._otherId ? ` data-fx-uid="${dm._otherId}"` : ''}>
+          ${dm._profileEffect ? AVATAR_FX_HTML : ''}
           ${dm._otherId ? avatarDecorationHtml(dm._avatarDecoration, dm._otherId) : ''}
           ${dmAvatar}
           ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
@@ -2961,9 +2962,15 @@ function initDashboardView() {
   // Only users an admin authorised (profile_effect) get the element at all.
   // Wrappers opt in with data-fx-uid="<user id>" so syncAvatarFx() can
   // add/remove it live when an admin grants or revokes the effect.
-  // The ring + sparks visual has been removed; the flag/plumbing remains.
-  const AVATAR_FX_HTML = '';
-  function setAvatarFx() { /* no visual to draw */ }
+  const AVATAR_FX_HTML = '<span class="avatar-fx" aria-hidden="true"><span class="avatar-fx-ring"></span><i class="avatar-fx-spark s1"></i><i class="avatar-fx-spark s2"></i><i class="avatar-fx-spark s3"></i></span>';
+  function setAvatarFx(wrap, on, large) {
+    if (!wrap) return;
+    const existing = wrap.querySelector(':scope > .avatar-fx');
+    if (on && !existing) {
+      wrap.insertAdjacentHTML('afterbegin', AVATAR_FX_HTML);
+      if (large) wrap.firstElementChild.classList.add('avatar-fx-lg');
+    } else if (!on && existing) existing.remove();
+  }
   function syncAvatarFx(userId, on) {
     if (!userId) return;
     document.querySelectorAll('[data-fx-uid]').forEach(el => {
@@ -3008,7 +3015,6 @@ function initDashboardView() {
       if (msg.profile_effect !== undefined) {
         applyProfileEffect(up, msg.profile_effect);
         up.dataset.profileEffect = msg.profile_effect ? '1' : '0';
-        updateProfileEffectMenu();
       }
     }
   }
@@ -3083,7 +3089,6 @@ function initDashboardView() {
       applyCardDecoration(popout, user.card_decoration);
       applyProfileEffect(popout, user.profile_effect);
       popout.dataset.profileEffect = user.profile_effect ? '1' : '0';
-      updateProfileEffectMenu();
       const status = user.status || 'offline';
       const pip = document.getElementById('up-status-pip-display');
       pip.className = 'up-avatar-status ' + pipClass(status);
@@ -3391,25 +3396,6 @@ function initDashboardView() {
   }
   // Admin shortcut: profile → Manage Badges. Opens the Admin panel's Badges
   // tab with this user already selected (see initAdminPanel in admin.js).
-  // Admin-only menu item on another user's card. Cosmetic gate: the
-  // PUT /api/admin/profile-effects endpoint re-checks the admin role.
-  function updateProfileEffectMenu() {
-    const btn = document.getElementById('up-profile-effect-btn');
-    if (!btn) return;
-    const popout = document.getElementById('user-profile-popout');
-    btn.style.display = currentUser.role === 'ADMIN' ? '' : 'none';
-    const on = popout.dataset.profileEffect === '1';
-    document.getElementById('up-profile-effect-label').textContent = on ? 'Revoke Profile Effect' : 'Grant Profile Effect';
-  }
-  async function toggleProfileEffectFromProfile() {
-    if (!_profileUserId || currentUser.role !== 'ADMIN') return;
-    const popout = document.getElementById('user-profile-popout');
-    const enable = popout.dataset.profileEffect !== '1';
-    const res = await api('PUT', `/admin/profile-effects/users/${encodeURIComponent(_profileUserId)}`, { enabled: enable });
-    if (!res || res.error) { toast(res?.error || 'Failed to update profile effect'); return; }
-    toast(enable ? 'Profile effect granted' : 'Profile effect revoked');
-    // The server also broadcasts profile_updated, which refreshes the card.
-  }
   function manageBadgesFromProfile() {
     if (!_profileUserId || currentUser.role !== 'ADMIN') return;
     window._adminInitialTab = 'badges';
@@ -3893,6 +3879,9 @@ function initDashboardView() {
       const upAvatar = document.getElementById('up-avatar');
       if (currentUser.avatar) upAvatar.innerHTML = `<img src="${versionedMediaUrl(currentUser.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
       else { upAvatar.innerHTML = identiconImg(currentUser.id); upAvatar.style.background = color; }
+      const upWrap = document.getElementById('up-avatar-wrap');
+      upWrap.dataset.fxUid = currentUser.id;
+      setAvatarFx(upWrap, !!currentUser.profile_effect);
       applyAvatarDecoration(document.getElementById('user-panel-avatar-decoration'), currentUser.avatar_decoration);
       document.getElementById('up-name').textContent = name;
       updateUserPanelStatus(currentUser._status);
@@ -4039,7 +4028,6 @@ function initDashboardView() {
   window.removeProfileFriend = removeProfileFriend;
   window.toggleProfileBlock = toggleProfileBlock;
   window.manageBadgesFromProfile = manageBadgesFromProfile;
-  window.toggleProfileEffectFromProfile = toggleProfileEffectFromProfile;
   // Lets notifications.js (a separate, non-module script that has no
   // access to this IIFE's closure) check the current manually-picked
   // status without duplicating any state — used to mute the one-shot
@@ -4682,7 +4670,8 @@ function initDashboardView() {
         : identiconImg(m.id);
       const role = getDisplayedRole(m) || m.role;
       return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
-        <div class="ml-avatar-wrap">
+        <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
+        ${m.profile_effect ? AVATAR_FX_HTML : ''}
         ${avatarDecorationHtml(m.avatar_decoration, m.id)}
         <div class="ml-avatar">
           ${avatarHtml}
