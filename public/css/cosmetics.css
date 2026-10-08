@@ -267,3 +267,21 @@
 #view-app .fr-avatar-wrap .status-pip,
 #view-app #up-status-pip,
 #view-app .ml-status-dot { z-index: 6; }
+
+
+/* In-app "Buy item?" confirmation (settings shop) */
+#view-settings .buy-cosmetic-modal { max-width: 380px; }
+#view-settings .buy-cosmetic-rows {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-input); border: 1px solid var(--border-color);
+  border-radius: 8px; padding: 12px 14px;
+}
+#view-settings .buy-cosmetic-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: .88rem; color: var(--text-muted);
+}
+#view-settings .buy-cosmetic-row strong { color: var(--text-primary); font-weight: 700; }
+#view-settings .buy-cosmetic-row:first-child strong { color: var(--accent); }
+#view-settings .buy-cosmetic-error { min-height: 1.1em; margin-top: 10px; font-size: .8rem; color: var(--danger); }
+#view-settings .buy-cosmetic-modal .modal-actions { margin-top: 12px; }
+#view-settings .buy-cosmetic-modal .btn-primary:disabled { opacity: .5; cursor: not-allowed; }

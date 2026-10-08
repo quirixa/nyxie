@@ -2535,6 +2535,22 @@ __    __  __      __  __    __  ______  ________
             </div>
         </div>
 
+        <div class="overlay" id="buy-cosmetic-modal" style="display:none" onclick="if(event.target===this)closeBuyCosmetic()">
+            <div class="modal buy-cosmetic-modal">
+                <h2 id="buy-cosmetic-title">Buy item?</h2>
+                <p id="buy-cosmetic-desc"></p>
+                <div class="buy-cosmetic-rows">
+                    <div class="buy-cosmetic-row"><span>Price</span><strong id="buy-cosmetic-price">—</strong></div>
+                    <div class="buy-cosmetic-row"><span>Your balance</span><strong id="buy-cosmetic-balance">—</strong></div>
+                </div>
+                <div class="buy-cosmetic-error" id="buy-cosmetic-error"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="closeBuyCosmetic()">Cancel</button>
+                    <button type="button" class="btn-primary" id="buy-cosmetic-confirm" onclick="confirmBuyCosmetic()">Buy</button>
+                </div>
+            </div>
+        </div>
+
         <div class="overlay" id="disable-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
             <div class="modal">
                 <h2>Disable Account</h2>

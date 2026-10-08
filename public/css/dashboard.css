@@ -251,10 +251,6 @@ body.select-mode #view-app .dm-checkbox {
   position: absolute;
   right: -3px;
   bottom: -3px;
-  width: 15px;
-  height: 15px;
-  box-sizing: border-box;
-  border: 3px solid var(--bg-sidebar);
 }
 
 #view-app .dm-content {
@@ -371,12 +367,6 @@ body.select-mode #view-app .dm-checkbox {
   position: absolute;
   right: -3px;
   bottom: -3px;
-  width: 16px;
-  height: 16px;
-  box-sizing: border-box;
-  border-radius: 50%;
-  border: 3px solid var(--bg-sidebar);
-  background: var(--offline);
 }
 #view-app #up-info {
   flex: 1;
@@ -587,9 +577,8 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .fr-avatar-wrap .status-pip {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  border: 2px solid var(--bg-sidebar);
+  right: -3px;
+  bottom: -3px;
 }
 #view-app .fr-info {
   flex: 1;
@@ -812,12 +801,9 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .ch-status-dot {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--bg-primary);
+  right: -3px;
+  bottom: -3px;
+  --pip-ring: var(--bg-primary);
 }
 #view-app .ch-info {
   flex: 1;
@@ -1603,26 +1589,54 @@ body.select-mode #view-app .dm-checkbox {
    Status pips (shared dot styling)
    ───────────────────────────────────────────────────────── */
 
+/* Discord-style presence icons:
+   online = solid dot, idle = crescent moon, dnd = dot with a bar,
+   invisible/offline = hollow ring. Every on-avatar pip is the same
+   16px size as the one in the user panel (10px icon + 3px ring). */
 #view-app .status-pip,
+#view-app .ch-status-dot,
+#view-app .ml-status-dot,
+#view-app #up-status-pip,
+#view-app .pp-avatar-status,
+#view-app .up-avatar-status,
 #view-app .pp-dot {
-  width: 10px;
-  height: 10px;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: var(--offline);
+  border: 3px solid var(--pip-ring, var(--bg-sidebar));
+  background: var(--pip-ring, var(--bg-sidebar));
   flex-shrink: 0;
 }
-#view-app .pip-online {
-  background: var(--online) !important;
+#view-app .pp-avatar-status,
+#view-app .up-avatar-status { width: 20px; height: 20px; border-width: 4px; }
+#view-app .status-pip::after,
+#view-app .ch-status-dot::after,
+#view-app .ml-status-dot::after,
+#view-app #up-status-pip::after,
+#view-app .pp-avatar-status::after,
+#view-app .up-avatar-status::after,
+#view-app .pp-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--pip-color, var(--offline));
+  -webkit-mask: var(--pip-mask, none) center / 100% 100% no-repeat;
+          mask: var(--pip-mask, none) center / 100% 100% no-repeat;
 }
-#view-app .pip-idle {
-  background: var(--warning) !important;
+/* Menu dots sit in the status submenu, not on an avatar: no ring. */
+#view-app .pp-dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border: 0;
+  background: transparent;
 }
-#view-app .pip-dnd {
-  background: var(--danger) !important;
-}
-#view-app .pip-offline {
-  background: var(--offline) !important;
-}
+#view-app .pip-online  { --pip-color: var(--online);  --pip-mask: none; }
+#view-app .pip-idle    { --pip-color: var(--warning); --pip-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cmask id='m'%3E%3Crect width='20' height='20' fill='white'/%3E%3Ccircle cx='5' cy='5' r='6.5' fill='black'/%3E%3C/mask%3E%3Ccircle cx='10' cy='10' r='10' mask='url(%23m)'/%3E%3C/svg%3E"); }
+#view-app .pip-dnd     { --pip-color: var(--danger);  --pip-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cmask id='m'%3E%3Crect width='20' height='20' fill='white'/%3E%3Crect x='4' y='7.75' width='12' height='4.5' rx='2.25' fill='black'/%3E%3C/mask%3E%3Ccircle cx='10' cy='10' r='10' mask='url(%23m)'/%3E%3C/svg%3E"); }
+#view-app .pip-offline { --pip-color: var(--offline); --pip-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cmask id='m'%3E%3Crect width='20' height='20' fill='white'/%3E%3Ccircle cx='10' cy='10' r='5' fill='black'/%3E%3C/mask%3E%3Ccircle cx='10' cy='10' r='10' mask='url(%23m)'/%3E%3C/svg%3E"); }
 
 /* ─────────────────────────────────────────────────────────
    Profile popout — one cohesive floating surface, shared
@@ -1857,9 +1871,8 @@ body.select-mode #view-app .dm-checkbox {
   bottom: 2px;
   width: 20px;
   height: 20px;
-  border-radius: 50%;
-  border: 4px solid var(--bg-modal-card, var(--bg-secondary));
-  background: var(--offline);
+  border-width: 4px;
+  --pip-ring: var(--bg-modal-card, var(--bg-secondary));
 }
 
 /* ── Identity block: name, username, pronouns, badges, bio ── */
@@ -3347,13 +3360,8 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .ml-status-dot {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  right: -1px;
-  bottom: -1px;
-  border: 2px solid var(--bg-sidebar);
-  box-sizing: content-box;
+  right: -3px;
+  bottom: -3px;
 }
 #view-app .ml-info {
   min-width: 0;

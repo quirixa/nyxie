@@ -3730,7 +3730,7 @@ function initDashboardView() {
         <div class="fr-avatar-wrap">
           ${avatarDecorationHtml(f.avatar_decoration, f.id)}
           <div class="fr-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
-          <div class="status-pip ${pipClass(f.status||'offline')}" style="border-color:var(--bg-secondary)"></div>
+          <div class="status-pip ${pipClass(f.status||'offline')}" style="--pip-ring:var(--bg-secondary)"></div>
         </div>
         <div class="fr-info">
           <div class="fr-name-row">

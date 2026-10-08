@@ -277,16 +277,50 @@ function initSettingsView() {
     renderShop();
   }
 
-  async function buyCosmetic(id) {
+  let _buyingId = null;
+  let _buyBusy = false;
+
+  // Opens the in-app purchase confirmation (replaces the browser confirm() popup).
+  function buyCosmetic(id) {
     const item = _shop && _shop.items.find(i => i.id === id);
     if (!item) return;
     setShopError('');
-    if (!confirm(`Buy "${item.name}" for ${item.priceDisplay} NX?`)) return;
+    _buyingId = id;
+    _buyBusy = false;
+    document.getElementById('buy-cosmetic-title').textContent = `Buy \u201C${item.name}\u201D?`;
+    document.getElementById('buy-cosmetic-desc').textContent = item.description || '';
+    document.getElementById('buy-cosmetic-price').textContent = `${item.priceDisplay} NX`;
+    document.getElementById('buy-cosmetic-balance').textContent = `${_shop.balanceDisplay} NX`;
+    const afford = _shop.balance >= item.price;
+    const err = document.getElementById('buy-cosmetic-error');
+    err.textContent = afford ? '' : "You don't have enough NX for this.";
+    const btn = document.getElementById('buy-cosmetic-confirm');
+    btn.disabled = !afford;
+    btn.textContent = 'Buy';
+    document.getElementById('buy-cosmetic-modal').style.display = 'flex';
+  }
+
+  function closeBuyCosmetic() {
+    document.getElementById('buy-cosmetic-modal').style.display = 'none';
+    _buyingId = null;
+  }
+
+  async function confirmBuyCosmetic() {
+    if (_buyBusy || !_buyingId) return;
+    const id = _buyingId;
+    const item = _shop && _shop.items.find(i => i.id === id);
+    if (!item) { closeBuyCosmetic(); return; }
+    const btn = document.getElementById('buy-cosmetic-confirm');
+    const err = document.getElementById('buy-cosmetic-error');
+    _buyBusy = true; btn.disabled = true; btn.textContent = 'Buying…'; err.textContent = '';
     const res = await api('POST', `/shop/items/${encodeURIComponent(id)}/purchase`);
+    _buyBusy = false; btn.textContent = 'Buy';
     if (!res || res.error) {
-      setShopError(res?.error || 'Purchase failed. Please try again.');
+      btn.disabled = false;
+      err.textContent = res?.error || 'Purchase failed. Please try again.';
       return;
     }
+    closeBuyCosmetic();
     _shop = res.shop;
     // Pre-select what they just bought; it's only worn once they hit Save.
     if (item.type === 'avatar_decoration') { selectAvatarDecoration(id); }
@@ -1339,6 +1373,8 @@ function initSettingsView() {
   window.selectCardDecoration = selectCardDecoration;
   window.selectProfileEffect = selectProfileEffect;
   window.buyCosmetic = buyCosmetic;
+  window.closeBuyCosmetic = closeBuyCosmetic;
+  window.confirmBuyCosmetic = confirmBuyCosmetic;
   window.loadProfileForm = loadProfileForm;
   window.loadUserData = loadUserData;
   window.initLanguageSettings = initLanguageSettings;
