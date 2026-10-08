@@ -260,3 +260,10 @@
   margin: 4px 0;
 }
 #view-settings .effect-preview .avatar-fx { --fx-inset: 4px; }
+
+/* Presence dots stay on top of avatar decorations and the profile-effect ring,
+   so the status looks exactly as it did before they were added. */
+#view-app .dm-avatar-wrap .status-pip,
+#view-app .fr-avatar-wrap .status-pip,
+#view-app #up-status-pip,
+#view-app .ml-status-dot { z-index: 6; }

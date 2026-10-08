@@ -3604,6 +3604,9 @@ function initDashboardView() {
     const badge = document.getElementById('nav-friends-badge');
     if (pending > 0) { badge.style.display = 'inline'; badge.textContent = pending; } else badge.style.display = 'none';
     document.getElementById('ftab-pending-count').textContent = pending ? `(${pending})` : '';
+    // The Pending tab only exists while there's at least one request (in or out).
+    const pTab = document.getElementById('ftab-pending');
+    if (pTab) pTab.style.display = (friendRequests.incoming.length + friendRequests.outgoing.length) ? '' : 'none';
   }
   function switchFriendsTab(tab) {
     currentFriendsTab = tab;
@@ -3614,6 +3617,14 @@ function initDashboardView() {
   function renderFriendsList() {
     const el = document.getElementById('friends-list');
     const { incoming, outgoing } = friendRequests;
+    const pendingTab = document.getElementById('ftab-pending');
+    if (pendingTab) pendingTab.style.display = (incoming.length + outgoing.length) ? '' : 'none';
+    if (currentFriendsTab === 'pending' && !incoming.length && !outgoing.length) {
+      // last request was handled while viewing Pending: fall back to All
+      currentFriendsTab = 'all';
+      document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+      document.getElementById('ftab-all')?.classList.add('active');
+    }
     if (currentFriendsTab === 'pending') {
       if (!incoming.length && !outgoing.length) { el.innerHTML = `<div class="friends-empty">No pending requests</div>`; return; }
       let out = '';
