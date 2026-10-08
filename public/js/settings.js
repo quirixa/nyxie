@@ -198,7 +198,10 @@ function initSettingsView() {
     const id = item ? item.id : 'none';
     const name = item ? item.name : 'None';
     const owned = !item || item.owned;
-    const active = slot.pending() === id;
+    // 'None' in the shared decoration/effect grid is only selected when neither is.
+    const active = (type === 'avatar_decoration' && id === 'none')
+      ? (_pendingAvatarDecoration === 'none' && _pendingProfileEffect === 'none')
+      : slot.pending() === id;
     const preview = type === 'avatar_decoration'
       ? `<span class="decoration-preview decoration-${id}"><span></span></span>`
       : type === 'profile_effect'
@@ -246,6 +249,11 @@ function initSettingsView() {
   function selectAvatarDecoration(id) {
     if (!ownsInShop(id)) return;
     _pendingAvatarDecoration = id;
+    // A decoration and the Sparkle Ring can't be worn together: picking either
+    // (or None) switches the ring off.
+    _pendingProfileEffect = 'none';
+    const fxHost = document.getElementById('profile-avatar-fx-host');
+    if (fxHost && window.NyxFx) window.NyxFx.setAvatarFx(fxHost, false, true);
     const previewDeco = document.getElementById('profile-avatar-decoration');
     if (previewDeco) previewDeco.dataset.decoration = id || 'none';
     renderShop();
@@ -253,6 +261,12 @@ function initSettingsView() {
   function selectProfileEffect(id) {
     if (!ownsInShop(id)) return;
     _pendingProfileEffect = (_pendingProfileEffect === id) ? 'none' : id;   // tap again to turn off
+    if (_pendingProfileEffect !== 'none') {
+      // Turning the ring on clears any selected avatar decoration.
+      _pendingAvatarDecoration = 'none';
+      const previewDeco = document.getElementById('profile-avatar-decoration');
+      if (previewDeco) previewDeco.dataset.decoration = 'none';
+    }
     const fxHost = document.getElementById('profile-avatar-fx-host');
     if (fxHost && window.NyxFx) window.NyxFx.setAvatarFx(fxHost, _pendingProfileEffect !== 'none', true);   // live preview
     renderShop();
@@ -275,8 +289,9 @@ function initSettingsView() {
     }
     _shop = res.shop;
     // Pre-select what they just bought; it's only worn once they hit Save.
-    if (item.type === 'avatar_decoration') _pendingAvatarDecoration = id; else _pendingCardDecoration = id;
-    renderShop();
+    if (item.type === 'avatar_decoration') { selectAvatarDecoration(id); }
+    else if (item.type === 'profile_effect') { _pendingProfileEffect = 'none'; selectProfileEffect(id); }
+    else { _pendingCardDecoration = id; renderShop(); }
     toast(`Bought ${item.name}! Hit Save to wear it.`);
   }
 

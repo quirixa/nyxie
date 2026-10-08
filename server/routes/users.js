@@ -251,6 +251,18 @@ router.patch('/me', requireAuth, async (req, res) => {
     params.push(effectValue === 'none' ? 0 : 1);
   }
 
+  // The Sparkle Ring and an avatar decoration are mutually exclusive: only one
+  // of them can be equipped at a time. Equipping one unequips the other.
+  {
+    const effectOn = profile_effect !== undefined && !(profile_effect === false || profile_effect === 0 || profile_effect === null || profile_effect === 'none');
+    const decoOn = avatar_decoration !== undefined && avatar_decoration !== 'none';
+    if (effectOn && decoOn) {
+      return res.status(400).json({ error: 'Pick either the Sparkle Ring or an avatar decoration, not both' });
+    }
+    if (effectOn && avatar_decoration === undefined) { updates.push('avatar_decoration = ?'); params.push('none'); }
+    if (decoOn && profile_effect === undefined) { updates.push('profile_effect = ?'); params.push(0); }
+  }
+
   // Banner color
   if (banner_color !== undefined) {
     const trimmed = (banner_color || '').trim();

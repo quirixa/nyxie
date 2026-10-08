@@ -288,6 +288,22 @@ body.select-mode #view-app .dm-checkbox {
   margin-top: 2px;
 }
 
+#view-app .dm-preview.is-typing { color: var(--accent); }
+#view-app .dm-typing { display: inline-flex; align-items: center; gap: 6px; }
+#view-app .typing-dots { display: inline-flex; align-items: center; gap: 3px; }
+#view-app .typing-dots i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor;
+  animation: dm-typing-bounce 1.2s infinite ease-in-out;
+}
+#view-app .typing-dots i:nth-child(2) { animation-delay: .15s; }
+#view-app .typing-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes dm-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .45; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { #view-app .typing-dots i { animation: none; opacity: .8; } }
+
 #view-app .dm-actions {
   flex-shrink: 0;
   align-items: center;

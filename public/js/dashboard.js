@@ -811,6 +811,7 @@ function initDashboardView() {
                 }
                 dm.last_message = preview || 'Attachment';
                 dm.last_message_at = m.created_at;
+                delete dmTyping[dm.id];
                 dms = [dm, ...dms.filter(d => d.id !== dm.id)];
                 renderDMList();
               })();
@@ -880,8 +881,9 @@ function initDashboardView() {
         }
 
         case 'typing':
-          if (msg.room_id === currentRoom?.id && msg.user_id !== currentUser.id) {
-            showTyping(msg.display_name || msg.username);
+          if (msg.user_id !== currentUser.id) {
+            if (msg.room_id === currentRoom?.id) showTyping(msg.display_name || msg.username);
+            setDmTyping(msg.room_id, msg.display_name || msg.username);   // animated dots in the DM list
           }
           break;
 
@@ -1556,6 +1558,26 @@ function initDashboardView() {
     'Shared key failed': '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
   };
 
+  // ─── Typing indicator in the DM list ────────────────────
+  // The server delivers 'typing' for every DM we've joined, so the sidebar can
+  // show it for conversations that aren't open. Re-renders only when a row
+  // starts/stops typing, not on every keystroke event.
+  const dmTyping = {};          // roomId -> display name
+  const dmTypingTimers = {};
+  function setDmTyping(roomId, name) {
+    if (!dms.some(d => d.id === roomId)) return;
+    const wasTyping = roomId in dmTyping;
+    dmTyping[roomId] = name;
+    clearTimeout(dmTypingTimers[roomId]);
+    dmTypingTimers[roomId] = setTimeout(() => clearDmTyping(roomId), 3500);
+    if (!wasTyping) renderDMList();
+  }
+  function clearDmTyping(roomId) {
+    clearTimeout(dmTypingTimers[roomId]);
+    delete dmTypingTimers[roomId];
+    if (roomId in dmTyping) { delete dmTyping[roomId]; renderDMList(); }
+  }
+
   function renderDMList() {
     const list = document.getElementById('dm-list');
     if (!dms.length) {
@@ -1574,6 +1596,10 @@ function initDashboardView() {
         : '<i style="color:var(--text-muted)">No messages yet</i>';
       const time = dm.last_message_at ? fmtTime(dm.last_message_at) : '';
       const isActive = currentRoom?.id === dm.id;
+      const typingName = dmTyping[dm.id];
+      const previewHtml = typingName !== undefined
+        ? `<span class="dm-typing"><span class="typing-dots"><i></i><i></i><i></i></span>${dm.is_group ? escapeHtml(typingName) + ' is typing…' : 'typing…'}</span>`
+        : preview;
       let avatarHtml = dm._otherId ? identiconImg(dm._otherId) : name[0].toUpperCase();
       if (dm._avatar) {
         avatarHtml = `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
@@ -1598,7 +1624,7 @@ function initDashboardView() {
               <span class="dm-time">${time}</span>
             </div>
           </div>
-          <div class="dm-preview">${preview}</div>
+          <div class="dm-preview${typingName !== undefined ? ' is-typing' : ''}">${previewHtml}</div>
         </div>
         <div class="dm-actions">
           <button class="dm-action-btn danger" onclick="event.stopPropagation();hideDM('${dm.id}')" title="Hide">
