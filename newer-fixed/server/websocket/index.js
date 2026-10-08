@@ -1,0 +1,510 @@
+const WebSocket = require('ws');
+const { verifyToken } = require('../services/jwt');
+const { tokenIsLive } = require('../middleware/auth');
+const { getUserDb, get, run, all } = require('../database/userDb');
+const { isBlocked } = require('../services/blocks');
+const { STATUSES, effectiveStatus } = require('../services/presence');
+
+const roomClients = new Map();
+const clientMeta = new Map();
+const userConnections = new Map();
+
+// Per-socket inbound WebSocket rate limiting. This is deliberately
+// event-aware: typing is cheap and bursty, while call setup/status and
+// room operations are more expensive and get much tighter limits.
+// Counters live on the socket, so one abusive connection cannot consume
+// another user's budget.
+const WS_RATE_RULES = Object.freeze({
+  // Cheap, high-frequency UI signal. This allows normal fast typing
+  // without making the indicator feel laggy.
+  typing: { windowMs: 1000, max: 30 },
+
+  // Room membership/status changes should be occasional.
+  join_room: { windowMs: 60 * 1000, max: 30 },
+  leave_room: { windowMs: 60 * 1000, max: 60 },
+  set_status: { windowMs: 60 * 1000, max: 20 },
+  ping: { windowMs: 10 * 1000, max: 20 },
+
+  // Call setup can trigger DB work and relays to another user, so keep
+  // these much tighter. ICE is intentionally more permissive because
+  // WebRTC can legitimately emit several candidates during negotiation.
+  call_offer: { windowMs: 10 * 1000, max: 5 },
+  call_answer: { windowMs: 10 * 1000, max: 5 },
+  call_reject: { windowMs: 10 * 1000, max: 10 },
+  call_end: { windowMs: 10 * 1000, max: 10 },
+  call_ice_candidate: { windowMs: 10 * 1000, max: 120 },
+});
+
+function allowWsMessage(ws, type) {
+  const rule = WS_RATE_RULES[type];
+  const now = Date.now();
+  const state = ws.__nyxieRateState || (ws.__nyxieRateState = new Map());
+
+  // Safety net for new/unknown message types: no connection should be
+  // able to flood the server simply because a new event was added without
+  // an explicit rule. Known event rules below are stricter where needed.
+  let overall = state.get('__overall');
+  if (!overall || now - overall.startedAt >= 10 * 1000) {
+    overall = { startedAt: now, count: 0 };
+    state.set('__overall', overall);
+  }
+  overall.count += 1;
+  if (overall.count > 300) {
+    if (!overall.warned) {
+      overall.warned = true;
+      try {
+        ws.send(JSON.stringify({
+          type: 'rate_limited',
+          event: '*',
+          retry_after_ms: Math.max(1, 10 * 1000 - (now - overall.startedAt))
+        }));
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  if (!rule) return true;
+
+  let bucket = state.get(type);
+  if (!bucket || now - bucket.startedAt >= rule.windowMs) {
+    bucket = { startedAt: now, count: 0 };
+    state.set(type, bucket);
+  }
+
+  bucket.count += 1;
+  if (bucket.count <= rule.max) return true;
+
+  // Only send one rate-limit response per exhausted window. Do not
+  // disconnect immediately: transient bursts should recover naturally.
+  if (!bucket.warned) {
+    bucket.warned = true;
+    try {
+      ws.send(JSON.stringify({
+        type: 'rate_limited',
+        event: type,
+        retry_after_ms: Math.max(1, rule.windowMs - (now - bucket.startedAt))
+      }));
+    } catch (_) {}
+  }
+  return false;
+}
+
+// Whether a user has at least one live socket open right now. This is the
+// "connected" half of effectiveStatus() — the DB `status` column is only
+// ever the user's manually-chosen preference (see presence.js), never
+// touched here, so it can't be used on its own to tell whether someone is
+// actually reachable. REST routes reach this via app.locals.isUserConnected
+// (wired up in server.js) since they don't have direct access to this
+// module-local map.
+function isUserConnected(userId) {
+  const conns = userConnections.get(userId);
+  return !!conns && conns.size > 0;
+}
+
+// Pushes a presence_update straight to every accepted friend of `userId`,
+// independent of shared rooms. Room-scoped broadcastPresence() below only
+// reaches people who share (and have actively joined) a room with this
+// user, which misses friends they've never DMed — this is what makes the
+// Friends page update live for everyone on the friends list, the same way
+// friend_request/friend_accepted already reach people via broadcastToUser
+// regardless of shared rooms.
+async function broadcastPresenceToFriends(userId, publicStatus, displayName, avatar) {
+  const db = await getUserDb();
+  const friendIds = all(db, `
+    SELECT CASE WHEN user_a = ? THEN user_b ELSE user_a END AS friend_id
+    FROM friends WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+  `, [userId, userId, userId]).map(r => r.friend_id);
+  const payload = { type: 'presence_update', user_id: userId, status: publicStatus, display_name: displayName || null, avatar: avatar || null };
+  for (const fid of friendIds) broadcastToUser(fid, payload);
+}
+
+// Used by the REST fallback in routes/users.js PATCH /status (the primary
+// path is the 'set_status' WS message below, which also calls this).
+function broadcastPresenceChange(userId, rawStatus) {
+  const meta = [...clientMeta.values()].find(m => m.userId === userId);
+  const displayName = meta?.display_name;
+  const avatar = meta?.avatar;
+  const connected = isUserConnected(userId);
+  const publicStatus = effectiveStatus(rawStatus, { connected, isSelf: false });
+  if (meta) {
+    for (const roomId of meta.rooms) {
+      broadcast(roomId, { type: 'presence_update', user_id: userId, status: publicStatus, display_name: displayName, avatar });
+    }
+  }
+  broadcastPresenceToFriends(userId, publicStatus, displayName, avatar);
+  // Let the user's own other sessions know their real (unmasked) status too.
+  broadcastToUser(userId, { type: 'self_status', status: rawStatus });
+}
+
+// Voice-call signaling state. The server only ever relays opaque SDP/ICE
+// payloads between the two participants — it never sees call audio (that
+// flows peer-to-peer once WebRTC negotiation completes) and never sees
+// the call's encryption key (the two ends exchange ephemeral public keys
+// through this same relay and derive a shared secret client-side via
+// nacl.box, which the server cannot compute). This map just tracks who's
+// currently in a call with whom so we can enforce "one call at a time"
+// and clean things up if someone disconnects mid-call.
+// call_id -> { callerId, calleeId, roomId }
+const activeCalls = new Map();
+// userId -> call_id, for quick "are you already on a call?" checks
+const userActiveCall = new Map();
+
+function endCallForUser(userId, reason) {
+  const callId = userActiveCall.get(userId);
+  if (!callId) return;
+  const call = activeCalls.get(callId);
+  if (!call) { userActiveCall.delete(userId); return; }
+  const otherId = call.callerId === userId ? call.calleeId : call.callerId;
+  activeCalls.delete(callId);
+  userActiveCall.delete(call.callerId);
+  userActiveCall.delete(call.calleeId);
+  broadcastToUser(otherId, { type: 'call_end', call_id: callId, reason: reason || 'peer_disconnected' });
+}
+
+function broadcast(roomId, data) {
+  const clients = roomClients.get(roomId);
+  if (!clients) return;
+  const payload = JSON.stringify(data);
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  }
+}
+
+// Sends to every connected socket (all users). Used for events that are
+// safe for everyone to hear about and cheap to act on — e.g. 'badges_updated'
+// carries only a user id, and each client re-fetches through the normal
+// visibility-filtered endpoint.
+function broadcastAll(data) {
+  const payload = JSON.stringify(data);
+  for (const conns of userConnections.values()) {
+    for (const ws of conns) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+    }
+  }
+}
+
+function broadcastToUser(userId, data) {
+  const conns = userConnections.get(userId);
+  if (!conns) return;
+  const payload = JSON.stringify(data);
+  for (const ws of conns) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  }
+}
+
+function broadcastPresence(roomId, userId, status, displayName, avatar) {
+  broadcast(roomId, {
+    type: 'presence_update',
+    user_id: userId,
+    status,
+    display_name: displayName || null,
+    avatar: avatar || null
+  });
+}
+
+function joinRoom(ws, roomId) {
+  if (!roomClients.has(roomId)) roomClients.set(roomId, new Set());
+  roomClients.get(roomId).add(ws);
+  const meta = clientMeta.get(ws);
+  if (meta) meta.rooms.add(roomId);
+}
+
+function leaveRoom(ws, roomId) {
+  const clients = roomClients.get(roomId);
+  if (clients) {
+    clients.delete(ws);
+    if (clients.size === 0) roomClients.delete(roomId);
+  }
+  const meta = clientMeta.get(ws);
+  if (meta) meta.rooms.delete(roomId);
+}
+
+async function cleanupClient(ws) {
+  const meta = clientMeta.get(ws);
+  if (!meta) return;
+
+  const remainingConns = userConnections.get(meta.userId);
+  const isLastConnection = !remainingConns || remainingConns.size <= 1;
+  if (isLastConnection) endCallForUser(meta.userId, 'peer_disconnected');
+
+  for (const roomId of meta.rooms) {
+    const clients = roomClients.get(roomId);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) roomClients.delete(roomId);
+    }
+    // Only tell the room "offline" once every one of this user's sessions
+    // is gone — with a second tab/device still open they're still here.
+    if (isLastConnection) broadcastPresence(roomId, meta.userId, 'offline', meta.display_name, meta.avatar);
+  }
+
+  const conns = userConnections.get(meta.userId);
+  if (conns) {
+    conns.delete(ws);
+    if (conns.size === 0) userConnections.delete(meta.userId);
+  }
+
+  clientMeta.delete(ws);
+  const db = await getUserDb();
+  // last_seen only — `status` is the user's manually-chosen preference
+  // (online/idle/dnd/invisible) and must survive a dropped connection or
+  // page refresh unchanged. Losing connectivity is represented purely by
+  // isUserConnected() returning false, which effectiveStatus() already
+  // turns into "offline" for anyone looking, without needing to touch
+  // (and thereby forget) what the user actually picked.
+  run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), meta.userId]);
+  if (isLastConnection) broadcastPresenceToFriends(meta.userId, 'offline', meta.display_name, meta.avatar);
+}
+
+function setupWebSocket(server) {
+  const wss = new WebSocket.Server({ server, path: '/ws' });
+
+  wss.on('connection', async (ws, req) => {
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    if (!token) {
+      ws.send(JSON.stringify({ type: 'error', message: 'No token' }));
+      ws.close(4001);
+      return;
+    }
+    let payload;
+    try {
+      payload = verifyToken(token);
+    } catch {
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
+      ws.close(4001);
+      return;
+    }
+
+    const db = await getUserDb();
+    const user = get(db, 'SELECT id, username, display_name, avatar, status, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
+    if (!user || !tokenIsLive(db, payload, user.tokens_invalid_before)) {
+      ws.close(4001);
+      return;
+    }
+
+    // Reconnecting (a page refresh, a dropped socket coming back, opening
+    // a second tab) must NOT reset a manually-chosen status back to
+    // Online — that was the bug where picking Do Not Disturb and then
+    // refreshing silently flipped you back to Online. Only fall back to
+    // 'online' if the column has never been set at all (brand new user).
+    const rawStatus = STATUSES.includes(user.status) ? user.status : 'online';
+    if (rawStatus !== user.status) run(db, 'UPDATE users SET status = ? WHERE id = ?', [rawStatus, user.id]);
+    run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
+
+    clientMeta.set(ws, { sid: payload.sid || null, userId: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, rooms: new Set() });
+    if (!userConnections.has(user.id)) userConnections.set(user.id, new Set());
+    userConnections.get(user.id).add(ws);
+
+    const publicStatus = effectiveStatus(rawStatus, { connected: true, isSelf: false });
+    const userRooms = all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [user.id]);
+    for (const row of userRooms) {
+      broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: publicStatus, display_name: user.display_name, avatar: user.avatar });
+    }
+    broadcastPresenceToFriends(user.id, publicStatus, user.display_name, user.avatar);
+
+    ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, status: rawStatus } }));
+
+    ws.on('message', async (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw); } catch { return; }
+      const meta = clientMeta.get(ws);
+      if (!meta) return;
+
+      if (!allowWsMessage(ws, msg.type)) return;
+
+      switch (msg.type) {
+        case 'join_room': {
+          const { room_id } = msg;
+          if (!room_id) break;
+          const db2 = await getUserDb();
+          const isMember = get(db2, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room_id, meta.userId]);
+          if (!isMember) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Not a member' }));
+            break;
+          }
+          joinRoom(ws, room_id);
+          const myRow = get(db2, 'SELECT status FROM users WHERE id = ?', [meta.userId]);
+          broadcastPresence(room_id, meta.userId, effectiveStatus(myRow?.status, { connected: true, isSelf: false }), meta.display_name, meta.avatar);
+
+          const members = all(db2, `
+            SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.public_key
+            FROM room_members rm
+            JOIN users u ON u.id = rm.user_id
+            WHERE rm.room_id = ?
+          `, [room_id]);
+          ws.send(JSON.stringify({
+            type: 'room_state',
+            room_id,
+            members: members.map(m => ({
+              id: m.id,
+              username: m.username,
+              display_name: m.display_name,
+              avatar: m.avatar || null,
+              public_key: m.public_key || null,
+              status: effectiveStatus(m.status, { connected: isUserConnected(m.id), isSelf: m.id === meta.userId })
+            }))
+          }));
+
+          ws.send(JSON.stringify({ type: 'joined_room', room_id }));
+          break;
+        }
+        case 'leave_room': {
+          const { room_id } = msg;
+          if (room_id) leaveRoom(ws, room_id);
+          break;
+        }
+        case 'typing': {
+          const { room_id } = msg;
+          if (!room_id || !meta.rooms.has(room_id)) break;
+          const clients = roomClients.get(room_id);
+          if (!clients) break;
+          const payload = JSON.stringify({
+            type: 'typing',
+            user_id: meta.userId,
+            username: meta.username,
+            display_name: meta.display_name,
+            avatar: meta.avatar,
+            room_id
+          });
+          for (const c of clients) {
+            if (c !== ws && c.readyState === WebSocket.OPEN) c.send(payload);
+          }
+          break;
+        }
+        case 'set_status': {
+          // This is the ONLY place status changes: a manual pick from the
+          // status submenu. There is deliberately no inactivity timer, no
+          // mouse/keyboard tracking, and nothing here that changes status
+          // on its own — the status stays exactly what was last picked
+          // until the user picks something else.
+          const { status } = msg;
+          if (!STATUSES.includes(status)) break;
+          const db2 = await getUserDb();
+          run(db2, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?', [status, Date.now(), meta.userId]);
+          const publicStatus = effectiveStatus(status, { connected: true, isSelf: false });
+          for (const roomId of meta.rooms) {
+            broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status: publicStatus, display_name: meta.display_name, avatar: meta.avatar });
+          }
+          broadcastPresenceToFriends(meta.userId, publicStatus, meta.display_name, meta.avatar);
+          // Sync the real (unmasked) status to this user's own other
+          // sessions — e.g. another open tab — so their own UI shows
+          // "Invisible" rather than the "offline" everyone else sees.
+          broadcastToUser(meta.userId, { type: 'self_status', status });
+          break;
+        }
+        case 'ping':
+          ws.send(JSON.stringify({ type: 'pong' }));
+          break;
+
+        // ── Voice call signaling ──────────────────────────────────────
+        // All of these just relay an opaque payload from one participant
+        // to the other over their existing authenticated socket. The
+        // server validates that caller and callee actually share the
+        // named DM room (so a stranger can't ring an arbitrary user_id)
+        // but never inspects/stores SDP or media.
+
+        case 'call_offer': {
+          const { target_user_id, room_id, call_id, sdp, ephemeral_pubkey } = msg;
+          if (!target_user_id || !room_id || !call_id || !sdp || !ephemeral_pubkey) break;
+          if (userActiveCall.has(meta.userId)) {
+            ws.send(JSON.stringify({ type: 'call_busy', call_id, self: true }));
+            break;
+          }
+          const db2 = await getUserDb();
+          const sharedRoom = get(db2, `
+            SELECT 1 FROM room_members rm1
+            JOIN room_members rm2 ON rm2.room_id = rm1.room_id
+            WHERE rm1.room_id = ? AND rm1.user_id = ? AND rm2.user_id = ?
+          `, [room_id, meta.userId, target_user_id]);
+          if (!sharedRoom) {
+            ws.send(JSON.stringify({ type: 'call_error', message: 'Not in a shared conversation with that user' }));
+            break;
+          }
+          if (isBlocked(db2, meta.userId, target_user_id)) {
+            ws.send(JSON.stringify({ type: 'call_error', message: 'Unable to call this user' }));
+            break;
+          }
+          if (userActiveCall.has(target_user_id)) {
+            ws.send(JSON.stringify({ type: 'call_busy', call_id }));
+            break;
+          }
+          activeCalls.set(call_id, { callerId: meta.userId, calleeId: target_user_id, roomId: room_id });
+          userActiveCall.set(meta.userId, call_id);
+          userActiveCall.set(target_user_id, call_id);
+          broadcastToUser(target_user_id, {
+            type: 'call_offer',
+            call_id,
+            room_id,
+            sdp,
+            ephemeral_pubkey,
+            from_user_id: meta.userId,
+            from_username: meta.username,
+            from_display_name: meta.display_name,
+            from_avatar: meta.avatar
+          });
+          break;
+        }
+
+        case 'call_answer': {
+          const { call_id, sdp, ephemeral_pubkey } = msg;
+          const call = activeCalls.get(call_id);
+          if (!call || call.calleeId !== meta.userId) break;
+          broadcastToUser(call.callerId, { type: 'call_answer', call_id, sdp, ephemeral_pubkey, from_user_id: meta.userId });
+          break;
+        }
+
+        case 'call_ice_candidate': {
+          const { call_id, candidate } = msg;
+          const call = activeCalls.get(call_id);
+          if (!call) break;
+          const targetId = call.callerId === meta.userId ? call.calleeId : (call.calleeId === meta.userId ? call.callerId : null);
+          if (!targetId) break;
+          broadcastToUser(targetId, { type: 'call_ice_candidate', call_id, candidate, from_user_id: meta.userId });
+          break;
+        }
+
+        case 'call_reject': {
+          const { call_id } = msg;
+          const call = activeCalls.get(call_id);
+          if (!call || call.calleeId !== meta.userId) break;
+          activeCalls.delete(call_id);
+          userActiveCall.delete(call.callerId);
+          userActiveCall.delete(call.calleeId);
+          broadcastToUser(call.callerId, { type: 'call_reject', call_id });
+          break;
+        }
+
+        case 'call_end': {
+          const { call_id } = msg;
+          const call = activeCalls.get(call_id);
+          if (!call || (call.callerId !== meta.userId && call.calleeId !== meta.userId)) break;
+          const otherId = call.callerId === meta.userId ? call.calleeId : call.callerId;
+          activeCalls.delete(call_id);
+          userActiveCall.delete(call.callerId);
+          userActiveCall.delete(call.calleeId);
+          broadcastToUser(otherId, { type: 'call_end', call_id, reason: 'hangup' });
+          break;
+        }
+      }
+    });
+
+    ws.on('close', () => cleanupClient(ws));
+    ws.on('error', () => cleanupClient(ws));
+  });
+
+  return { wss, broadcast, broadcastToUser, broadcastAll };
+}
+
+// Close every socket that belongs to a revoked session (or, with no sid,
+// every socket the user has except those whose sid is in `keepSids`).
+function disconnectSessions(userId, predicate) {
+  const set = userConnections.get(userId);
+  if (!set) return;
+  for (const ws of Array.from(set)) {
+    const meta = clientMeta.get(ws);
+    if (meta && predicate(meta.sid)) { try { ws.close(4001); } catch (e) {} }
+  }
+}
+
+module.exports = { disconnectSessions, setupWebSocket, broadcast, broadcastToUser, isUserConnected, broadcastPresenceChange };

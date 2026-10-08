@@ -249,9 +249,12 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .dm-avatar-wrap .status-pip {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  border: 2px solid var(--bg-sidebar);
+  right: -3px;
+  bottom: -3px;
+  width: 15px;
+  height: 15px;
+  box-sizing: border-box;
+  border: 3px solid var(--bg-sidebar);
 }
 
 #view-app .dm-content {
@@ -1215,6 +1218,8 @@ body.select-mode #view-app .dm-checkbox {
   width: 14px;
   height: 14px;
   color: var(--accent);
+  stroke: currentColor;
+  stroke-width: 2;
   flex-shrink: 0;
 }
 #view-app .rpb-body {
@@ -1252,6 +1257,8 @@ body.select-mode #view-app .dm-checkbox {
 #view-app .rpb-close svg {
   width: 13px;
   height: 13px;
+  stroke: currentColor;
+  stroke-width: 2.2;
 }
 #view-app .rpb-close:hover {
   background: var(--bg-hover);

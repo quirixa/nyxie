@@ -1,0 +1,569 @@
+const express = require('express');
+const router = express.Router();
+const crypto = require('crypto');
+const { getUserDb, all, get, run } = require('../database/userDb');
+const { getMessageDb, allMessages, getMessage, runMessage } = require('../database/messageDb');
+const { requireAuth } = require('../middleware/auth');
+const { isBlocked } = require('../services/blocks');
+const { PERMISSIONS, getServerContext, hasPermission } = require('../services/permissions');
+
+// Resolves a reply_to_id into the shape the client needs to render a
+// reply quote (author + content/nonce, so it decrypts exactly like any
+// other message) without the client having to already have the
+// original message loaded. Returns null if the id is missing, not in
+// this room, or was itself deleted along the way.
+function resolveReplyTo(msgDb, userDb, roomId, replyToId) {
+  if (!replyToId) return null;
+  const original = getMessage(msgDb, 'SELECT id, room_id, user_id, content, nonce, msg_type, created_at, deleted FROM messages WHERE id = ? AND room_id = ?', [replyToId, roomId]);
+  if (!original) return null;
+  const author = get(userDb, 'SELECT username, display_name FROM users WHERE id = ?', [original.user_id]);
+  return {
+    id: original.id,
+    user_id: original.user_id,
+    username: author?.username || 'unknown',
+    display_name: author?.display_name || author?.username || 'Unknown',
+    content: original.deleted ? null : original.content,
+    nonce: original.deleted ? null : original.nonce,
+    key_envelopes: original.deleted ? null : (original.key_envelopes ? JSON.parse(original.key_envelopes) : null),
+    msg_type: original.msg_type,
+    // created_at travels with the reply preview even when the original
+    // message itself hasn't been paginated into the client yet — the
+    // client uses it as the anchor to page `before` this timestamp and
+    // fetch the original message on demand (see jumpToMessage).
+    created_at: original.created_at,
+    deleted: !!original.deleted
+  };
+}
+
+async function getLatestMessages(roomIds) {
+  if (!roomIds.length) return {};
+  const msgDb = await getMessageDb();
+  const rows = allMessages(msgDb, `
+    SELECT m.room_id, m.user_id, m.content, m.nonce, m.key_envelopes, m.msg_type, m.created_at
+    FROM messages m
+    WHERE m.deleted = 0
+      AND m.created_at = (
+        SELECT MAX(created_at) FROM messages
+        WHERE room_id = m.room_id AND deleted = 0
+      )
+      AND m.room_id IN (${roomIds.map(() => '?').join(',')})
+  `, roomIds);
+  const map = {};
+  rows.forEach(row => {
+    // Voice messages store ciphertext in `content`, which is meaningless
+    // as a list preview (and would just show base64 noise), so use a
+    // fixed label instead. The client still knows to decrypt+render the
+    // real content once the conversation itself is opened.
+    const preview = row.msg_type === 'voice' ? '🎤 Voice message' : row.content;
+    // `nonce` is passed through as-is: when set, `content` is E2EE
+    // ciphertext and the client is expected to decrypt it client-side
+    // (it has the keys, the server never does) before displaying it.
+    map[row.room_id] = { content: preview, nonce: row.msg_type === 'voice' ? null : row.nonce, key_envelopes: row.msg_type === 'voice' ? null : (row.key_envelopes ? JSON.parse(row.key_envelopes) : null), msg_type: row.msg_type, created_at: row.created_at, user_id: row.user_id };
+  });
+  return map;
+}
+
+// True if `userId` may currently view/read `room` (a row from `rooms`,
+// must include at least id/server_id/is_dm/is_group). Room membership
+// (room_members) is necessary but not sufficient for a server channel —
+// the member's role also needs VIEW_CHANNEL. DMs/groups have no
+// server_id, so membership alone is sufficient there, same as before
+// this feature existed.
+function canViewRoom(db, room, userId) {
+  const isMember = !!get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room.id, userId]);
+  if (!isMember) return false;
+  if (!room.server_id) return true;
+  const ctx = getServerContext(db, room.server_id, userId);
+  return hasPermission(ctx, PERMISSIONS.VIEW_CHANNEL);
+}
+
+// True if `userId` may currently send messages into `room`.
+function canSendToRoom(db, room, userId) {
+  if (!canViewRoom(db, room, userId)) return false;
+  if (!room.server_id) return true;
+  const ctx = getServerContext(db, room.server_id, userId);
+  if (ctx && ctx.muted && !ctx.isOwner) return false;
+  return hasPermission(ctx, PERMISSIONS.SEND_MESSAGES);
+}
+
+router.get('/', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  const { server_id } = req.query;
+
+  let rooms;
+  if (server_id) {
+    rooms = all(db, `
+      SELECT r.id, r.name, r.description, r.created_at, r.is_dm, r.position,
+        (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count
+      FROM rooms r
+      JOIN room_members rm ON rm.room_id = r.id
+      WHERE r.server_id = ? AND r.is_dm = 0 AND rm.user_id = ?
+      ORDER BY r.position ASC, r.created_at ASC
+    `, [server_id, req.user.id]);
+  } else {
+    rooms = all(db, `
+      SELECT r.id, r.name, r.description, r.created_at, r.is_dm, r.is_group, r.icon, r.created_by,
+        (SELECT COUNT(*) FROM room_members rm2 WHERE rm2.room_id = r.id) AS member_count
+      FROM rooms r
+      JOIN room_members rm ON rm.room_id = r.id
+      WHERE r.is_dm = 1 AND rm.user_id = ?
+      ORDER BY r.created_at DESC
+    `, [req.user.id]);
+    for (const room of rooms) {
+      if (room.is_group) {
+        // Group chats carry their own name/icon — never derived from a
+        // single "other" member the way a 1-to-1 DM's display name is.
+        room.display_name = room.name;
+        continue;
+      }
+      const members = all(db, `SELECT user_id FROM room_members WHERE room_id = ?`, [room.id]);
+      const other = members.find(m => m.user_id !== req.user.id);
+      if (other) {
+        const otherUser = get(db, 'SELECT display_name, username FROM users WHERE id = ?', [other.user_id]);
+        room.display_name = otherUser ? (otherUser.display_name || otherUser.username) : 'Unknown';
+        room._otherId = other.user_id;
+      } else {
+        room.display_name = room.name;
+      }
+    }
+  }
+
+  const roomIds = rooms.map(r => r.id);
+  const latestMap = await getLatestMessages(roomIds);
+  for (const room of rooms) {
+    const latest = latestMap[room.id];
+    room.last_message = latest ? latest.content : null;
+    room.last_message_nonce = latest ? latest.nonce : null;
+    room.last_message_key_envelopes = latest ? latest.key_envelopes : null;
+    room.last_message_user_id = latest ? latest.user_id : null;
+    room.last_message_type = latest ? latest.msg_type : null;
+    room.last_message_at = latest ? latest.created_at : null;
+  }
+
+  res.json({ rooms });
+});
+
+router.post('/dm', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  const { target_user_id } = req.body;
+  if (!target_user_id) return res.status(400).json({ error: 'target_user_id required' });
+  if (target_user_id === req.user.id) return res.status(400).json({ error: 'Cannot DM yourself' });
+
+  const targetUser = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [target_user_id]);
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+  if (isBlocked(db, req.user.id, target_user_id)) {
+    return res.status(403).json({ error: 'Unable to start a conversation with this user' });
+  }
+
+  const existing = get(db, `
+    SELECT r.id FROM rooms r
+    JOIN room_members rm1 ON rm1.room_id = r.id AND rm1.user_id = ?
+    JOIN room_members rm2 ON rm2.room_id = r.id AND rm2.user_id = ?
+    WHERE r.is_dm = 1 AND (r.is_group IS NULL OR r.is_group = 0)
+    AND (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) = 2
+    LIMIT 1
+  `, [req.user.id, target_user_id]);
+
+  if (existing) return res.json({ room_id: existing.id });
+
+  const roomId = crypto.randomUUID();
+  const now = Date.now();
+  run(db, 'INSERT INTO rooms (id, name, description, created_by, created_at, is_dm) VALUES (?, ?, ?, ?, ?, 1)',
+    [roomId, `dm-${req.user.id}-${target_user_id}`, '', req.user.id, now]);
+  run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, req.user.id, now]);
+  run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, target_user_id, now]);
+
+  const initiator = { id: req.user.id, username: req.user.username, display_name: req.user.display_name };
+  const target    = { id: targetUser.id, username: targetUser.username, display_name: targetUser.display_name || targetUser.username };
+  req.app.locals.broadcastToUser(req.user.id,   { type: 'dm_created', room_id: roomId, with_user: target });
+  req.app.locals.broadcastToUser(target_user_id, { type: 'dm_created', room_id: roomId, with_user: initiator });
+
+  res.status(201).json({ room_id: roomId });
+});
+
+// ─── Message handlers ──────────────────────────────────────────────
+// Pulled out as standalone functions (reading the room id from
+// req.params.id) so routes/servers.js (channels) and routes/groups.js
+// can mount the exact same logic at /api/channels/:channelId/messages
+// and /api/groups/:groupId/messages without duplicating the message
+// pipeline — a channel or a group chat's messages are just this room's
+// messages, and the E2EE/attachment/mention/reply handling above is
+// already generic across every room type.
+
+async function listMessages(req, res) {
+  const userDb = await getUserDb();
+  const room = get(userDb, 'SELECT id, server_id, is_dm, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  if (!room) return res.status(404).json({ error: 'Not found' });
+  if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
+
+  const msgDb = await getMessageDb();
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const before = req.query.before ? parseInt(req.query.before) : Date.now() + 1;
+
+  const messages = allMessages(msgDb, `
+    SELECT id, room_id, user_id, content, nonce, msg_type, duration, mime_type, attachments, mentions, key_envelopes, reply_to_id, created_at, edited_at, deleted
+    FROM messages
+    WHERE room_id = ? AND created_at < ?
+      AND (deleted = 0 OR EXISTS (SELECT 1 FROM messages r WHERE r.reply_to_id = messages.id))
+    ORDER BY created_at DESC
+    LIMIT ?
+  `, [req.params.id, before, limit]);
+
+  const userIds = [...new Set(messages.map(m => m.user_id))];
+  let userMap = {};
+  if (userIds.length) {
+    const placeholders = userIds.map(() => '?').join(',');
+    const users = all(userDb, `SELECT id, username, display_name FROM users WHERE id IN (${placeholders})`, userIds);
+    users.forEach(u => { userMap[u.id] = u; });
+  }
+
+  const enriched = messages.map(m => ({
+    ...m,
+    attachments: m.attachments ? JSON.parse(m.attachments) : null,
+    key_envelopes: m.key_envelopes ? JSON.parse(m.key_envelopes) : null,
+    mentions: m.mentions ? JSON.parse(m.mentions) : null,
+    username: userMap[m.user_id]?.username || 'unknown',
+    display_name: userMap[m.user_id]?.display_name || userMap[m.user_id]?.username || 'Unknown',
+    reply_to: resolveReplyTo(msgDb, userDb, req.params.id, m.reply_to_id)
+  }));
+
+  res.json({ messages: enriched.reverse() });
+}
+
+async function postMessage(req, res) {
+  const userDb = await getUserDb();
+  const room = get(userDb, 'SELECT id, server_id, is_dm, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  if (!room) return res.status(404).json({ error: 'Not found' });
+  if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
+  if (!canSendToRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'You do not have permission to send messages here' });
+
+  // Blocking only applies to 1:1 DMs — group rooms/channels aren't gated
+  // by a two-person block relationship. If the block happened after this
+  // DM was created, this is what actually stops new messages going
+  // through (creation-time checks in POST /dm only cover new DMs).
+  if (room.is_dm && !room.is_group) {
+    const other = get(userDb, 'SELECT user_id FROM room_members WHERE room_id = ? AND user_id != ?', [req.params.id, req.user.id]);
+    if (other && isBlocked(userDb, req.user.id, other.user_id)) {
+      return res.status(403).json({ error: 'You cannot message this user' });
+    }
+  }
+
+  const { content, ciphertext, nonce, key_envelopes, type, duration, mimeType, attachments, reply_to_id } = req.body;
+  const msgType = type === 'voice' ? 'voice' : 'text';
+  const msgDb = await getMessageDb();
+
+  // Only accept a reply_to_id that actually points at a message in this
+  // room — otherwise silently drop it rather than trusting the client's
+  // reply_to_author/reply_to_snippet (which used to be taken as-is and
+  // never actually persisted).
+  const replyTarget = reply_to_id ? getMessage(msgDb, 'SELECT id FROM messages WHERE id = ? AND room_id = ?', [reply_to_id, req.params.id]) : null;
+  const cleanReplyToId = replyTarget ? replyTarget.id : null;
+
+  // E2EE key envelopes are opaque client-generated values. Keep them bounded and
+  // structurally valid so they cannot be used as an unbounded JSON storage vector.
+  let cleanKeyEnvelopes = null;
+  if (key_envelopes !== undefined && key_envelopes !== null) {
+    if (!key_envelopes || typeof key_envelopes !== 'object' || Array.isArray(key_envelopes) || Object.keys(key_envelopes).length > 50) {
+      return res.status(400).json({ error: 'Invalid encryption key envelopes' });
+    }
+    cleanKeyEnvelopes = {};
+    for (const [uid, env] of Object.entries(key_envelopes)) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(uid) || !env || typeof env !== 'object') continue;
+      if (typeof env.ciphertext !== 'string' || typeof env.nonce !== 'string' || env.ciphertext.length > 2048 || env.nonce.length > 128) continue;
+      cleanKeyEnvelopes[uid] = { ciphertext: env.ciphertext, nonce: env.nonce };
+    }
+    if (!Object.keys(cleanKeyEnvelopes).length) cleanKeyEnvelopes = null;
+  }
+
+  // Private group chats are E2EE-only for new text messages. The server
+  // never receives a plaintext fallback for a group message.
+  if (room.is_group && (content || ciphertext)) {
+    if (!ciphertext || !nonce || !cleanKeyEnvelopes || !cleanKeyEnvelopes[req.user.id]) {
+      return res.status(400).json({ error: 'Group messages must be end-to-end encrypted' });
+    }
+  }
+
+  // Attachments come from POST /api/upload as [{ name, url, type }, ...].
+  // Validate shape defensively since this is client-controlled JSON that
+  // gets stored and later re-rendered (as a link/img src) for other users.
+  let cleanAttachments = null;
+  if (attachments) {
+    if (!Array.isArray(attachments) || attachments.length > 10) {
+      return res.status(400).json({ error: 'Invalid attachments' });
+    }
+    cleanAttachments = attachments.map(a => {
+      const out = {
+        name: String(a?.name || 'file').slice(0, 255),
+        url: String(a?.url || ''),
+        type: String(a?.type || '').slice(0, 100)
+      };
+      // Display-only (shown on the file card). Clamped so a client can't
+      // store nonsense; the real limit is enforced by the upload endpoint.
+      const size = Number(a?.size);
+      if (Number.isFinite(size) && size >= 0) out.size = Math.min(Math.floor(size), 50 * 1024 * 1024);
+      if (a?.encrypted) {
+        out.encrypted = true;
+        out.nonce = String(a?.nonce || '').slice(0, 128);
+        out.key_envelopes = {};
+        const envs = a?.key_envelopes && typeof a.key_envelopes === 'object' && !Array.isArray(a.key_envelopes) ? a.key_envelopes : {};
+        for (const [uid, env] of Object.entries(envs)) {
+          if (!/^[a-zA-Z0-9_-]{1,128}$/.test(uid) || !env || typeof env !== 'object') continue;
+          if (typeof env.ciphertext === 'string' && typeof env.nonce === 'string' && env.ciphertext.length <= 2048 && env.nonce.length <= 128) {
+            out.key_envelopes[uid] = { ciphertext: env.ciphertext, nonce: env.nonce };
+          }
+        }
+        if (!out.nonce || !Object.keys(out.key_envelopes).length) return null;
+      }
+      return out;
+    }).filter(a => a && a.url.startsWith('/uploads/'));
+    if (!cleanAttachments.length) cleanAttachments = null;
+  }
+
+  // Mentions come from the client as a list of user IDs (resolved from
+  // @username against the room's member list — the client has that,
+  // the server doesn't when the message is E2EE ciphertext). Re-check
+  // membership here rather than trusting the client list outright, and
+  // cap it so a message can't be used to spam-notify unrelated users.
+  let cleanMentions = null;
+  const { mentions } = req.body;
+  if (mentions) {
+    if (!Array.isArray(mentions) || mentions.length > 20) {
+      return res.status(400).json({ error: 'Invalid mentions' });
+    }
+    const candidateIds = [...new Set(mentions.map(id => String(id)))];
+    if (candidateIds.length) {
+      const placeholders = candidateIds.map(() => '?').join(',');
+      const memberRows = all(userDb, `SELECT user_id FROM room_members WHERE room_id = ? AND user_id IN (${placeholders})`, [req.params.id, ...candidateIds]);
+      cleanMentions = memberRows.map(r => r.user_id);
+    }
+    if (!cleanMentions || !cleanMentions.length) cleanMentions = null;
+  }
+
+  if (msgType === 'voice') {
+    // Voice messages are E2EE-only — there is no plaintext fallback, so
+    // refuse to store one that isn't encrypted rather than silently
+    // accepting a voice clip the server (or anyone who dumps the DB)
+    // could listen to.
+    if (!ciphertext || !nonce) {
+      return res.status(400).json({ error: 'Voice messages must be end-to-end encrypted (ciphertext + nonce required)' });
+    }
+    // Base64-encoded opus/webm clip. ~4MB of base64 covers roughly a
+    // couple of minutes of compressed voice, which is a generous cap for
+    // a chat voice note; reject anything larger up front.
+    if (ciphertext.length > 4_000_000) {
+      return res.status(400).json({ error: 'Voice message too long' });
+    }
+    const msgDuration = Number.isFinite(duration) ? Math.max(0, Math.round(duration)) : null;
+
+    // The recorded MIME type is client-controlled and gets echoed back
+    // (and later handed to `new Blob([...], { type })` on every
+    // recipient's device), so constrain it to a plausible audio MIME
+    // string rather than storing whatever the client sends verbatim.
+    // Falls back to the historical default if missing/invalid so old
+    // clients (and any pre-migration rows) keep working.
+    const cleanMimeType = (typeof mimeType === 'string' && /^audio\/[a-zA-Z0-9.+-]+(;\s*codecs=[a-zA-Z0-9.,="]+)?$/.test(mimeType))
+      ? mimeType.slice(0, 100)
+      : 'audio/webm';
+
+    const msgId = crypto.randomUUID();
+    const now = Date.now();
+    runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, duration, mime_type, key_envelopes, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [msgId, req.params.id, req.user.id, ciphertext, nonce, 'voice', msgDuration, cleanMimeType, cleanKeyEnvelopes ? JSON.stringify(cleanKeyEnvelopes) : null, cleanReplyToId, now]);
+
+    const message = {
+      id: msgId,
+      room_id: req.params.id,
+      content: ciphertext,
+      nonce,
+      msg_type: 'voice',
+      duration: msgDuration,
+      mime_type: cleanMimeType,
+      key_envelopes: cleanKeyEnvelopes,
+      created_at: now,
+      user_id: req.user.id,
+      username: req.user.username,
+      display_name: req.user.display_name,
+      reply_to_id: cleanReplyToId,
+      reply_to: resolveReplyTo(msgDb, userDb, req.params.id, cleanReplyToId)
+    };
+
+    req.app.locals.broadcast(req.params.id, { type: 'new_message', message });
+    return res.status(201).json({ message });
+  }
+
+  if (!content && !ciphertext && !cleanAttachments) {
+    return res.status(400).json({ error: 'Message content, ciphertext, or attachments required' });
+  }
+  const msgContent = content ? content.trim() : (ciphertext || '');
+  const msgNonce = nonce || null;
+
+  if (!msgContent && !cleanAttachments) return res.status(400).json({ error: 'Message content required' });
+  if (msgContent.length > 4000) return res.status(400).json({ error: 'Message too long' });
+
+  const msgId = crypto.randomUUID();
+  const now = Date.now();
+  runMessage(msgDb, 'INSERT INTO messages (id, room_id, user_id, content, nonce, msg_type, attachments, mentions, key_envelopes, reply_to_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [msgId, req.params.id, req.user.id, msgContent, msgNonce, 'text', cleanAttachments ? JSON.stringify(cleanAttachments) : null, cleanMentions ? JSON.stringify(cleanMentions) : null, cleanKeyEnvelopes ? JSON.stringify(cleanKeyEnvelopes) : null, cleanReplyToId, now]);
+
+  const message = {
+    id: msgId,
+    room_id: req.params.id,
+    content: msgContent,
+    nonce: msgNonce,
+    msg_type: 'text',
+    attachments: cleanAttachments,
+    mentions: cleanMentions,
+    key_envelopes: cleanKeyEnvelopes,
+    created_at: now,
+    user_id: req.user.id,
+    username: req.user.username,
+    display_name: req.user.display_name,
+    reply_to_id: cleanReplyToId,
+    reply_to: resolveReplyTo(msgDb, userDb, req.params.id, cleanReplyToId)
+  };
+
+  req.app.locals.broadcast(req.params.id, { type: 'new_message', message });
+
+  // Ping mentioned users directly (not just via the room broadcast above)
+  // so the notification/sound fires even if they don't currently have
+  // this room open/joined over the websocket.
+  if (cleanMentions) {
+    for (const uid of cleanMentions) {
+      if (uid === req.user.id) continue;
+      req.app.locals.broadcastToUser(uid, {
+        type: 'mention',
+        room_id: req.params.id,
+        message_id: msgId,
+        from: { id: req.user.id, username: req.user.username, display_name: req.user.display_name }
+      });
+    }
+  }
+
+  res.status(201).json({ message });
+}
+
+async function editMessage(req, res) {
+  const userDb = await getUserDb();
+  const room = get(userDb, 'SELECT id, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  if (!room) return res.status(404).json({ error: 'Not found' });
+  if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
+  const msgDb = await getMessageDb();
+  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.id]);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'Not your message' });
+  if (msg.deleted) return res.status(400).json({ error: 'Cannot edit deleted message' });
+
+  const { content, ciphertext, nonce, key_envelopes } = req.body;
+  let nextContent = content ? String(content).trim() : '';
+  let nextNonce = nonce || null;
+  let nextEnvelopes = null;
+
+  if (ciphertext) {
+    nextContent = String(ciphertext);
+    if (!nextNonce || !key_envelopes || typeof key_envelopes !== 'object' || Array.isArray(key_envelopes)) {
+      return res.status(400).json({ error: 'Encrypted edit requires ciphertext, nonce, and key envelopes' });
+    }
+    nextEnvelopes = key_envelopes;
+  } else if (room.is_group) {
+    return res.status(400).json({ error: 'Group messages must remain end-to-end encrypted' });
+  }
+
+  if (!nextContent) return res.status(400).json({ error: 'Content required' });
+  if (nextContent.length > 4000) return res.status(400).json({ error: 'Content too long' });
+
+  const now = Date.now();
+  runMessage(msgDb, 'UPDATE messages SET content = ?, nonce = ?, key_envelopes = ?, edited_at = ? WHERE id = ?', [nextContent, nextNonce, nextEnvelopes ? JSON.stringify(nextEnvelopes) : null, now, msg.id]);
+
+  req.app.locals.broadcast(req.params.id, {
+    type: 'message_edited',
+    message_id: msg.id,
+    content: nextContent,
+    nonce: nextNonce,
+    key_envelopes: nextEnvelopes,
+    edited_at: now
+  });
+  res.json({ ok: true });
+}
+
+async function deleteMessage(req, res) {
+  const userDb = await getUserDb();
+  const msgDb = await getMessageDb();
+  const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.id]);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+  if (msg.user_id !== req.user.id) {
+    // Not your own message — only a channel moderator (MANAGE_MESSAGES,
+    // or the server owner) can delete someone else's message, and only
+    // inside a server channel. DMs/groups have no such moderation layer.
+    const room = get(userDb, 'SELECT server_id FROM rooms WHERE id = ?', [req.params.id]);
+    const ctx = room?.server_id ? getServerContext(userDb, room.server_id, req.user.id) : null;
+    if (!hasPermission(ctx, PERMISSIONS.MANAGE_MESSAGES)) {
+      return res.status(403).json({ error: 'Not your message' });
+    }
+  }
+
+  const replyCountRow = getMessage(msgDb, 'SELECT COUNT(*) AS count FROM messages WHERE reply_to_id = ?', [msg.id]);
+  const hasReplies = Number(replyCountRow?.count || 0) > 0;
+
+  // Image/attachment messages should disappear completely when deleted.
+  // Only text messages may retain a tombstone when they have replies.
+  let hasAttachments = false;
+  try {
+    const attachments = msg.attachments ? JSON.parse(msg.attachments) : [];
+    hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+  } catch (_) {}
+  const keepPlaceholder = !hasAttachments && hasReplies;
+
+  // Remove uploaded attachments from disk when this message is deleted.
+  // Only remove a file if no other message still references the same URL.
+  if (msg.attachments) {
+    try {
+      const attachments = JSON.parse(msg.attachments);
+      const fs = require('fs');
+      const path = require('path');
+      const uploadDir = path.join(__dirname, '..', '..', 'data', 'uploads');
+      for (const attachment of Array.isArray(attachments) ? attachments : []) {
+        const url = typeof attachment?.url === 'string' ? attachment.url : '';
+        if (!url.startsWith('/uploads/')) continue;
+        const filename = path.basename(url);
+        const refs = getMessage(msgDb, 'SELECT COUNT(*) AS count FROM messages WHERE id != ? AND attachments LIKE ?', [msg.id, `%${url}%`]);
+        if (Number(refs?.count || 0) === 0) {
+          try { fs.unlinkSync(path.join(uploadDir, filename)); } catch (e) { /* already gone */ }
+        }
+      }
+    } catch (e) {
+      console.warn('[Message delete] attachment cleanup failed:', e.message);
+    }
+  }
+
+  // Preserve only a minimal tombstone when another message replies to this
+  // message. The encrypted content and attachments must never remain
+  // available through a deleted-message placeholder.
+  runMessage(msgDb, 'UPDATE messages SET deleted = 1, content = \'[deleted]\', nonce = NULL, attachments = NULL WHERE id = ?', [msg.id]);
+  req.app.locals.broadcast(req.params.id, {
+    type: 'message_deleted',
+    message_id: msg.id,
+    keep_placeholder: keepPlaceholder
+  });
+  res.json({ ok: true, keep_placeholder: keepPlaceholder });
+}
+
+router.get('/:id/messages', requireAuth, listMessages);
+router.post('/:id/messages', requireAuth, postMessage);
+router.patch('/:id/messages/:msgId', requireAuth, editMessage);
+router.delete('/:id/messages/:msgId', requireAuth, deleteMessage);
+
+router.post('/:id/leave', requireAuth, async (req, res) => {
+  const db = await getUserDb();
+  run(db, 'DELETE FROM room_members WHERE room_id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  res.json({ ok: true });
+});
+
+module.exports = router;
+module.exports.listMessages = listMessages;
+module.exports.postMessage = postMessage;
+module.exports.editMessage = editMessage;
+module.exports.deleteMessage = deleteMessage;
+module.exports.canViewRoom = canViewRoom;
+module.exports.canSendToRoom = canSendToRoom;

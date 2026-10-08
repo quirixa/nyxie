@@ -1,0 +1,202 @@
+// router.js — a small History-API router for the Nyxie SPA.
+//
+// Responsibilities:
+//   - map a path to a <template> to clone into #app-root
+//   - run that view's init() once its markup is actually in the DOM
+//   - run the previous view's destroy() (if any) before swapping away,
+//     so e.g. dashboard.js can close its WebSocket instead of leaking it
+//   - guard routes that require (or forbid) being logged in
+//   - intercept clicks on same-origin links marked data-link so
+//     navigation never triggers a full page reload
+//   - support ':param' segments (e.g. '/app/rooms/:roomId') so a route's
+//     init() can read the matched value — this is what gives each open
+//     conversation its own real, refreshable/shareable URL, Discord-style.
+//
+// No history/framework dependency — this is the whole router.
+
+const router = (() => {
+  // Turn a path like '/app/rooms/:roomId' into a regex plus the list of
+  // param names in the order they appear, so matchRoute() can pull
+  // { roomId: '...' } back out of a real URL.
+  function compilePath(path) {
+    const paramNames = [];
+    const source = path
+      .split('/')
+      .map(segment => {
+        if (segment.startsWith(':')) {
+          paramNames.push(segment.slice(1));
+          return '([^/]+)';
+        }
+        // Escape any regex-special chars in static segments.
+        return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      })
+      .join('/');
+    return { regex: new RegExp('^' + source + '$'), paramNames };
+  }
+
+  const routeDefs = [
+    { path: '/', template: 'tpl-landing', auth: 'any' },
+    { path: '/login', template: 'tpl-login', auth: 'guest', init: () => initLoginView() },
+    { path: '/register', template: 'tpl-register', auth: 'guest', init: () => initRegisterView() },
+    { path: '/app', template: 'tpl-app', auth: 'required', init: () => initDashboardView(), destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Same template/view as /app — the wallet panel is a section inside
+    // the dashboard, not a separate page. This route exists so that
+    // opening or refreshing on /wallets directly lands on that section
+    // instead of 404ing (there was no real route for it before, so a
+    // refresh while the wallet panel was open had nowhere to go — see
+    // window._initialSection in dashboard.js, which this reads).
+    { path: '/wallets', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'wallet'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Same idea as /wallets, for the marketplace panel.
+    { path: '/marketplace', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'marketplace'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Admin-only, same panel-with-its-own-URL pattern as /wallets and
+    // /marketplace above. auth: 'admin' (see applyAuthGuard) is the
+    // cosmetic, client-side half of the admin gate — it keeps the page
+    // from even rendering for a non-admin who types/bookmarks this URL.
+    // The real enforcement is entirely server-side (requireAdmin in
+    // server/middleware/auth.js); this guard can't be trusted on its
+    // own since currentUser.role is just whatever the last /auth/login
+    // or /auth/me response said.
+    { path: '/admin/disputes', template: 'tpl-app', auth: 'admin', init: () => { window._initialSection = 'admin'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // One real URL per open conversation (mirrors the /wallets pattern
+    // above): opening a DM pushes '/app/rooms/<id>' so refreshing,
+    // sharing the link, or using browser back/forward lands back on
+    // that exact conversation instead of always resetting to home. See
+    // window._initialRoomId in dashboard.js, which this sets before the
+    // dashboard mounts.
+    { path: '/app/rooms/:roomId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialRoomId = params.roomId; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Real, refreshable/shareable URLs for a server and a specific
+    // channel within it — mirrors '/app/rooms/:roomId' above. IDs are
+    // the source of truth (never names): see window._initialServerId/
+    // window._initialChannelId in dashboard.js, which selectServer()/
+    // openChannel() read on mount.
+    { path: '/servers/:serverId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialServerId = params.serverId; window._initialChannelId = null; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    { path: '/servers/:serverId/channels/:channelId', template: 'tpl-app', auth: 'required', init: (params) => { window._initialServerId = params.serverId; window._initialChannelId = params.channelId; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Same '/wallets'-style pattern for the dedicated Discovery page:
+    // '/discover' and '/discover/:category' are both real, refreshable/
+    // shareable URLs (see section 8 of the servers spec) — the category,
+    // if any, is read from window._initialDiscoverCategory once the
+    // dashboard mounts (showDiscoverView() in dashboard.js).
+    { path: '/discover', template: 'tpl-app', auth: 'required', init: () => { window._initialSection = 'discover'; window._initialDiscoverCategory = null; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    { path: '/discover/:category', template: 'tpl-app', auth: 'required', init: (params) => { window._initialSection = 'discover'; window._initialDiscoverCategory = params.category; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
+    // Invite landing page (Discord-style). auth: 'any' on purpose — the whole
+    // point is that someone with a link and no account yet can open it, see
+    // the server, and be walked through login/register and back. See
+    // js/invite.js.
+    { path: '/invite/:code', template: 'tpl-invite', auth: 'any', init: (params) => { if (typeof initInviteView === 'function') initInviteView(params.code); }, destroy: () => { if (typeof destroyInviteView === 'function') destroyInviteView(); } },
+    { path: '/settings', template: 'tpl-settings', auth: 'required', init: () => initSettingsView(), destroy: () => { if (typeof destroySettingsView === 'function') destroySettingsView(); } }
+  ];
+
+  const routes = routeDefs.map(def => Object.assign({}, def, compilePath(def.path)));
+
+  let current = null; // the matched route object currently mounted
+  const root = () => document.getElementById('app-root');
+
+  function matchRoute(path) {
+    // '/invite/abc/' should behave like '/invite/abc'.
+    if (path.length > 1) path = path.replace(/\/+$/, '') || '/';
+    for (const route of routes) {
+      const m = route.regex.exec(path);
+      if (!m) continue;
+      const params = {};
+      route.paramNames.forEach((name, i) => { params[name] = decodeURIComponent(m[i + 1]); });
+      return { route, params };
+    }
+    return null;
+  }
+
+  function applyAuthGuard(route) {
+    if (!route) return '/';
+    if (route.auth === 'required' && !isLoggedIn()) return '/login';
+    if (route.auth === 'guest' && isLoggedIn()) return '/app';
+    if (route.auth === 'admin') {
+      if (!isLoggedIn()) return '/login';
+      // currentUser is whatever /auth/login or /auth/me last returned
+      // (see state.js) — a non-admin who navigates here directly just
+      // bounces back to the app, same as any other 404-ish redirect.
+      if (!currentUser || currentUser.role !== 'ADMIN') return '/app';
+    }
+    return null; // no redirect needed
+  }
+
+  function renderNotFound() {
+    const tpl = document.getElementById('tpl-404');
+    root().innerHTML = '';
+    if (tpl) {
+      root().appendChild(tpl.content.cloneNode(true));
+      if (typeof applyTheme === 'function') applyTheme();
+      if (typeof applyAccent === 'function') applyAccent();
+    } else {
+      // Fallback in case the template is ever missing from the page.
+      root().innerHTML = `
+        <div class="route-error">
+          <div class="route-error-glyph">404</div>
+          <h1>This room doesn't exist</h1>
+          <p>The page you're looking for was moved, deleted, or never existed.</p>
+          <a href="/" data-link class="no-accent">Back to Nyxie</a>
+        </div>`;
+    }
+    current = null;
+  }
+
+  async function render(path) {
+    const matched = matchRoute(path);
+    if (!matched) { renderNotFound(); return; }
+    const { route, params } = matched;
+
+    const redirect = applyAuthGuard(route);
+    if (redirect) { navigate(redirect, { replace: true }); return; }
+
+    // Tear down whatever view is currently mounted before swapping.
+    if (current && current.destroy) {
+      try { current.destroy(); } catch (e) { console.error('View teardown error:', e); }
+    }
+
+    const tpl = document.getElementById(route.template);
+    if (!tpl) { renderNotFound(); return; }
+
+    root().innerHTML = '';
+    root().appendChild(tpl.content.cloneNode(true));
+    // Re-apply theme classes: body-level classes persist across
+    // navigations already, but a freshly cloned view may contain
+    // elements (accent swatches, theme cards) that need the current
+    // values reflected immediately.
+    if (typeof applyTheme === 'function') applyTheme();
+    if (typeof applyAccent === 'function') applyAccent();
+
+    current = route;
+
+    if (route.init) {
+      try { route.init(params); } catch (e) { console.error('View init error:', e); }
+    }
+  }
+
+  function navigate(path, { replace = false } = {}) {
+    if (typeof path !== 'string') return;
+    const url = new URL(path, window.location.origin);
+    const target = url.pathname;
+    if (replace) {
+      window.history.replaceState({}, '', target);
+    } else if (window.location.pathname !== target) {
+      window.history.pushState({}, '', target);
+    }
+    render(target);
+  }
+
+  function start() {
+    // Intercept clicks on same-origin [data-link] anchors.
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-link]');
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('http') || link.target === '_blank') return;
+      e.preventDefault();
+      navigate(href);
+    });
+
+    window.addEventListener('popstate', () => render(window.location.pathname));
+
+    render(window.location.pathname || '/');
+  }
+
+  return { navigate, start };
+})();

@@ -1,0 +1,2717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
+<title>Nyxie</title>
+
+<!-- Favicon: pixel "N" mark on the app's dark esc-theme background,
+     in the shared --accent color, matching the retro pixel aesthetic
+     used elsewhere in the app (theme.css, quiet-sky.css). SVG is the
+     primary icon (crisp at any size); PNG/ICO are fallbacks for
+     browsers/contexts that don't support SVG favicons. -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+  /* Keyboard-aware viewport height.
+     100dvh/100vh do NOT shrink for the on-screen keyboard in a lot of
+     mobile/in-app browsers (only some Chromium builds honor
+     interactive-widget=resizes-content above). The Visual Viewport API
+     is the one thing that reliably reports the space actually left
+     after the keyboard opens, in every modern mobile browser, so we
+     mirror it into a CSS var and let app.css/dashboard.css consume it. */
+  (function () {
+    function setAppHeight() {
+      var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', h + 'px');
+    }
+    setAppHeight();
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setAppHeight);
+      window.visualViewport.addEventListener('scroll', setAppHeight);
+    }
+    window.addEventListener('orientationchange', setAppHeight);
+    window.addEventListener('resize', setAppHeight);
+  })();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Shared styling: base reset + theme system, SPA shell chrome, then
+     one stylesheet per view (each selector is scoped under that view's
+     root id, e.g. "#view-app ...", so they can all be loaded at once
+     without leaking into one another). -->
+<link rel="stylesheet" href="/css/theme.css">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/landing.css">
+<link rel="stylesheet" href="/css/auth-login.css">
+<link rel="stylesheet" href="/css/auth-register.css">
+<link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/settings.css">
+<link rel="stylesheet" href="/css/wallet.css">
+<link rel="stylesheet" href="/css/marketplace.css">
+<link rel="stylesheet" href="/css/admin.css">
+<link rel="stylesheet" href="/css/badges.css">
+<link rel="stylesheet" href="/css/cosmetics.css">
+<link rel="stylesheet" href="/css/prefs.css">
+<link rel="stylesheet" href="/css/invite.css">
+
+<style>
+    /* ─── Cropper Overlay ──────────────────────────────────── */
+    .cropper-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(0, 0, 0, 0.40);          /* was 0.75 – now much lighter */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Inter, sans-serif;
+    backdrop-filter: blur(2px);              /* reduce blur from 4px to 2px */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+.cropper-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+    .cropper-modal {
+        background: var(--bg-secondary, #1a1a1a);
+        border-radius: 16px;
+        padding: 24px;
+        max-width: 560px;
+        width: 95vw;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+        border: 1px solid var(--border-color, #2c2c2c);
+    }
+    .cropper-modal h3 {
+        color: var(--text-primary, #f5f5f5);
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 4px 0;
+    }
+    .cropper-preview-wrap {
+        position: relative;
+        margin: 12px 0;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        overflow: hidden;
+        background: #0a0a0a;
+        border-radius: 12px;
+    }
+    /* Banner mode will override aspect-ratio via JS or a class later */
+    .cropper-preview {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+        user-select: none;
+    }
+    .cropper-preview canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+    }
+    .cropper-preview canvas:active {
+        cursor: grabbing;
+    }
+    .cropper-mask {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: 50%;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+        transition: border-radius 0.2s;
+    }
+    /* If banner, the mask becomes a rectangle (no mask) */
+    .cropper-mask.banner-mode {
+        border-radius: 0;
+        box-shadow: none;
+        display: none;
+    }
+    .cropper-controls-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 8px 0;
+        color: var(--text-secondary, #aaa);
+    }
+    .cropper-controls-row label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+    .cropper-controls-row input[type="range"] {
+        flex: 1;
+        background: transparent;
+        accent-color: var(--accent, #fd6671);
+    }
+    .cropper-controls-row span {
+        min-width: 40px;
+        text-align: center;
+        font-size: 0.85rem;
+    }
+    .cropper-error {
+        color: #ff6b6b;
+        font-size: 0.8rem;
+        margin-top: 8px;
+        text-align: center;
+        display: none;
+    }
+    .cropper-controls {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color, #2c2c2c);
+    }
+    .cropper-controls .btn-cancel {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        background: var(--bg-tertiary, #262626);
+        color: var(--text-secondary, #ccc);
+        font-weight: 500;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .cropper-controls .btn-cancel:hover {
+        background: var(--bg-hover, #333);
+    }
+    .cropper-controls .btn-primary {
+        padding: 10px 24px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent, #fd6671);
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .cropper-controls .btn-primary:hover {
+        filter: brightness(1.1);
+    }
+    .cropper-controls .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+
+<base target="_self">
+
+<!-- Landing Background Styles -->
+<style>
+#view-landing {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Grid lines */
+.lnd-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    pointer-events: none;
+}
+
+/* Solid-color blobs — no gradients */
+.lnd-blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+}
+.lnd-blob-1 {
+    width: 600px; height: 600px;
+    background: #ed4245;
+    opacity: 0.04;
+    top: -15%; left: -10%;
+    animation: lnd-drift1 22s ease-in-out infinite;
+}
+.lnd-blob-2 {
+    width: 500px; height: 500px;
+    background: #fd6671;
+    opacity: 0.03;
+    bottom: -20%; right: -10%;
+    animation: lnd-drift2 26s ease-in-out infinite;
+}
+.lnd-blob-3 {
+    width: 400px; height: 400px;
+    background: #ed4245;
+    opacity: 0.025;
+    top: 40%; right: 25%;
+    animation: lnd-drift3 20s ease-in-out infinite;
+}
+@keyframes lnd-drift1 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(50px,-40px) scale(1.1); }
+}
+@keyframes lnd-drift2 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(-40px,50px) scale(0.95); }
+}
+@keyframes lnd-drift3 {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(30px,30px) scale(1.05); }
+}
+
+/* Diagonal tracer lines */
+.lnd-tracer-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+.lnd-tracer {
+    position: absolute;
+    width: 200%;
+    height: 1px;
+    background: rgba(237,66,69,0.06);
+    transform-origin: left center;
+}
+.lnd-tracer:nth-child(1) {
+    top: 20%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace1 14s linear infinite;
+}
+.lnd-tracer:nth-child(2) {
+    top: 50%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace2 18s linear infinite;
+}
+.lnd-tracer:nth-child(3) {
+    top: 80%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace3 12s linear infinite;
+}
+.lnd-tracer:nth-child(4) {
+    top: 35%; left: -50%;
+    transform: rotate(-15deg);
+    animation: lnd-trace1 20s linear infinite reverse;
+    background: rgba(253,102,113,0.04);
+}
+@keyframes lnd-trace1 {
+    0% { transform: rotate(-15deg) translateX(-100%); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: rotate(-15deg) translateX(100%); opacity: 0; }
+}
+@keyframes lnd-trace2 {
+    0% { transform: rotate(-15deg) translateX(-100%); opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { transform: rotate(-15deg) translateX(100%); opacity: 0; }
+}
+@keyframes lnd-trace3 {
+    0% { transform: rotate(-15deg) translateX(-100%); opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { transform: rotate(-15deg) translateX(100%); opacity: 0; }
+}
+
+/* Ensure landing content stays above background */
+#view-landing .container {
+    position: relative;
+    z-index: 1;
+}
+</style>
+<!-- Intentionally no global base target: message images must not inherit _blank behavior. -->
+</head>
+<body>
+
+<!-- Router outlet -->
+<div id="app-root"></div>
+
+<!-- ─── View templates ───────────────────────────────────── -->
+<template id="tpl-landing">
+    <div id="view-landing">
+        <div class="lnd-grid"></div>
+        <div class="lnd-blob lnd-blob-1"></div>
+        <div class="lnd-blob lnd-blob-2"></div>
+        <div class="lnd-blob lnd-blob-3"></div>
+        <div class="lnd-tracer-wrap">
+            <div class="lnd-tracer"></div>
+            <div class="lnd-tracer"></div>
+            <div class="lnd-tracer"></div>
+            <div class="lnd-tracer"></div>
+        </div>
+        <div class="container">
+            <div class="logo">
+                <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                </pre>
+            </div>
+            <p>A messaging platform for communities, friends and teams.</p>
+            <div class="actions">
+                <a href="/login" data-link class="btn primary">Sign In</a>
+                <a href="/register" data-link class="btn secondary">Create Account</a>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="tpl-login">
+    <div id="view-login">
+        <div class="wrapper">
+            <section class="info">
+                <div class="logo">
+                    <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                    </pre>
+                </div>
+                <h1>Welcome back.</h1>
+                <p>Sign in with your email or username and password.</p>
+            </section>
+            <section class="login">
+                <h2>Sign in</h2>
+                <p>Enter your credentials to access your account.</p>
+                <form id="loginForm">
+                    <div class="input-group" id="loginGroup">
+                        <label>Username or email</label>
+                        <input type="text" id="loginField" placeholder="Username or email" autocomplete="username">
+                    </div>
+                    <div class="input-group" id="passwordGroup">
+                        <label>Password</label>
+                        <input type="password" id="password" placeholder="Your password" autocomplete="current-password">
+                    </div>
+                    <div class="input-group" id="codeGroup" style="display:none;">
+                        <label>Two-factor code</label>
+                        <input type="text" id="mfaCode" placeholder="6-digit code or backup code" autocomplete="one-time-code">
+                    </div>
+                    <button type="submit" class="login-btn" id="loginBtn">Sign in</button>
+                </form>
+                <div class="bottom-text">No account? <a href="/register" data-link>Create one</a></div>
+            </section>
+        </div>
+        <div id="toastMsg" class="toast-msg"></div>
+    </div>
+</template>
+
+<template id="tpl-register">
+    <div id="view-register">
+        <div class="wrapper">
+            <section class="info">
+                <div class="logo">
+                    <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+| ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                    </pre>
+                </div>
+                <h1>Join the private network.</h1>
+                <p>Create an account with your email and a strong password. Full privacy and control.</p>
+            </section>
+            <section class="register">
+                <h2>Sign up</h2>
+                <p>Choose a username, provide your email and set a password.</p>
+                <form id="registerForm" novalidate>
+                    <div class="input-group" id="usernameGroup">
+                        <label>Username <span style="color:#a5a5a5;">*</span></label>
+                        <input type="text" id="username" placeholder="e.g., satoshi_nakamoto" autocomplete="username">
+                        <div class="hint-text">3-30 characters. Letters, numbers, underscore or hyphen.</div>
+                    </div>
+                    <div class="input-group" id="emailGroup">
+                        <label>Email <span style="color:#a5a5a5;">*</span></label>
+                        <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+                    </div>
+                    <div class="input-group" id="passwordGroup">
+                        <label>Password <span style="color:#a5a5a5;">*</span></label>
+                        <input type="password" id="password" placeholder="Min 8 characters" autocomplete="new-password">
+                        <div class="hint-text">At least 8 characters.</div>
+                    </div>
+                    <div class="input-group" id="confirmGroup">
+                        <label>Confirm Password <span style="color:#a5a5a5;">*</span></label>
+                        <input type="password" id="confirmPassword" placeholder="Repeat password" autocomplete="new-password">
+                    </div>
+                    <div class="input-group" id="displayNameGroup">
+                        <label>Display name <span class="optional-badge">optional</span></label>
+                        <input type="text" id="displayName" placeholder="What others see" autocomplete="nickname">
+                        <div class="hint-text">If empty, your username will be used.</div>
+                    </div>
+                    <button type="submit" class="register-btn" id="submitBtn">Create account</button>
+                </form>
+                <div class="bottom-text">Already have an account? <a href="/login" data-link>Sign in</a></div>
+            </section>
+        </div>
+        <div id="toastMsg" class="toast-msg"></div>
+    </div>
+</template>
+
+<template id="tpl-app">
+    <div id="view-app">
+        <div id="app">
+            <!-- Server rail -->
+            <div id="server-rail">
+                <div class="server-pill home-pill active" id="server-pill-home" onclick="showDMView()" title="Direct Messages">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="m21.743 12.331-9-10c-.379-.422-1.107-.422-1.486 0l-9 10a.998.998 0 0 0-.17 1.076c.16.361.518.593.913.593h2v7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4h4v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-7h2a.998.998 0 0 0 .743-1.669z"/></svg>
+                </div>
+                <div class="server-rail-divider"></div>
+                <div id="server-rail-list"></div>
+                <div class="server-rail-divider"></div>
+                <div class="server-pill server-pill-add" id="server-pill-add" onclick="showAddServerModal()" title="Add a server">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </div>
+                <!-- Own rail entry, deliberately separate from server-pill-add: clicking
+                     it must never select/open one of the user's existing servers, and it
+                     must not live as a tab inside the Add Server modal. -->
+                <div class="server-pill server-pill-discover" id="server-pill-discover" onclick="showDiscoverView()" title="Discover Servers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                </div>
+            </div>
+            <!-- Sidebar -->
+            <div id="sidebar">
+                <div id="sidebar-header">
+                    <span class="brand-small">nyxie</span>
+                </div>
+                <div id="sidebar-nav">
+                    <div class="nav-item active" id="nav-home" onclick="navigateTo('home')">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="m21.743 12.331-9-10c-.379-.422-1.107-.422-1.486 0l-9 10a.998.998 0 0 0-.17 1.076c.16.361.518.593.913.593h2v7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4h4v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-7h2a.998.998 0 0 0 .743-1.669z"/></svg>
+                        <span>Home</span>
+                    </div>
+                    <div class="nav-item" id="nav-friends" onclick="navigateTo('friends')">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 11h7v2h-7zm1 4h6v2h-6zm-2-8h8v2h-8zM4 19h10v-1c0-2.757-2.243-5-5-5H7c-2.757 0-5 2.243-5 5v1h2zm4-7c1.995 0 3.5-1.505 3.5-3.5S9.995 5 8 5 4.5 6.505 4.5 8.5 6.005 12 8 12z"/></svg>
+                        <span>Friends</span>
+                        <span class="badge" id="nav-friends-badge" style="display:none;background:#ed4245;color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:auto;"></span>
+                    </div>
+                    <div class="nav-item" id="nav-marketplace" onclick="navigateTo('marketplace')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z"/><path d="M9 21V13h6v8"/></svg>
+                        <span>Marketplace</span>
+                    </div>
+                    <div class="nav-item" id="nav-wallet" onclick="navigateTo('wallet')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+                        <span>Wallet</span>
+                    </div>
+                    <!-- Hidden by default; shown by dashboard.js only when
+                         currentUser.role === 'ADMIN' (cosmetic — the real
+                         gate is server-side requireAdmin). -->
+                    <div class="nav-item" id="nav-admin" onclick="navigateTo('admin')" style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+                        <span>Admin</span>
+                    </div>
+                </div>
+                <div id="conv-header">
+                    <span>Conversations</span>
+                    <button class="conv-add" onclick="showNewGroupModal()" title="New group chat">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
+                    <button class="conv-add" onclick="showNewDmModal()" title="New conversation">+</button>
+                </div>
+                <div id="search-wrap">
+                    <div id="search-inner">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="search-input" placeholder="Find a conversation" oninput="filterSidebar(this.value)" />
+                    </div>
+                </div>
+                <div id="multi-select-bar">
+                    <span id="msb-count">0 selected</span>
+                    <button class="msb-btn msb-delete" id="msb-delete-btn" onclick="deleteSelectedChats()" disabled>Delete</button>
+                    <button class="msb-btn msb-cancel" onclick="toggleSelectMode()">Cancel</button>
+                </div>
+                <div id="dm-section">
+                    <div id="dm-list">
+                        <div class="dm-empty">No conversations yet</div>
+                    </div>
+                </div>
+                <!-- Shown instead of #conv-header/#search-wrap/#dm-section while a server is active -->
+                <div id="server-panel" class="hidden">
+                    <div id="server-panel-header">
+                        <button id="server-back-btn" onclick="showDMView()" title="Back to Direct Messages">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <span id="server-panel-name">Server</span>
+                        <button id="server-settings-btn" onclick="showServerSettingsModal()" title="Server settings">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                    <div id="channel-list-header">
+                        <span>Text Channels</span>
+                        <button id="channel-add-btn" onclick="showCreateChannelModal()" title="Create channel">+</button>
+                    </div>
+                    <div id="channel-list"></div>
+                </div>
+                <div id="user-panel" role="button" tabindex="0" aria-label="Open your profile" onclick="toggleProfilePopout(event)" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleProfilePopout(event); }">
+                    <div id="up-avatar-wrap">
+                        <div class="avatar-decoration avatar-decoration-compact" id="user-panel-avatar-decoration" aria-hidden="true"></div>
+                        <div id="up-avatar">U</div>
+                        <div id="up-status-pip" class="pip-online"></div>
+                    </div>
+                    <div id="up-info">
+                        <div id="up-name">Loading…</div>
+                        <div id="up-tag">@username</div>
+                    </div>
+                    <button class="up-btn" onclick="event.stopPropagation(); openUserSettingsModal()" title="Settings">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main -->
+            <div id="main">
+                <!-- Friends Panel -->
+                <div id="friends-panel" style="display:none;">
+                    <div id="friends-header">
+                        <button class="fh-icon-btn fh-hamburger" onclick="navigateTo('home')" title="Back to chats">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
+                        <h2>Friends</h2>
+                        <button class="fh-icon-btn" onclick="toggleFriendsSearch()" title="Search friends">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                        <button class="fh-icon-btn" onclick="focusAddFriend()" title="Add friend">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                        </button>
+                        <button class="fh-icon-btn fh-desktop-only" onclick="loadFriendsData().then(renderFriendsList)" title="Refresh">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        </button>
+                    </div>
+                    <div id="friends-search-wrap" style="display:none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="friends-search-input" placeholder="Search friends" oninput="filterFriendsList(this.value)" autocomplete="off" />
+                    </div>
+                    <div class="friends-tab-bar">
+                        <button class="ftab" id="ftab-online" onclick="switchFriendsTab('online')">Online</button>
+                        <button class="ftab active" id="ftab-all" onclick="switchFriendsTab('all')">All</button>
+                        <button class="ftab" id="ftab-pending" style="display:none" onclick="switchFriendsTab('pending')">Pending <span id="ftab-pending-count"></span></button>
+                        <button class="ftab" id="ftab-blocked" onclick="switchFriendsTab('blocked')">Blocked</button>
+                    </div>
+                    <div class="friends-list" id="friends-list"></div>
+                    <div class="add-friend-area">
+                        <label>Add Friend</label>
+                        <div class="add-friend-row">
+                            <input type="text" class="add-friend-input" id="add-friend-input" placeholder="Username or display name…" autocomplete="off" />
+                            <button class="add-friend-btn" onclick="sendFriendRequest()">Send</button>
+                        </div>
+                        <div id="add-friend-results"></div>
+                    </div>
+                </div>
+
+                <!-- Wallet Panel -->
+                <div id="marketplace-panel" style="display:none;">
+                    <!-- Browse sub-view -->
+                    <div id="mp-browse-view" class="mp-view">
+                        <div class="mp-header">
+                            <span class="mp-title">Marketplace</span>
+                            <span class="mp-balance-pill" id="mp-balance-pill">— NX</span>
+                            <button class="icon-btn" title="Sell an item" onclick="mpOpenSell()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <button class="icon-btn" title="My orders" onclick="mpOpenManage()">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                            </button>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-toolbar">
+                            <div class="mp-search-wrap">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="mp-search-input" placeholder="Search listings…" oninput="mpOnSearchInput()" />
+                            </div>
+                            <select class="mp-select" id="mp-category-select" onchange="mpReloadListings()">
+                                <option value="">All</option>
+                                <option value="gaming">Gaming</option>
+                                <option value="digital">Digital</option>
+                                <option value="services">Services</option>
+                                <option value="other">Other</option>
+                            </select>
+                            <select class="mp-select" id="mp-sort-select" onchange="mpReloadListings()">
+                                <option value="newest">Newest</option>
+                                <option value="price_asc">Price: Low → High</option>
+                                <option value="price_desc">Price: High → Low</option>
+                                <option value="rating">Rating</option>
+                                <option value="popular">Popular</option>
+                            </select>
+                        </div>
+                        <div class="mp-body">
+                            <div class="mp-grid" id="mp-listings-grid">
+                                <div class="mp-empty">Loading…</div>
+                            </div>
+                            <div class="mp-pagination" id="mp-pagination" style="display:none;">
+                                <button class="btn-cancel" id="mp-prev-page" onclick="mpChangePage(-1)">Prev</button>
+                                <span id="mp-page-label">Page 1</span>
+                                <button class="btn-cancel" id="mp-next-page" onclick="mpChangePage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Listing detail sub-view -->
+                    <div id="mp-listing-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Listing</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="mp-listing-body"></div>
+                    </div>
+
+                    <!-- Sell / create listing sub-view -->
+                    <div id="mp-sell-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Create Listing</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body">
+                            <form class="mp-form" id="mp-sell-form" onsubmit="return mpSubmitListing(event)">
+                                <div>
+                                    <label>Title</label>
+                                    <input type="text" id="mp-f-title" maxlength="100" placeholder="e.g. Minecraft Account" required />
+                                </div>
+                                <div>
+                                    <label>Category</label>
+                                    <select id="mp-f-category" required>
+                                        <option value="gaming">Gaming</option>
+                                        <option value="digital">Digital</option>
+                                        <option value="services">Services</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>Description</label>
+                                    <textarea id="mp-f-description" maxlength="4000" placeholder="Describe what the buyer is getting…" required></textarea>
+                                </div>
+                                <div class="mp-form-row">
+                                    <div>
+                                        <label>Price (NX)</label>
+                                        <input type="text" inputmode="decimal" id="mp-f-price" placeholder="25" required oninput="mpUpdatePricePreview()" />
+                                        <div class="mp-form-hint" id="mp-f-price-preview">$0.00 USD</div>
+                                    </div>
+                                    <div>
+                                        <label>Stock</label>
+                                        <input type="number" min="1" step="1" id="mp-f-stock" value="1" required />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label>Delivery</label>
+                                    <select id="mp-f-delivery">
+                                        <option value="manual">Manual</option>
+                                        <option value="instant">Instant</option>
+                                    </select>
+                                </div>
+                                <div class="modal-actions" style="justify-content:flex-start;">
+                                    <button type="submit" class="btn-primary" id="mp-sell-submit-btn">Publish Listing</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Manage sub-view: Purchases / Sales / My Listings -->
+                    <div id="mp-manage-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">My Orders</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab active" id="mp-tab-purchases" onclick="mpSwitchManageTab('purchases')">Purchases</button>
+                            <button class="mp-tab" id="mp-tab-sales" onclick="mpSwitchManageTab('sales')">Sales</button>
+                            <button class="mp-tab" id="mp-tab-listings" onclick="mpSwitchManageTab('listings')">My Listings</button>
+                        </div>
+                        <div class="mp-body" id="mp-manage-body">
+                            <div class="mp-empty">Loading…</div>
+                        </div>
+                    </div>
+
+                    <!-- Order detail sub-view -->
+                    <div id="mp-order-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToManage()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Order</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="mp-order-body"></div>
+                    </div>
+
+                    <!-- Vendor profile sub-view -->
+                    <div id="mp-vendor-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="mpBackToBrowse()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Vendor</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="mp-vendor-body"></div>
+                    </div>
+                </div>
+
+                <!-- Admin Panel (marketplace dispute review — admin.js).
+                     Reuses the .mp-view/.mp-header/.mp-body/.mp-tabs/etc.
+                     classes from marketplace.css (those selectors are
+                     scoped to #view-app generally, not #marketplace-panel
+                     specifically), plus a small admin.css for the extra
+                     dispute-status colors marketplace.css doesn't have. -->
+                <div id="admin-panel" style="display:none;">
+                    <!-- Disputes list sub-view -->
+                    <div id="admin-disputes-view" class="mp-view">
+                        <div class="mp-header">
+                            <span class="mp-title">Admin</span>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab admin-tab-btn active" data-tab="disputes" onclick="adminSwitchTab('disputes')">Marketplace Disputes</button>
+                            <button class="mp-tab admin-tab-btn" data-tab="badges" onclick="adminSwitchTab('badges')">Badges</button>
+                            <button class="mp-tab admin-tab-btn" data-tab="wallet" onclick="adminSwitchTab('wallet')">Wallet</button>
+                        </div>
+                        <div class="mp-toolbar">
+                            <select class="mp-select" id="admin-status-select" onchange="adminReloadDisputes()">
+                                <option value="open">Open</option>
+                                <option value="investigating">Investigating</option>
+                                <option value="resolved_buyer">Resolved (buyer)</option>
+                                <option value="resolved_seller">Resolved (seller)</option>
+                                <option value="closed">Closed</option>
+                                <option value="">All statuses</option>
+                            </select>
+                        </div>
+                        <div class="mp-body">
+                            <div id="admin-disputes-list">
+                                <div class="mp-empty">Loading…</div>
+                            </div>
+                            <div class="mp-pagination" id="admin-pagination" style="display:none;">
+                                <button class="btn-cancel" id="admin-prev-page" onclick="adminChangePage(-1)">Prev</button>
+                                <span id="admin-page-label">Page 1</span>
+                                <button class="btn-cancel" id="admin-next-page" onclick="adminChangePage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dispute detail / resolve sub-view -->
+                    <div id="admin-dispute-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="adminBackToList()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Dispute</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="admin-dispute-body"></div>
+                    </div>
+
+                    <!-- Badges: find a user, manage their badges (badge-admin UI in admin.js;
+                         every action is re-authorised server-side by /api/admin/badges). -->
+                    <div id="admin-badges-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <span class="mp-title">Admin</span>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab admin-tab-btn" data-tab="disputes" onclick="adminSwitchTab('disputes')">Marketplace Disputes</button>
+                            <button class="mp-tab admin-tab-btn active" data-tab="badges" onclick="adminSwitchTab('badges')">Badges</button>
+                            <button class="mp-tab admin-tab-btn" data-tab="wallet" onclick="adminSwitchTab('wallet')">Wallet</button>
+                        </div>
+                        <div class="mp-toolbar">
+                            <div class="mp-search-wrap">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="admin-badge-search" placeholder="Search users by name or ID…" oninput="adminBadgeSearchInput()" autocomplete="off" />
+                            </div>
+                        </div>
+                        <div class="mp-body">
+                            <div id="admin-badge-results"></div>
+                            <div class="admin-section-label">Badge types</div>
+                            <div id="admin-badge-types"></div>
+                            <div class="admin-section-label">Recent changes</div>
+                            <div id="admin-badge-log"></div>
+                        </div>
+                    </div>
+
+                    <!-- One user's badges: current list (remove) + add -->
+                    <div id="admin-badge-user-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <button class="fh-icon-btn" onclick="adminBackToBadges()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span class="mp-title">Manage badges</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="mp-body" id="admin-badge-user-body"></div>
+                    </div>
+
+                    <!-- Wallet: grant funds to a user by username, plus a log of
+                         recent grants (server/routes/adminWallet.js). -->
+                    <div id="admin-wallet-view" class="mp-view" style="display:none;">
+                        <div class="mp-header">
+                            <span class="mp-title">Admin</span>
+                            <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="mp-tabs">
+                            <button class="mp-tab admin-tab-btn" data-tab="disputes" onclick="adminSwitchTab('disputes')">Marketplace Disputes</button>
+                            <button class="mp-tab admin-tab-btn" data-tab="badges" onclick="adminSwitchTab('badges')">Badges</button>
+                            <button class="mp-tab admin-tab-btn active" data-tab="wallet" onclick="adminSwitchTab('wallet')">Wallet</button>
+                        </div>
+                        <div class="mp-body">
+                            <div class="admin-section-label">Grant funds</div>
+                            <form class="mp-form" onsubmit="return adminSubmitGrantFunds(event)">
+                                <div>
+                                    <label for="admin-grant-username">Username</label>
+                                    <input type="text" id="admin-grant-username" placeholder="username" autocomplete="off" required />
+                                </div>
+                                <div>
+                                    <label for="admin-grant-amount">Amount (NX)</label>
+                                    <input type="number" id="admin-grant-amount" placeholder="0" min="0.01" step="0.01" required />
+                                </div>
+                                <div>
+                                    <label for="admin-grant-note">Note (optional)</label>
+                                    <input type="text" id="admin-grant-note" placeholder="Reason for this grant" maxlength="280" autocomplete="off" />
+                                </div>
+                                <div class="modal-actions" style="justify-content:flex-start;">
+                                    <button type="submit" class="btn-primary" id="admin-grant-submit-btn">Grant funds</button>
+                                </div>
+                            </form>
+                            <div class="admin-section-label">Recent grants</div>
+                            <div id="admin-wallet-log"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wallet Panel -->
+                <div id="wallet-panel" style="display:none;">
+                    <!-- Home sub-view -->
+                    <div id="wallet-home-view">
+                        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+                            <span>Wallet</span>
+                            <div style="display:flex;gap:8px;">
+                                <button class="icon-btn" onclick="openWalletPinModal()" title="PIN settings">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                </button>
+                                <button class="icon-btn" onclick="navigateTo('home')" title="Close">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="wallet-body">
+                            <div class="wallet-balance-card">
+                                <div class="wbc-label" id="wallet-status-label">NX Balance</div>
+                                <div class="wbc-amount" id="wallet-balance-amount">—</div>
+                                <div class="wbc-sub">Closed-loop virtual currency</div>
+                            </div>
+                            <div class="wallet-actions-row">
+                                <button class="wallet-action-btn" onclick="openSendModal()">
+                                    <span class="wab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></span><span>Send</span>
+                                </button>
+                                <button class="wallet-action-btn" onclick="openReceiveModal()">
+                                    <span class="wab-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span><span>Receive</span>
+                                </button>
+                                <button class="wallet-action-btn" onclick="openScanModal()">
+                                    <span class="wab-icon">▢</span><span>Scan</span>
+                                </button>
+                                <button class="wallet-action-btn" onclick="showWalletHistory()">
+                                    <span class="wab-icon">≡</span><span>Activity</span>
+                                </button>
+                            </div>
+                            <div class="wallet-section-header">
+                                <span>Recent Activity</span>
+                                <a href="#" onclick="showWalletHistory();return false;">See all</a>
+                            </div>
+                            <div id="wallet-recent-list" class="wallet-tx-list">
+                                <div class="wallet-empty">Loading…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History sub-view -->
+                    <div id="wallet-history-view" style="display:none;">
+                        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+                            <button class="fh-icon-btn" onclick="showWalletHome()" title="Back">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            </button>
+                            <span>Transactions</span>
+                            <span style="width:32px;"></span>
+                        </div>
+                        <div class="wallet-filter-tabs">
+                            <button class="wtab active" data-filter="all" onclick="setWalletFilter('all')">All</button>
+                            <button class="wtab" data-filter="sent" onclick="setWalletFilter('sent')">Sent</button>
+                            <button class="wtab" data-filter="received" onclick="setWalletFilter('received')">Received</button>
+                        </div>
+                        <div id="wallet-full-list" class="wallet-tx-list">
+                            <div class="wallet-empty">Loading…</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications (mobile bottom-nav tab) -->
+                <div id="notifications-panel" style="display:none;">
+                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+                        <span>Notifications</span>
+                        <button class="fh-icon-btn" onclick="closeNotifications()" title="Back to chats" style="margin:0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="panel-body">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                        <span>No notifications yet.</span>
+                    </div>
+                </div>
+
+                <!-- Server Discovery -->
+                <div id="discover-panel" style="display:none;">
+                    <div id="discover-scroll">
+                        <div id="discover-hero">
+                            <button class="fh-icon-btn discover-close-btn" onclick="showDMView()" title="Back to chats">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                            <div id="discover-hero-text">
+                                <h1>FIND YOUR COMMUNITY<br/>ON NYXIE</h1>
+                                <p>From gaming, music, learning, development, and more — there's a place for you.</p>
+                            </div>
+                            <div id="discover-search-wrap">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="discover-search-input" placeholder="Search servers" autocomplete="off" oninput="onDiscoverSearchInput(this.value)" />
+                            </div>
+                        </div>
+                        <div id="discover-category-tabs"></div>
+                        <div id="discover-body">
+                            <div id="discover-section-title">Featured Servers</div>
+                            <div id="discover-grid"></div>
+                            <div id="discover-status-area"></div>
+                            <button id="discover-load-more" style="display:none" onclick="loadMoreDiscoverResults()">Load more</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Welcome -->
+                <div id="welcome-view">
+                    <div class="welcome-card">
+                        <div class="welcome-logo">
+                            <pre>
+__    __  __      __  __    __  ______  ________
+|  \  |  \|  \    /  \|  \  |  \|      \|        \
+| ##\ | ## \##\  /  ##| ##  | ## \######| ########
+ | ###\| ##  \##\/  ##  \##\/  ##  | ##  | ##__
+| ####\ ##   \##  ##    >##  ##   | ##  | ##  \
+| ##\## ##    \####    /  ####\   | ##  | #####
+| ## \####    | ##    |  ## \##\ _| ##_ | ##_____
+| ##  \###    | ##    | ##  | ##|   ## \| ##     \
+ \##   \##     \##     \##   \## \###### \########
+                            </pre>
+                        </div>
+                        <div class="wv-title">Welcome to nyxie</div>
+                        <div class="wv-sub">Select a conversation from the sidebar or start a new one.</div>
+                        <button class="wv-new-btn" onclick="showNewDmModal()">New Message</button>
+                    </div>
+                </div>
+
+                <!-- Chat View -->
+                <div id="chat-view" style="display:none;">
+                  <div id="chat-body">
+                    <div id="chat-header">
+                        <button class="ch-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&lt;</button>
+                        <div class="ch-avatar-wrap">
+                            <div class="ch-avatar" id="ch-avatar">U</div>
+                            <div class="ch-status-dot pip-offline" id="ch-status-dot"></div>
+                        </div>
+                        <div class="ch-info" onclick="openRoomInfo(event)" style="cursor:pointer">
+                            <div class="ch-room-name">
+                                <span id="chat-room-name-text">@zuko</span>
+                            </div>
+                            <div id="chat-status-text">offline</div>
+                        </div>
+                        <div class="chat-actions">
+                            <button class="ch-action-btn" onclick="startCall()" title="Voice call">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M20 10.999h2C22 5.869 18.127 2 12.99 2v2C17.052 4 20 6.943 20 10.999z"/>
+                                    <path d="M13 8c2.103 0 3 .897 3 3h2c0-3.225-1.775-5-5-5v2zm3.422 5.443a1.001 1.001 0 0 0-1.391.043l-2.393 2.461c-.576-.11-1.734-.471-2.926-1.66-1.192-1.193-1.553-2.354-1.66-2.926l2.459-2.394a1 1 0 0 0 .043-1.391L6.859 3.513a1 1 0 0 0-1.391-.087l-2.17 1.861a1 1 0 0 0-.29.649c-.015.25-.301 6.172 4.291 10.766C11.305 20.707 16.323 21 17.705 21c.202 0 .326-.006.359-.008a.992.992 0 0 0 .648-.291l1.86-2.171a1 1 0 0 0-.086-1.391l-4.064-3.696z"/>
+                                </svg>
+                            </button>
+                            <button class="ch-action-btn" onclick="searchInChat()" title="Search in conversation">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M10 18a7.952 7.952 0 0 0 4.897-1.688l4.396 4.396 1.414-1.414-4.396-4.396A7.952 7.952 0 0 0 18 10c0-4.411-3.589-8-8-8s-8 3.589-8 8 3.589 8 8 8zm0-14c3.309 0 6 2.691 6 6s-2.691 6-6 6-6-2.691-6-6 2.691-6 6-6z"/>
+                                </svg>
+                            </button>
+                            <button class="ch-action-btn" id="member-list-toggle-btn" onclick="toggleMemberList()" title="Show member list" style="display:none">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </button>
+                            <button class="ch-action-btn danger" onclick="deleteCurrentChat()" title="Delete conversation">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="chat-search-bar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="chat-search-input" placeholder="Search messages…" oninput="filterChatMessages(this.value)" />
+                        <span id="chat-search-count">0 / 0</span>
+                        <button class="cs-nav-btn" id="cs-prev-btn" title="Previous" onclick="chatSearchNav(-1)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button class="cs-nav-btn" id="cs-next-btn" title="Next" onclick="chatSearchNav(1)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <button class="cs-close-btn" title="Close" onclick="closeChatSearch()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+
+                    <div id="messages-container"></div>
+                    <div id="typing-indicator"></div>
+                    <div id="input-area">
+                        <div id="reply-preview-bar">
+                            <svg class="rpb-icon" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                            <div class="rpb-body">
+                                <span class="rpb-author" id="rpb-author"></span>
+                                <span class="rpb-text" id="rpb-text"></span>
+                            </div>
+                            <button class="rpb-close" type="button" aria-label="Cancel reply" title="Cancel reply" onclick="cancelReply()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div id="input-box">
+                            <button class="file-upload-btn" onclick="document.getElementById('file-input').click()" title="Attach file">+</button>
+                            <input type="file" id="file-input" multiple onchange="handleFileUpload(this.files)" style="display:none" />
+                            <input type="text" id="msg-input" placeholder="Message @username" autocomplete="off" />
+                            <div class="emoji-btn" id="emoji-btn" onclick="toggleEmojiPicker()">
+                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                                <div class="emoji-picker" id="emoji-picker">
+                                    <div class="emoji-picker-header">
+                                        <span class="ep-search-icon">
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                        </span>
+                                        <input type="text" id="ep-search" placeholder="Search emoji…" autocomplete="off" />
+                                        <button class="ep-clear-btn" id="ep-clear-btn" onclick="clearEmojiSearch()">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                        </button>
+                                    </div>
+                                    <div class="emoji-picker-results" id="ep-results">
+                                        <div class="ep-empty">Loading emojis…</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="shortcode-suggest"></div>
+                            <div id="mention-suggest"></div>
+                            <button id="send-btn" title="Send">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                  </div>
+                  <!-- Member list — only shown when the open room is a server
+                       channel (see toggleMemberList()/openChannel() in
+                       dashboard.js); DMs and group chats have no server-wide
+                       roster to show here. -->
+                  <div id="member-list-panel" style="display:none">
+                      <div id="member-list-header">
+                          <span id="member-list-count">0 Members</span>
+                      </div>
+                      <div id="member-list"></div>
+                  </div>
+                </div>
+            </div>
+
+            <!-- Mobile bottom tab bar (replaces sidebar nav-items on small screens) -->
+            <div id="mobile-bottom-nav">
+                <button class="mbn-item" id="mbn-friends" onclick="showMobilePanel('friends')">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 11h7v2h-7zm1 4h6v2h-6zm-2-8h8v2h-8zM4 19h10v-1c0-2.757-2.243-5-5-5H7c-2.757 0-5 2.243-5 5v1h2zm4-7c1.995 0 3.5-1.505 3.5-3.5S9.995 5 8 5 4.5 6.505 4.5 8.5 6.005 12 8 12z"/></svg>
+                    <span>Friends</span>
+                </button>
+                <button class="mbn-item" id="mbn-notifications" onclick="showMobilePanel('notifications')">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6.5v-4.5a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v1.16A7 7 0 0 0 5 11.5V16l-1.71 1.71A1 1 0 0 0 4 19.41V20h16v-.59a1 1 0 0 0-.29-.7z"/></svg>
+                    <span>Notifications</span>
+                </button>
+                <button class="mbn-item" id="mbn-wallet" onclick="showMobilePanel('wallet')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+                    <span>Wallet</span>
+                </button>
+                <button class="mbn-item" id="mbn-settings" onclick="openUserSettingsModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>User Settings</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Profile Popout (self) -->
+        <div id="profile-popout" class="profile-surface" role="dialog" aria-label="Your profile">
+            <div class="pp-banner" id="pp-banner"></div>
+            <div class="pp-avatar-wrap profile-effect-host">
+                <div class="profile-effect" aria-hidden="true">
+                    <span class="profile-effect-spark spark-1"></span>
+                    <span class="profile-effect-spark spark-2"></span>
+                    <span class="profile-effect-spark spark-3"></span>
+                    <span class="profile-effect-spark spark-4"></span>
+                    <span class="profile-effect-spark spark-5"></span>
+                    <span class="profile-effect-spark spark-6"></span>
+                </div>
+                <div class="profile-effect-ring" aria-hidden="true"></div>
+                <div class="avatar-decoration" id="pp-avatar-decoration" aria-hidden="true"></div>
+                <div class="pp-avatar" id="pp-avatar-letter">U</div>
+                <div class="pp-avatar-status pip-online" id="pp-avatar-status" aria-hidden="true"></div>
+            </div>
+            <div class="pp-body">
+                <div class="pp-name" id="pp-name"></div>
+                <div class="pp-meta-row">
+                    <span class="pp-tag" id="pp-tag"></span>
+                    <span class="pp-pronouns" id="pp-pronouns" style="display:none"></span>
+                </div>
+                <div class="pp-badges" id="pp-badges" style="display:none"></div>
+                <div class="pp-bio" id="pp-bio" style="display:none"></div>
+                <div class="pp-divider"></div>
+                <button type="button" class="pp-menu-item" onclick="openEditProfileModal()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                    </span>
+                    <span>Edit Profile</span>
+                </button>
+                <button type="button" class="pp-menu-item" id="pp-status-menu-row" onclick="toggleStatusMenu()" aria-haspopup="true" aria-expanded="false" aria-controls="pp-status-submenu">
+                    <span class="pp-menu-icon"><span class="pp-dot" id="pp-cur-dot"></span></span>
+                    <span id="pp-cur-label">Online</span>
+                    <span class="pp-menu-arrow">›</span>
+                </button>
+                <div id="pp-status-submenu" style="display:none" role="menu" aria-label="Set status">
+                    <button class="pp-sub-btn" data-status="online" onclick="setStatus('online')" role="menuitemradio" aria-checked="true">
+                        <span class="pp-dot pip-online"></span>Online
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="pp-sub-btn" data-status="idle" onclick="setStatus('idle')" role="menuitemradio" aria-checked="false">
+                        <span class="pp-dot pip-idle"></span>Idle
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="pp-sub-btn" data-status="dnd" onclick="setStatus('dnd')" role="menuitemradio" aria-checked="false">
+                        <span class="pp-dot pip-dnd"></span>Do Not Disturb
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="pp-sub-btn" data-status="invisible" onclick="setStatus('invisible')" role="menuitemradio" aria-checked="false">
+                        <span class="pp-dot pip-offline"></span>Invisible
+                        <svg class="pp-sub-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                </div>
+                <button type="button" class="pp-menu-item" onclick="copyUserId()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                    </span>
+                    <span>Copy User ID</span>
+                </button>
+                <div class="pp-divider"></div>
+                <button type="button" class="pp-menu-item danger" onclick="logout()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                    </span>
+                    <span>Log Out</span>
+                </button>
+            </div>
+        </div>
+
+
+        <!-- Edit Profile Modal -->
+        <div class="overlay" id="edit-profile-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Edit Profile</h2>
+                <p>Update your information.</p>
+                <form id="editProfileForm" onsubmit="return false;">
+                    <label>Display Name</label>
+                    <input type="text" id="edit-displayname" placeholder="Display name" />
+                    <label>Pronouns</label>
+                    <input type="text" id="edit-pronouns" placeholder="e.g. she/her (optional)" maxlength="40" />
+                    <label>Username</label>
+                    <input type="text" id="edit-username" placeholder="Username" />
+                    <label>Bio</label>
+                    <textarea id="edit-bio" placeholder="Tell something about yourself…" rows="3"></textarea>
+                    <div class="avatar-preview">
+                        <img id="edit-avatar-preview" src="" alt="Avatar" />
+                        <button type="button" class="edit-profile-btn" onclick="document.getElementById('edit-avatar-input').click()">Change Avatar</button>
+                        <input type="file" id="edit-avatar-input" accept="image/*" style="display:none" onchange="openAvatarCropper(this.files[0])" />
+                    </div>
+                    <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">Change Password (optional)</p>
+                        <label>Current Password</label>
+                        <input type="password" id="edit-current-password" placeholder="Current password" autocomplete="off" />
+                        <label>New Password</label>
+                        <input type="password" id="edit-new-password" placeholder="New password (min 8 chars)" autocomplete="off" />
+                        <label>Confirm New Password</label>
+                        <input type="password" id="edit-confirm-password" placeholder="Confirm new password" autocomplete="off" />
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" onclick="closeEditProfileModal()">Cancel</button>
+                        <button type="submit" class="btn-primary" id="edit-profile-save-btn">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Send Money Modal (multi-step) -->
+        <div class="overlay" id="send-money-modal" style="display:none" onclick="if(event.target===this)closeSendModal()">
+            <div class="modal wallet-modal">
+                <!-- Step 1: recipient / amount / note -->
+                <div class="wm-step" id="wm-step-form">
+                    <h2>Send NX</h2>
+                    <p>Send money to another Nyxie user.</p>
+                    <label>Recipient</label>
+                    <input type="text" id="wm-recipient" placeholder="@username or NX-XXXX-XXXX-XXXX" autocomplete="off" />
+                    <label>Amount (NX)</label>
+                    <input type="text" inputmode="decimal" id="wm-amount" placeholder="0.00" autocomplete="off" />
+                    <label>Note (optional)</label>
+                    <input type="text" id="wm-note" placeholder="What's this for?" autocomplete="off" maxlength="200" />
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" onclick="closeSendModal()">Cancel</button>
+                        <button type="button" class="btn-primary" id="wm-continue-btn" onclick="sendModalContinue()">Continue</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: confirm -->
+                <div class="wm-step" id="wm-step-confirm" style="display:none">
+                    <h2>Confirm Payment</h2>
+                    <div class="wm-confirm-amount" id="wm-confirm-amount">0.00 NX</div>
+                    <div class="wm-confirm-row"><span>To</span><span id="wm-confirm-recipient">—</span></div>
+                    <div class="wm-confirm-row"><span>Note</span><span id="wm-confirm-note">—</span></div>
+                    <div class="wm-confirm-row"><span>Fee</span><span>0 NX</span></div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" onclick="sendModalBack('form')">Back</button>
+                        <button type="button" class="btn-primary" onclick="sendModalGoToPin()">Continue</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: PIN -->
+                <div class="wm-step" id="wm-step-pin" style="display:none">
+                    <h2>Enter Wallet PIN</h2>
+                    <p>Confirm this payment with your wallet PIN.</p>
+                    <input type="password" inputmode="numeric" maxlength="6" id="wm-pin" placeholder="••••" autocomplete="off" class="wm-pin-input" />
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" onclick="sendModalBack('confirm')">Back</button>
+                        <button type="button" class="btn-primary" id="wm-send-btn" onclick="submitSend()">Send</button>
+                    </div>
+                </div>
+
+                <!-- Step 4: sending -->
+                <div class="wm-step" id="wm-step-sending" style="display:none">
+                    <div class="wm-sending-spinner"></div>
+                    <p style="text-align:center;">Sending…</p>
+                </div>
+
+                <!-- Step 5: success -->
+                <div class="wm-step" id="wm-step-success" style="display:none">
+                    <div class="wm-success-check"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    <h2 style="text-align:center;">Payment Sent</h2>
+                    <div class="wm-confirm-amount" id="wm-success-amount">0.00 NX</div>
+                    <div class="wm-confirm-row"><span>Reference</span><span id="wm-success-ref">—</span></div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-primary" style="width:100%" onclick="closeSendModal()">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scan Modal -->
+        <div class="overlay" id="scan-modal" style="display:none" onclick="if(event.target===this)closeScanModal()">
+            <div class="modal wallet-modal">
+                <h2>Scan to pay</h2>
+                <div class="wm-scan-view" id="wm-scan-view">
+                    <video id="wm-scan-video" playsinline muted></video>
+                    <div class="wm-scan-frame"></div>
+                </div>
+                <p class="wm-scan-status" id="wm-scan-status">Point your camera at a Nyxie wallet QR code.</p>
+                <label>Or enter a wallet ID</label>
+                <input type="text" id="wm-scan-manual" placeholder="NX-XXXX-XXXX-XXXX" autocomplete="off" />
+                <input type="file" id="wm-scan-file" accept="image/*" style="display:none" onchange="scanFromImage(this)" />
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('wm-scan-file').click()">Upload image</button>
+                    <button type="button" class="btn-cancel" onclick="scanUseManual()">Use ID</button>
+                    <button type="button" class="btn-primary" onclick="closeScanModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Receive Modal -->
+        <div class="overlay" id="receive-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal wallet-modal">
+                <h2>Receive NX</h2>
+                <div class="wm-receive-qr-wrap">
+                    <canvas id="wm-qr-canvas"></canvas>
+                </div>
+                <div class="wm-receive-username" id="wm-receive-username">@username</div>
+                <div class="wm-receive-walletid" id="wm-receive-walletid">NX-XXXX-XXXX-XXXX</div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="copyWalletId()">Copy Wallet ID</button>
+                    <button type="button" class="btn-primary" onclick="shareWalletId()">Share</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PIN Setup / Change Modal -->
+        <div class="overlay" id="wallet-pin-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal wallet-modal">
+                <h2 id="wpm-title">Set Wallet PIN</h2>
+                <p id="wpm-sub">Create a 4–6 digit PIN to protect your wallet.</p>
+                <div id="wpm-current-wrap" style="display:none">
+                    <label>Current PIN</label>
+                    <input type="password" inputmode="numeric" maxlength="6" id="wpm-current-pin" class="wm-pin-input" autocomplete="off" />
+                </div>
+                <label id="wpm-new-label">PIN</label>
+                <input type="password" inputmode="numeric" maxlength="6" id="wpm-new-pin" class="wm-pin-input" autocomplete="off" />
+                <label>Confirm PIN</label>
+                <input type="password" inputmode="numeric" maxlength="6" id="wpm-confirm-pin" class="wm-pin-input" autocomplete="off" />
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('wallet-pin-modal').style.display='none'">Cancel</button>
+                    <button type="button" class="btn-primary" id="wpm-save-btn" onclick="submitWalletPin()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace: Purchase confirmation modal -->
+        <div class="overlay" id="mp-purchase-modal" style="display:none" onclick="if(event.target===this)mpCloseModal('mp-purchase-modal')">
+            <div class="modal wallet-modal">
+                <h2>Confirm Purchase</h2>
+                <p id="mp-purchase-title">—</p>
+                <div class="wm-confirm-amount" id="mp-purchase-amount">0.00 NX</div>
+                <div class="wm-confirm-row"><span>Quantity</span><span id="mp-purchase-qty">1</span></div>
+                <div class="wm-confirm-row"><span>You will pay</span><span id="mp-purchase-total">0.00 NX</span></div>
+                <div class="mp-form-hint" id="mp-purchase-error" style="color:var(--danger);"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="mpCloseModal('mp-purchase-modal')">Cancel</button>
+                    <button type="button" class="btn-primary" id="mp-purchase-confirm-btn" onclick="mpConfirmPurchase()">Confirm Purchase</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace: Leave a review modal -->
+        <div class="overlay" id="mp-review-modal" style="display:none" onclick="if(event.target===this)mpCloseModal('mp-review-modal')">
+            <div class="modal wallet-modal">
+                <h2>Leave a Review</h2>
+                <div class="mp-star-input" id="mp-review-stars">
+                    <span data-star="1">★</span><span data-star="2">★</span><span data-star="3">★</span><span data-star="4">★</span><span data-star="5">★</span>
+                </div>
+                <label>Comment (optional)</label>
+                <textarea id="mp-review-comment" maxlength="1000" placeholder="How was it?"></textarea>
+                <div class="mp-form-hint" id="mp-review-error" style="color:var(--danger);"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="mpCloseModal('mp-review-modal')">Cancel</button>
+                    <button type="button" class="btn-primary" id="mp-review-submit-btn" onclick="mpSubmitReview()">Submit Review</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace: Open dispute modal -->
+        <div class="overlay" id="mp-dispute-modal" style="display:none" onclick="if(event.target===this)mpCloseModal('mp-dispute-modal')">
+            <div class="modal wallet-modal">
+                <h2>Open a Dispute</h2>
+                <label>Reason</label>
+                <select id="mp-dispute-reason">
+                    <option value="item_not_received">Item not received</option>
+                    <option value="item_not_as_described">Item not as described</option>
+                    <option value="seller_not_responding">Seller not responding</option>
+                    <option value="buyer_issue">Buyer issue</option>
+                    <option value="other">Other</option>
+                </select>
+                <label>Description</label>
+                <textarea id="mp-dispute-description" maxlength="2000" placeholder="Explain what happened…"></textarea>
+                <div class="mp-form-hint" id="mp-dispute-error" style="color:var(--danger);"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="mpCloseModal('mp-dispute-modal')">Cancel</button>
+                    <button type="button" class="btn-primary" id="mp-dispute-submit-btn" onclick="mpSubmitDispute()">Submit Dispute</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction Detail Modal -->
+        <div class="overlay" id="wallet-tx-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal wallet-modal">
+                <h2>Transaction</h2>
+                <div class="wm-confirm-amount" id="wtx-amount">0.00 NX</div>
+                <div class="wm-confirm-row"><span>Status</span><span id="wtx-status">—</span></div>
+                <div class="wm-confirm-row"><span>With</span><span id="wtx-counterparty">—</span></div>
+                <div class="wm-confirm-row"><span>Note</span><span id="wtx-note">—</span></div>
+                <div class="wm-confirm-row"><span>Reference</span><span id="wtx-reference">—</span></div>
+                <div class="wm-confirm-row"><span>Date</span><span id="wtx-date">—</span></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-primary" style="width:100%" onclick="document.getElementById('wallet-tx-modal').style.display='none'">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reaction Picker Popup -->
+        <div class="reaction-picker-popup" id="reaction-picker-popup">
+            <button class="rp-emoji-btn" onclick="quickReact('👍')">👍</button>
+            <button class="rp-emoji-btn" onclick="quickReact('❤️')">❤️</button>
+            <button class="rp-emoji-btn" onclick="quickReact('😂')">😂</button>
+            <button class="rp-emoji-btn" onclick="quickReact('😮')">😮</button>
+            <button class="rp-emoji-btn" onclick="quickReact('😢')">😢</button>
+            <button class="rp-emoji-btn" onclick="quickReact('🙏')">🙏</button>
+            <button class="rp-more-btn" title="More emoji" onclick="openFullReactionPicker()">
+                <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="15" y2="9"/></svg>
+            </button>
+        </div>
+
+        <!-- More Menu Popup -->
+        <div class="more-menu-popup" id="more-menu-popup"></div>
+
+        <!-- Generic confirm popover -->
+        <div class="confirm-popup" id="confirm-popup"></div>
+
+        <!-- Full emoji picker for reactions -->
+        <div class="emoji-picker reaction-full-picker" id="reaction-emoji-picker">
+            <div class="emoji-picker-header">
+                <span class="ep-search-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </span>
+                <input type="text" id="rep-search" placeholder="Search emoji…" autocomplete="off" oninput="renderReactionEmojiPicker(this.value)" />
+                <button class="ep-clear-btn" id="rep-clear-btn" onclick="clearReactionEmojiSearch()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="emoji-picker-results" id="rep-results">
+                <div class="ep-empty">Loading emojis…</div>
+            </div>
+        </div>
+
+        <!-- User Profile Popout (others) -->
+        <div id="user-profile-popout" class="profile-surface" role="dialog" aria-label="User profile">
+            <div class="up-banner" id="up-banner"></div>
+            <div class="up-profile-actions" aria-label="Profile actions">
+                <button type="button" class="up-friend-btn" id="up-friend-btn" onclick="profileFriendAction(event)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                </button>
+                <button type="button" class="up-more-btn" id="up-more-btn" onclick="toggleProfileMoreMenu(event)" aria-label="More profile actions" aria-expanded="false" title="More">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                </button>
+                <div class="up-more-menu" id="up-more-menu" role="menu">
+                    <button type="button" class="pp-menu-item" onclick="copyProfileUserId(); closeProfileMoreMenu();" role="menuitem">
+                        <span class="pp-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span>Copy User ID</span>
+                    </button>
+                    <div class="up-more-divider"></div>
+                    <button type="button" class="pp-menu-item" id="up-remove-friend-btn" onclick="removeProfileFriend(); closeProfileMoreMenu();" role="menuitem" style="display:none">
+                        <span class="pp-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M16 11h6"/></svg></span><span>Remove Friend</span>
+                    </button>
+                    <button type="button" class="pp-menu-item danger" id="up-block-btn" onclick="toggleProfileBlock(); closeProfileMoreMenu();" role="menuitem">
+                        <span class="pp-menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg></span><span id="up-block-label">Block</span>
+                    </button>
+                </div>
+            </div>
+            <div class="up-avatar-wrap profile-effect-host">
+                <div class="profile-effect" aria-hidden="true">
+                    <span class="profile-effect-spark spark-1"></span>
+                    <span class="profile-effect-spark spark-2"></span>
+                    <span class="profile-effect-spark spark-3"></span>
+                    <span class="profile-effect-spark spark-4"></span>
+                    <span class="profile-effect-spark spark-5"></span>
+                    <span class="profile-effect-spark spark-6"></span>
+                </div>
+                <div class="profile-effect-ring" aria-hidden="true"></div>
+                <div class="avatar-decoration" id="up-avatar-decoration" aria-hidden="true"></div>
+                <div class="up-avatar-large" id="up-avatar-large">?</div>
+                <div class="up-avatar-status pip-offline" id="up-status-pip-display" aria-hidden="true"></div>
+            </div>
+            <div class="up-body">
+                <div class="up-name" id="up-name-display">Name</div>
+                <div class="up-meta-row">
+                    <span class="up-username" id="up-username-display">@username</span>
+                    <span class="up-pronouns" id="up-pronouns-display" style="display:none"></span>
+                </div>
+                <div class="up-badges" id="up-badges-display" style="display:none"></div>
+                <div class="up-bio" id="up-bio-display" style="display:none"></div>
+                <div class="pp-divider"></div>
+                <div class="up-message-box">
+                    <input type="text" id="up-message-input" class="up-message-input" placeholder="Message…" autocomplete="off" maxlength="2000" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessageFromProfile();}" />
+                    <button type="button" class="up-message-send" onclick="sendMessageFromProfile()" aria-label="Send message" title="Send message">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <button type="button" class="pp-menu-item" id="up-manage-badges-btn" style="display:none" onclick="manageBadgesFromProfile()">
+                    <span class="pp-menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="9" r="6"/>
+                            <path d="M8.5 14 7 21l5-3 5 3-1.5-7"/>
+                        </svg>
+                    </span>
+                    <span>Manage Badges</span>
+                </button>
+            </div>
+        </div>
+
+
+        <!-- Context Menu -->
+        <div id="ctx-menu">
+            <div class="ctx-item" id="ctx-open" onclick="ctxOpen()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                Open
+            </div>
+            <div class="ctx-item danger" id="ctx-delete" onclick="ctxDelete()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                Delete
+            </div>
+        </div>
+
+        <!-- New DM Modal -->
+        <div class="overlay" id="new-dm-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>New Message</h2>
+                <p>Search for a user to start a conversation.</p>
+                <label>Username or Display Name</label>
+                <input type="text" id="dm-search-input" placeholder="Start typing…" oninput="searchUsers(this.value)" autocomplete="off" />
+                <div id="dm-search-results" style="margin-top:12px;max-height:220px;overflow-y:auto"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('new-dm-modal').style.display='none'">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Chat Modal -->
+        <div class="overlay" id="delete-chat-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Delete Conversation</h2>
+                <p>This removes the conversation from your view. The other participant can still see it.</p>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('delete-chat-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary btn-danger" onclick="confirmDeleteChat()">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add a Server Modal -->
+        <div class="overlay" id="add-server-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Add a Server</h2>
+                <p>Create your own server, or join one with an invite.</p>
+                <div class="modal-tabs">
+                    <button class="modal-tab active" id="as-tab-create" onclick="switchAddServerTab('create')">Create a Server</button>
+                    <button class="modal-tab" id="as-tab-join" onclick="switchAddServerTab('join')">Join a Server</button>
+                </div>
+                <div id="as-pane-create">
+                    <label>Server Name</label>
+                    <input type="text" id="create-server-name" placeholder="My Awesome Server" autocomplete="off" maxlength="50" />
+                    <label>Description (optional)</label>
+                    <textarea id="create-server-desc" placeholder="What's this server about?" maxlength="300"></textarea>
+                    <label>Category (optional)</label>
+                    <select id="create-server-category">
+                        <option value="">No category</option>
+                    </select>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="create-server-discoverable" style="width:auto;margin:0;" />
+                        <span>Show this server in Discover</span>
+                    </label>
+                    <div class="modal-actions">
+                        <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Cancel</button>
+                        <button class="btn-primary" onclick="submitCreateServer()">Create</button>
+                    </div>
+                </div>
+                <div id="as-pane-join" style="display:none">
+                    <label>Invite Link or Code</label>
+                    <input type="text" id="join-server-code" placeholder="e.g. AbCd1234 or /invite/AbCd1234" autocomplete="off" oninput="onJoinCodeInput(this.value)" />
+                    <div id="join-server-preview"></div>
+                    <div class="modal-actions">
+                        <button class="btn-cancel" onclick="document.getElementById('add-server-modal').style.display='none'">Cancel</button>
+                        <button class="btn-primary" onclick="submitJoinServer()">Join Server</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Channel Modal -->
+        <div class="overlay" id="create-channel-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Create Text Channel</h2>
+                <label>Channel Name</label>
+                <input type="text" id="create-channel-name" placeholder="new-channel" autocomplete="off" maxlength="32" />
+                <label>Topic (optional)</label>
+                <input type="text" id="create-channel-topic" placeholder="What's this channel for?" maxlength="200" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('create-channel-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="submitCreateChannel()">Create Channel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Group Chat Modal -->
+        <div class="overlay" id="new-group-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>New Group Chat</h2>
+                <label>Group Name</label>
+                <input type="text" id="new-group-name" placeholder="Weekend Plans" autocomplete="off" maxlength="50" />
+                <label>Select Friends</label>
+                <div id="new-group-friend-list" class="picker-list"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('new-group-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="submitCreateGroup()">Create Group</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Group Info / Members Modal -->
+        <div class="overlay" id="group-info-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2 id="group-info-title">Group Chat</h2>
+                <div id="group-info-body"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="group-leave-btn" onclick="confirmLeaveGroup()">Leave Group</button>
+                    <button class="btn-primary" onclick="document.getElementById('group-info-modal').style.display='none'">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Settings Modal -->
+        <div class="overlay" id="server-settings-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal modal-wide server-settings-popout" onclick="event.stopPropagation()">
+                <div class="server-settings-header">
+                    <h2 id="ss-server-name">Server Settings</h2>
+                    <button class="server-settings-close" onclick="document.getElementById('server-settings-modal').style.display='none'" aria-label="Close server settings" title="Close">&times;</button>
+                </div>
+                <div class="modal-tabs">
+                    <button class="modal-tab active" id="ss-tab-overview" onclick="switchServerSettingsTab('overview')">Overview</button>
+                    <button class="modal-tab" id="ss-tab-members" onclick="switchServerSettingsTab('members')">Members</button>
+                    <button class="modal-tab" id="ss-tab-invites" onclick="switchServerSettingsTab('invites')">Invites</button>
+                </div>
+                <div id="ss-pane-overview">
+                    <label>Server Name</label>
+                    <input type="text" id="ss-name-input" maxlength="50" />
+                    <label>Description</label>
+                    <textarea id="ss-desc-input" maxlength="300"></textarea>
+                    <label>Category</label>
+                    <select id="ss-category-input">
+                        <option value="">No category</option>
+                    </select>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="ss-discoverable-input" style="width:auto;margin:0;" />
+                        <span>Show this server in Discover</span>
+                    </label>
+                    <div class="modal-actions" style="justify-content:space-between">
+                        <button class="btn-cancel btn-danger" id="ss-delete-btn" onclick="confirmDeleteServer()">Delete Server</button>
+                        <button class="btn-primary" onclick="submitServerOverview()">Save Changes</button>
+                    </div>
+                    <button class="btn-cancel" id="ss-leave-btn" onclick="confirmLeaveServer()" style="width:100%;margin-top:8px">Leave Server</button>
+                </div>
+                <div id="ss-pane-members" style="display:none">
+                    <div id="ss-member-list" class="picker-list"></div>
+                </div>
+                <div id="ss-pane-invites" style="display:none">
+                    <button class="btn-primary" onclick="submitCreateInvite()" style="margin-bottom:10px">Create Invite</button>
+                    <div id="ss-invite-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast"></div>
+    </div>
+</template>
+
+<template id="tpl-settings">
+    <div id="view-settings">
+        <div class="settings-container">
+            <!-- Sidebar -->
+            <div class="settings-sidebar">
+                <div class="mobile-sidebar-header">
+                    <button class="back-btn" onclick="goBack()" style="margin:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Dashboard</span></button>
+                    <span class="mobile-sidebar-title">Settings</span>
+                </div>
+                <div class="nav-section">User Settings</div>
+                <div class="nav-item-settings active" data-tab="my-account" onclick="switchTab('my-account')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>My Account</span></div>
+                <div class="nav-item-settings" data-tab="profile" onclick="switchTab('profile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Profile</span></div>
+                <div class="nav-item-settings" data-tab="sessions" onclick="switchTab('sessions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Sessions</span></div>
+                <div class="nav-section">Client Settings</div>
+                <div class="nav-item-settings" data-tab="voice" onclick="switchTab('voice')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg><span>Voice Settings</span></div>
+                <div class="nav-item-settings" data-tab="appearance" onclick="switchTab('appearance')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><span>Appearance</span></div>
+                <div class="nav-item-settings" data-tab="notifications" onclick="switchTab('notifications')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Notifications</span><span class="badge-settings">3</span></div>
+                <div class="nav-item-settings" data-tab="language" onclick="switchTab('language')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Language</span></div>
+                <div class="nav-item-settings" data-tab="sync" onclick="switchTab('sync')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14l4 4V4a2 2 0 0 0-2-2z"/><path d="M8 8h8"/><path d="M8 12h6"/></svg><span>Sync</span></div>
+                <div class="nav-item-settings" data-tab="experiments" onclick="switchTab('experiments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="10" y1="14" x2="14" y2="18"/><line x1="14" y1="14" x2="10" y2="18"/></svg><span>Experiments</span></div>
+                <div class="nav-section">Nyxie</div>
+                <div class="nav-item-settings" data-tab="bots" onclick="switchTab('bots')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a8 8 0 0 0-8-8z"/><path d="M8 13l2 2 4-4"/></svg><span>My Bots</span></div>
+                <div class="nav-item-settings" data-tab="feedback" onclick="switchTab('feedback')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Feedback</span></div>
+                <div class="nav-item-settings" data-tab="changelogs" onclick="switchTab('changelogs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Changelogs</span></div>
+                <div class="nav-item-settings" data-tab="source" onclick="switchTab('source')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg><span>Source Code</span></div>
+                <div class="nav-item-settings" data-tab="donate" onclick="switchTab('donate')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>Donate</span></div>
+                <div class="settings-sidebar-bottom">
+                    <button class="logout-btn" onclick="logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log Out</button>
+                    <div class="version-text">nyxie v0.1.0 — 2026</div>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="settings-content">
+                <button class="back-btn mobile-only-back" onclick="showSettingsList()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Settings</span></button>
+                <button class="back-btn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Back to Dashboard</span></button>
+
+                <!-- My Account Tab -->
+                <div class="settings-tab" id="tab-my-account">
+                    <div class="page-title">My Account</div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                        <span class="af-label">Username</span>
+                        <span class="af-value" id="settings-username">@username</span>
+                        <button class="af-action" onclick="openChangeUsername()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 21l5-3 5 3-1.5-7"/></svg></div>
+                        <span class="af-label">Badges</span>
+                        <span class="af-value af-badges" id="settings-badges"></span>
+                    </div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+                        <span class="af-label">Email</span>
+                        <span class="af-value" id="settings-email">••••••••</span>
+                        <button class="af-action" onclick="toggleEmailVisibility()" title="Reveal/hide email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                        <button class="af-action" onclick="openChangeEmail()" title="Change email"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="account-field">
+                        <div class="af-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+                        <span class="af-label">Password</span>
+                        <span class="af-value" style="color:var(--text-muted);">••••••••</span>
+                        <button class="af-action" onclick="openChangePassword()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Two-Factor Authentication</div>
+                        <div class="section-desc">Secure your account with two-factor authentication</div>
+                        <div class="twofa-grid">
+                            <div class="twofa-card" onclick="generateBackupCodes()">
+                                <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+                                <div class="tc-info"><div class="tc-title">Generate Backup Codes</div><div class="tc-desc" id="twofa-backup-desc">Get 10 one-time use backup codes</div></div>
+                                <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                            <div class="twofa-card" onclick="addAuthenticator()">
+                                <div class="tc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+                                <div class="tc-info"><div class="tc-title" id="twofa-auth-title">Add Authenticator</div><div class="tc-desc" id="twofa-auth-desc">Use an authenticator app to generate codes</div></div>
+                                <div class="tc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                        </div>
+                        <div class="warning-banner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>You haven't enabled two-factor authentication!</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Account Management</div>
+                        <div class="section-desc">Manage your account preferences and data</div>
+                        <div class="account-mgmt-grid">
+                            <div class="mgmt-card" onclick="openDisableAccount()">
+                                <div class="mc-icon warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+                                <div class="mc-info"><div class="mc-title">Disable Account</div><div class="mc-desc">Temporarily disable your account</div></div>
+                                <div class="mc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                            <div class="mgmt-card" onclick="openDeleteAccount()">
+                                <div class="mc-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></div>
+                                <div class="mc-info"><div class="mc-title">Delete Account</div><div class="mc-desc">Permanently delete your account and all data</div></div>
+                                <div class="mc-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-footer-notice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Looking to customize your public profile? Head over to your profile settings.</span></div>
+                </div>
+
+                <!-- Profile Tab -->
+                <div class="settings-tab" id="tab-profile" style="display:none;">
+                    <div class="page-title">Profile</div>
+                    <div class="profile-edit-container">
+                        <!-- Avatar -->
+                        <div class="profile-edit-section">
+                            <label>Avatar</label>
+                            <div class="avatar-edit-row">
+                                <div class="avatar-fx-host" id="profile-avatar-fx-host">
+                                    <div class="avatar-decoration avatar-decoration-compact" id="profile-avatar-decoration" aria-hidden="true"></div>
+                                    <div class="avatar-preview-large" id="profile-avatar-preview">
+                                        <span id="profile-avatar-letter">U</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button class="edit-profile-btn" onclick="document.getElementById('profile-avatar-input').click()">Change Avatar</button>
+                                    <button class="edit-profile-btn danger" onclick="removeProfileAvatar()" style="margin-left:8px;">Remove</button>
+                                    <input type="file" id="profile-avatar-input" accept="image/*" style="display:none" onchange="openAvatarCropper(this.files[0])" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Decorations shop (rendered by settings.js from GET /api/shop).
+                             Everything except "None" must be bought with NX. -->
+                        <div class="profile-edit-section">
+                            <div class="cosmetics-shop-head">
+                                <label>Avatar Decoration</label>
+                                <span class="shop-balance" id="shop-balance">Balance: <strong>…</strong> NX</span>
+                            </div>
+                            <div class="shop-grid" id="avatar-decoration-picker"></div>
+                            <div class="section-desc">Animated cosmetics over your avatar in profile cards. Buy with NX, then pick one and Save. The Sparkle Ring can be combined with a decoration; tap it again to turn it off.</div>
+                        </div>
+                        <div class="profile-edit-section">
+                            <label>Card Decoration</label>
+                            <div class="shop-grid" id="card-decoration-picker"></div>
+                            <div class="section-desc">Effects drawn over your whole profile card. Buy with NX, then pick one and Save.</div>
+                            <div class="shop-error" id="shop-error" style="display:none"></div>
+                        </div>
+
+                        <!-- Banner -->
+                        <div class="profile-edit-section">
+                            <label>Banner</label>
+                            <div class="banner-edit-row">
+                                <div class="banner-preview-large" id="profile-banner-preview"></div>
+                                <div class="banner-controls">
+                                    <div class="banner-color-swatches">
+                                        <div class="banner-swatch active" style="background:#fd6671" data-color="#fd6671" onclick="setProfileBannerColor('#fd6671')"></div>
+                                        <div class="banner-swatch" style="background:#5865f2" data-color="#5865f2" onclick="setProfileBannerColor('#5865f2')"></div>
+                                        <div class="banner-swatch" style="background:#1D9E75" data-color="#1D9E75" onclick="setProfileBannerColor('#1D9E75')"></div>
+                                        <div class="banner-swatch" style="background:#f5a623" data-color="#f5a623" onclick="setProfileBannerColor('#f5a623')"></div>
+                                        <div class="banner-swatch" style="background:#9b59b6" data-color="#9b59b6" onclick="setProfileBannerColor('#9b59b6')"></div>
+                                        <input type="color" class="banner-color-custom" id="profile-banner-color-custom" value="#fd6671" oninput="setProfileBannerColor(this.value)" title="Custom color" />
+                                    </div>
+                                    <button class="edit-profile-btn" onclick="document.getElementById('profile-banner-input').click()">Upload Image/GIF</button>
+                                    <input type="file" id="profile-banner-input" accept="image/*" style="display:none" onchange="openBannerCropper(this.files[0])" />
+                                    <button class="edit-profile-btn danger" onclick="removeProfileBanner()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Display Name -->
+                        <div class="profile-edit-section">
+                            <label>Display Name</label>
+                            <input type="text" id="profile-display-name" maxlength="32" placeholder="Display name" oninput="updateDisplayNameCounter()" />
+                            <div class="character-counter"><span id="display-name-counter">0</span>/32</div>
+                        </div>
+
+                        <!-- Username hint -->
+                        <div class="profile-edit-section">
+                            <div class="username-hint">
+                                <span>Want to change username? <a href="#" onclick="switchTab('my-account')">Go to account settings</a></span>
+                            </div>
+                        </div>
+
+                        <!-- Bio -->
+                        <div class="profile-edit-section">
+                            <label>Profile Bio</label>
+                            <textarea id="profile-bio" rows="4" maxlength="500" placeholder="Something cool about you…" oninput="updateBioCounter()"></textarea>
+                            <div class="character-counter"><span id="bio-counter">0</span>/500</div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="profile-actions">
+                            <button class="btn-cancel" onclick="resetProfileForm()">Reset</button>
+                            <button class="btn-primary" onclick="saveProfileChanges()">Save</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sessions Tab -->
+                <div class="settings-tab" id="tab-sessions" style="display:none;">
+                    <div class="page-title">Sessions</div>
+                    <div class="settings-section">
+                        <div class="section-title">Where you're signed in</div>
+                        <div class="section-desc">These devices are currently logged in to your account. Log out anything you don't recognise, then change your password.</div>
+                        <div id="sessions-list" class="px-list"><div class="px-empty">Loading…</div></div>
+                        <div class="px-actions">
+                            <button type="button" class="btn-cancel" onclick="refreshSessions()">Refresh</button>
+                            <button type="button" class="btn-danger" id="sessions-revoke-all" onclick="revokeOtherSessions()">Log out all other devices</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-voice" style="display:none;">
+                    <div class="page-title">Voice Settings</div>
+                    <div class="settings-section">
+                        <div class="section-title">Devices</div>
+                        <div class="section-desc">Choose which microphone and speakers Nyxie uses for calls and voice messages.</div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-input-device">Input device</label>
+                            <div class="font-selector"><select id="voice-input-device"><option value="default">System default</option></select></div>
+                        </div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-output-device">Output device</label>
+                            <div class="font-selector"><select id="voice-output-device"><option value="default">System default</option></select></div>
+                            <div class="px-hint" id="voice-output-hint" style="display:none;">Your browser doesn't let sites choose an output device — sound plays through the system default.</div>
+                        </div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-input-volume">Input volume <span id="voice-input-volume-val" class="px-val">100%</span></label>
+                            <input type="range" class="px-range" id="voice-input-volume" min="0" max="200" step="5" />
+                        </div>
+                        <div class="px-field">
+                            <label class="px-label" for="voice-output-volume">Output volume <span id="voice-output-volume-val" class="px-val">100%</span></label>
+                            <input type="range" class="px-range" id="voice-output-volume" min="0" max="100" step="5" />
+                        </div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-cancel" id="voice-mic-test-btn" onclick="toggleMicTest()">Test microphone</button>
+                            <button type="button" class="btn-cancel" onclick="testSpeakers()">Test speakers</button>
+                        </div>
+                        <div class="px-meter" id="voice-meter" aria-hidden="true"><div class="px-meter-fill" id="voice-meter-fill"></div></div>
+                        <div class="px-hint" id="voice-test-hint">Start the mic test and speak — the bar should move. Changes apply to your next call or recording.</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Audio processing</div>
+                        <div class="section-desc">Cleans up your microphone before it's sent.</div>
+                        <div class="appearance-toggle">
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Noise suppression</div><div class="toggle-desc">Reduce background noise like fans and keyboards.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="voice-noise"  /><span class="slider round"></span></label>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Echo cancellation</div><div class="toggle-desc">Stop your speakers from feeding back into your mic.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="voice-echo"  /><span class="slider round"></span></label>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Automatic gain control</div><div class="toggle-desc">Keep your volume steady if you move closer or further away.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="voice-agc"  /><span class="slider round"></span></label>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Appearance Tab -->
+                <div class="settings-tab" id="tab-appearance" style="display:none;">
+                    <div class="page-title">Appearance</div>
+                    <div class="settings-section">
+                        <div class="section-title">THEME</div>
+                        <div class="theme-preview-grid">
+                            <div class="theme-preview-card active" data-theme="dark" onclick="setTheme('dark')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content dark-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">DARK</div>
+                            </div>
+                            <div class="theme-preview-card" data-theme="light" onclick="setTheme('light')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content light-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">LIGHT</div>
+                            </div>
+                            <div class="theme-preview-card" data-theme="esc" onclick="setTheme('esc')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content esc-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">ESC</div>
+                            </div>
+                            <div class="theme-preview-card" data-theme="retro" onclick="setTheme('retro')">
+                                <div class="theme-preview">
+                                    <div class="theme-preview-content retro-preview">
+                                        <div class="preview-sidebar">
+                                            <div class="preview-sidebar-item active"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                            <div class="preview-sidebar-item"></div>
+                                        </div>
+                                        <div class="preview-main">
+                                            <div class="preview-header">
+                                                <div class="preview-avatar-small"></div>
+                                                <div class="preview-header-text"></div>
+                                            </div>
+                                            <div class="preview-messages">
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                                <div class="preview-msg right">
+                                                    <div class="preview-msg-bubble"></div>
+                                                    <div class="preview-msg-avatar"></div>
+                                                </div>
+                                                <div class="preview-msg">
+                                                    <div class="preview-msg-avatar"></div>
+                                                    <div class="preview-msg-bubble"></div>
+                                                </div>
+                                            </div>
+                                            <div class="preview-input"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="theme-preview-label">RETRO</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="discover-themes-btn" onclick="window.open('https://example.com/themes','_blank')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+                        Discover Themes
+                        <span>Browse themes made by the community</span>
+                    </button>
+                    <div class="settings-section">
+                        <div class="section-title">ACCENT COLOR</div>
+                        <div class="accent-color-picker">
+                            <button class="accent-swatch active" data-color="#fd6671" style="background:#fd6671 !important;" onclick="setAccent('#fd6671')"></button>
+                            <button class="accent-swatch" data-color="#eb459e" style="background:#eb459e !important;" onclick="setAccent('#eb459e')"></button>
+                            <button class="accent-swatch" data-color="#3ba55c" style="background:#3ba55c !important;" onclick="setAccent('#3ba55c')"></button>
+                            <button class="accent-swatch" data-color="#faa61a" style="background:#faa61a !important;" onclick="setAccent('#faa61a')"></button>
+                            <button class="accent-swatch" data-color="#1abc9c" style="background:#1abc9c !important;" onclick="setAccent('#1abc9c')"></button>
+                            <button class="accent-swatch" data-color="#3498db" style="background:#3498db !important;" onclick="setAccent('#3498db')"></button>
+                            <button class="accent-swatch" data-color="#9b59b6" style="background:#9b59b6 !important;" onclick="setAccent('#9b59b6')"></button>
+                            <button class="accent-swatch" data-color="#e67e22" style="background:#e67e22 !important;" onclick="setAccent('#e67e22')"></button>
+                            <button class="accent-swatch custom-color" style="background:#2c2c2c !important;" onclick="document.getElementById('custom-accent-color').click()">
+                                <span>+</span>
+                            </button>
+                        </div>
+                        <div class="custom-color-row">
+                            <input type="color" id="custom-accent-color" value="#fd6671" />
+                            <input type="text" id="custom-accent-hex" placeholder="Enter hex color (e.g., #ff0000)" />
+                            <button class="btn-primary" onclick="saveCustomAccent()">Save</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">APPEARANCE OPTIONS</div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Always show Send Message button</div>
+                                    <div class="toggle-desc">If disabled, the Send Message button will only appear on mobile.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-send-btn" checked />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Always show account age next to join messages</div>
+                                    <div class="toggle-desc">If disabled, the account age will only be shown for new users.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-account-age" />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">THEME OPTIONS</div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Transparency Effects</div>
+                                    <div class="toggle-desc">Enables transparency effects (like frosted glass) throughout the app.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-transparency" checked />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Seasonal Theme</div>
+                                    <div class="toggle-desc">Displays effects in the home tab during holiday seasons.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-seasonal" />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">FONT</div>
+                        <div class="font-selector">
+                            <select id="font-select">
+                                <option value="Open Sans">Open Sans</option>
+                                <option value="Inter" selected>Inter</option>
+                                <option value="Roboto">Roboto</option>
+                                <option value="Poppins">Poppins</option>
+                                <option value="Nunito">Nunito</option>
+                                <option value="Montserrat">Montserrat</option>
+                                <option value="Lato">Lato</option>
+                                <option value="Raleway">Raleway</option>
+                                <option value="Merriweather">Merriweather</option>
+                                <option value="Playfair Display">Playfair Display</option>
+                                <option value="Fira Code">Fira Code</option>
+                                <option value="JetBrains Mono">JetBrains Mono</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Other tabs -->
+                <div class="settings-tab" id="tab-notifications" style="display:none;">
+                    <div class="page-title">Notifications</div>
+                    <div class="settings-section">
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info">
+                                    <div class="toggle-label">Notification sound</div>
+                                    <div class="toggle-desc">Play a sound for new messages, mentions, and incoming/outgoing calls.</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="toggle-notif-sound" checked />
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-language" style="display:none;">
+  <div class="page-title" data-i18n="Language">Language</div>
+  <div class="language-settings-card">
+    <div class="language-settings-header">
+      <div class="language-settings-icon" aria-hidden="true">文</div>
+      <div>
+        <h3 data-i18n="Interface Language">Interface Language</h3>
+        <p data-i18n="Choose the language you want to use across Nyxie.">Choose the language you want to use across Nyxie.</p>
+      </div>
+    </div>
+    <div class="language-picker-row">
+      <label for="nyxie-language-select" data-i18n="Select a language">Select a language</label>
+      <select id="nyxie-language-select" aria-label="Interface Language"></select>
+    </div>
+    <div class="language-grid" id="nyxie-language-grid"></div>
+    <div class="language-settings-footer">
+      <span class="language-save-note" data-i18n="Your language is saved on this device.">Your language is saved on this device.</span>
+      <button class="btn-primary language-apply-btn" id="nyxie-language-apply" type="button" data-i18n="Apply Language">Apply Language</button>
+    </div>
+  </div>
+</div>
+                <div class="settings-tab" id="tab-sync" style="display:none;">
+                    <div class="page-title">Sync</div>
+                    <div class="settings-section">
+                        <div class="section-title">Settings sync</div>
+                        <div class="section-desc">Keep your preferences the same on every device you sign in on.</div>
+                        <div class="appearance-toggle">
+                        <div class="toggle-row">
+                            <div class="toggle-info"><div class="toggle-label">Sync automatically</div><div class="toggle-desc">Upload changes as you make them, and pick up newer settings when you open the app.</div></div>
+                            <label class="switch px-switch"><input type="checkbox" data-px id="sync-auto"  /><span class="slider round"></span></label>
+                        </div>
+                        </div>
+                        <div class="px-status" id="sync-status">Last synced: never</div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-primary" onclick="syncUpload()">Upload this device's settings</button>
+                            <button type="button" class="btn-cancel" onclick="syncDownload()">Download saved settings</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">What's included</div>
+                        <div class="section-desc">Theme, accent colour, font, language, notification toggles, voice processing options and experiments. Your microphone and speaker choices stay on each device, and your messages, keys and password are never part of this.</div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-danger" onclick="syncDelete()">Delete synced copy</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-experiments" style="display:none;">
+                    <div class="page-title">Experiments</div>
+                    <div class="settings-section">
+                        <div class="section-title">Try things early</div>
+                        <div class="section-desc">Optional tweaks you can switch on. They only affect how Nyxie looks on this device and can change or disappear as things settle.</div>
+                        <div class="appearance-toggle" id="experiments-list"></div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-cancel" onclick="resetExperiments()">Turn everything off</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-bots" style="display:none;">
+                    <div class="page-title">My Bots</div>
+                    <div class="settings-section">
+                        <div class="section-title">Your bots</div>
+                        <div class="section-desc">Create bot applications and manage their access tokens. A token is shown once when it's created — store it somewhere safe.</div>
+                        <div id="bots-list" class="px-list"><div class="px-empty">Loading…</div></div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-primary" id="bots-create-btn" onclick="openBotModal()">Create bot</button>
+                        </div>
+                        <div class="px-hint">Bots can be created and their tokens managed here today. Tokens can't post messages yet — the bot messaging API is still to come.</div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-feedback" style="display:none;">
+                    <div class="page-title">Feedback</div>
+                    <div class="settings-section">
+                        <div class="section-title">Tell us what you think</div>
+                        <div class="section-desc">Found a bug or have an idea? It goes straight to the people building Nyxie.</div>
+                        <div class="px-chips" id="feedback-category">
+                            <button type="button" class="px-chip active" data-cat="bug" onclick="setFeedbackCategory('bug')">Bug</button>
+                            <button type="button" class="px-chip" data-cat="idea" onclick="setFeedbackCategory('idea')">Idea</button>
+                            <button type="button" class="px-chip" data-cat="other" onclick="setFeedbackCategory('other')">Other</button>
+                        </div>
+                        <textarea id="feedback-message" class="px-textarea" maxlength="2000" rows="6" placeholder="What happened, or what would you like to see?"></textarea>
+                        <div class="px-counter"><span id="feedback-count">0</span> / 2000</div>
+                        <div class="appearance-toggle">
+                            <div class="toggle-row">
+                                <div class="toggle-info"><div class="toggle-label">Include diagnostics</div><div class="toggle-desc">Browser, screen size, language and theme. No messages or personal data.</div></div>
+                                <label class="switch px-switch"><input type="checkbox" data-px id="feedback-diagnostics" checked /><span class="slider round"></span></label>
+                            </div>
+                        </div>
+                        <div class="px-actions">
+                            <button type="button" class="btn-primary" id="feedback-send-btn" onclick="sendFeedback()">Send feedback</button>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Your recent feedback</div>
+                        <div id="feedback-history" class="px-list"><div class="px-empty">Nothing sent yet.</div></div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-changelogs" style="display:none;">
+                    <div class="page-title">Changelogs</div>
+                    <div id="changelog-list"></div>
+                </div>
+                <div class="settings-tab" id="tab-source" style="display:none;">
+                    <div class="page-title">Source Code</div>
+                    <div class="settings-section">
+                        <div class="section-title">How Nyxie is built</div>
+                        <div class="section-desc">A single-page web app talking to a small Node.js server. No front-end framework, no build step.</div>
+                        <div class="px-kv"><span>Client</span><span>Vanilla JavaScript SPA (<code>public/</code>) with a hand-rolled router</span></div>
+                        <div class="px-kv"><span>Server</span><span>Node.js + Express REST API (<code>server/routes</code>) and a WebSocket gateway</span></div>
+                        <div class="px-kv"><span>Storage</span><span>SQLite via sql.js, saved atomically to disk</span></div>
+                        <div class="px-kv"><span>Encryption</span><span>End-to-end encrypted messages and calls using TweetNaCl</span></div>
+                        <div class="px-kv"><span>Wallet</span><span>Closed-loop NX currency with PIN-protected transfers</span></div>
+                        <div class="px-actions px-actions-left" id="source-link-row" style="display:none;">
+                            <a class="btn-primary px-link-btn" id="source-link" href="#" target="_blank" rel="noopener noreferrer">View source</a>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Found a problem?</div>
+                        <div class="section-desc">Bug reports and ideas are welcome — send them from the Feedback tab.</div>
+                        <div class="px-actions px-actions-left">
+                            <button type="button" class="btn-cancel" onclick="switchTab('feedback')">Open Feedback</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-tab" id="tab-donate" style="display:none;">
+                    <div class="page-title">Donate</div>
+                    <div class="settings-section">
+                        <div class="section-title">Support Nyxie</div>
+                        <div class="section-desc">Nyxie is built and run by a small team. If it's useful to you, chipping in helps cover hosting and keeps development going.</div>
+                        <div class="px-actions px-actions-left" id="donate-link-row" style="display:none;">
+                            <a class="btn-primary px-link-btn" id="donate-link" href="#" target="_blank" rel="noopener noreferrer">Donate</a>
+                        </div>
+                        <div class="px-hint" id="donate-nolink" style="display:none;">Direct donations aren't set up yet — the ways to help below cost nothing.</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="section-title">Other ways to help</div>
+                        <div class="account-mgmt-grid">
+                            <div class="mgmt-card" onclick="copyInviteLink()">
+                                <div class="mc-info"><div class="mc-title">Tell a friend</div><div class="mc-desc">Copy a link to Nyxie to share</div></div>
+                            </div>
+                            <div class="mgmt-card" onclick="switchTab('feedback')">
+                                <div class="mc-info"><div class="mc-title">Send feedback</div><div class="mc-desc">Report bugs and suggest features</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modals -->
+        <div class="overlay" id="change-username-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Change Username</h2>
+                <p>Enter a new username. It must be 3‑30 characters, letters, numbers, underscore or hyphen.</p>
+                <label>New Username</label>
+                <input type="text" id="new-username-input" placeholder="New username" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('change-username-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="saveUsername()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="change-email-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Change Email</h2>
+                <p>Enter a new email address and confirm with your current password.</p>
+                <label>New Email</label>
+                <input type="email" id="new-email-input" placeholder="new@example.com" />
+                <label>Current Password</label>
+                <input type="password" id="email-current-password" placeholder="Your current password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('change-email-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="saveEmail()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="change-password-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Change Password</h2>
+                <p>Enter your current password and choose a new one.</p>
+                <label>Current Password</label>
+                <input type="password" id="change-current-password" placeholder="Current password" />
+                <label>New Password</label>
+                <input type="password" id="change-new-password" placeholder="New password (min 8 chars)" />
+                <label>Confirm New Password</label>
+                <input type="password" id="change-confirm-password" placeholder="Confirm new password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('change-password-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" onclick="savePassword()">Save</button>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="overlay" id="twofa-setup-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Set up authenticator</h2>
+                <p>Scan this code with an authenticator app (Google Authenticator, Authy, 1Password…), then enter the 6-digit code it shows.</p>
+                <div class="px-qr-wrap"><canvas id="twofa-qr"></canvas></div>
+                <div class="px-secret-row">
+                    <code id="twofa-secret">—</code>
+                    <button type="button" class="btn-cancel" onclick="copyTwofaSecret()">Copy</button>
+                </div>
+                <label>6-digit code</label>
+                <input type="text" id="twofa-code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" placeholder="123456" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('twofa-setup-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" id="twofa-enable-btn" onclick="enableAuthenticator()">Turn on</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="backup-codes-modal" style="display:none">
+            <div class="modal">
+                <h2>Your backup codes</h2>
+                <p>Each code works once if you lose your authenticator. Save them somewhere safe — they won't be shown again.</p>
+                <div class="px-codes" id="backup-codes-grid"></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="copyBackupCodes()">Copy</button>
+                    <button class="btn-cancel" onclick="downloadBackupCodes()">Download</button>
+                    <button class="btn-primary" onclick="document.getElementById('backup-codes-modal').style.display='none'">I've saved them</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="twofa-password-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2 id="twofa-password-title">Confirm password</h2>
+                <p id="twofa-password-desc">Enter your password to continue.</p>
+                <label>Password</label>
+                <input type="password" id="twofa-password" placeholder="Your current password" autocomplete="current-password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('twofa-password-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" id="twofa-password-btn" onclick="submitTwofaPassword()">Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="bot-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2 id="bot-modal-title">Create bot</h2>
+                <label>Name</label>
+                <input type="text" id="bot-name" maxlength="32" placeholder="My helper bot" />
+                <label>Description (optional)</label>
+                <textarea id="bot-desc" maxlength="200" rows="3" placeholder="What does it do?"></textarea>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('bot-modal').style.display='none'">Cancel</button>
+                    <button class="btn-primary" id="bot-save-btn" onclick="saveBot()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="bot-token-modal" style="display:none">
+            <div class="modal">
+                <h2>Bot token</h2>
+                <p>Copy this token now. For your security it won't be shown again — if you lose it, reset it from the bot's menu.</p>
+                <div class="px-secret-row"><code id="bot-token-value">—</code></div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="copyBotToken()">Copy</button>
+                    <button class="btn-primary" onclick="document.getElementById('bot-token-modal').style.display='none'">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="disable-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Disable Account</h2>
+                <p>Your account will be disabled. You can re‑enable it by logging in later.</p>
+                <label>Password</label>
+                <input type="password" id="disable-password" placeholder="Your current password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('disable-account-modal').style.display='none'">Cancel</button>
+                    <button class="btn-danger" onclick="disableAccount()">Disable</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overlay" id="delete-account-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal">
+                <h2>Delete Account</h2>
+                <p>This action is PERMANENT and cannot be undone. All your data will be lost.</p>
+                <label style="display:flex; align-items:center; gap:8px; text-transform:none; font-weight:400; color:var(--text-secondary);">
+                    <input type="checkbox" id="delete-messages-checkbox" style="width:auto; margin:0;">
+                    Also delete all my messages (this cannot be undone)
+                </label>
+                <label>Password</label>
+                <input type="password" id="delete-password" placeholder="Your current password" />
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('delete-account-modal').style.display='none'">Cancel</button>
+                    <button class="btn-danger" onclick="deleteAccount()">Delete Forever</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast"></div>
+    </div>
+</template>
+
+<template id="tpl-invite">
+    <div id="view-invite">
+        <div class="invite-brand">Nyxie</div>
+        <main class="invite-card" id="invite-card" aria-live="polite"></main>
+    </div>
+</template>
+
+<template id="tpl-404">
+    <div id="view-404" class="route-error">
+        <div class="route-error-glyph">404</div>
+        <h1>This room doesn't exist</h1>
+        <p>The page you're looking for was moved, deleted, or never existed.</p>
+        <a href="/" data-link class="no-accent">Back to Nyxie</a>
+    </div>
+</template>
+
+<!-- ─── Global Cropper Overlay ─────────────────────────────── -->
+
+<div class="cropper-overlay" id="cropper-overlay">
+    <div class="cropper-modal">
+        <h3 id="cropper-title">Crop Image</h3>
+        <div class="cropper-preview-wrap">
+            <div class="cropper-preview">
+                <canvas id="cropper-canvas"></canvas>
+                <div class="cropper-mask" id="cropper-mask"></div>
+            </div>
+        </div>
+        <div class="cropper-controls-row">
+            <label for="cropper-zoom">Zoom</label>
+            <input type="range" id="cropper-zoom" min="0.5" max="2.0" step="0.01" value="1.0" />
+            <span id="cropper-zoom-label">1.0x</span>
+        </div>
+        <div class="cropper-error" id="cropper-error"></div>
+        <div class="cropper-controls">
+            <button class="btn-cancel" id="cropper-cancel">Cancel</button>
+            <button class="btn-primary" id="cropper-confirm">Crop &amp; Upload</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Mobile bottom-nav + friends search helpers ────────────
+     Self-contained: these only touch the DOM directly so they don't
+     depend on internals of dashboard.js/router.js. navigateTo()/
+     router.navigate() are still used where they already exist (they
+     handle the real Friends/Settings views); notifications-panel is
+     new and has no backend yet, so it's managed entirely here. ──── -->
+<script>
+  function showMobilePanel(name) {
+    var app = document.querySelector('#view-app #app');
+    var notif = document.getElementById('notifications-panel');
+    document.querySelectorAll('#mobile-bottom-nav .mbn-item').forEach(function (b) {
+      b.classList.remove('active');
+    });
+
+    if (name === 'notifications') {
+      ['friends-panel', 'welcome-view', 'chat-view'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      if (notif) notif.style.display = 'flex';
+      if (app) app.classList.add('mobile-view-detail');
+      var nbtn = document.getElementById('mbn-notifications');
+      if (nbtn) nbtn.classList.add('active');
+      return;
+    }
+
+    if (notif) notif.style.display = 'none';
+    if (name === 'friends' && typeof navigateTo === 'function') {
+      navigateTo('friends');
+      var fbtn = document.getElementById('mbn-friends');
+      if (fbtn) fbtn.classList.add('active');
+    } else if (name === 'wallet' && typeof navigateTo === 'function') {
+      navigateTo('wallet');
+      var wbtn = document.getElementById('mbn-wallet');
+      if (wbtn) wbtn.classList.add('active');
+    }
+  }
+
+  function closeNotifications() {
+    var notif = document.getElementById('notifications-panel');
+    if (notif) notif.style.display = 'none';
+    document.querySelectorAll('#mobile-bottom-nav .mbn-item').forEach(function (b) {
+      b.classList.remove('active');
+    });
+    if (typeof navigateTo === 'function') navigateTo('home');
+  }
+
+  function toggleFriendsSearch() {
+    var wrap = document.getElementById('friends-search-wrap');
+    if (!wrap) return;
+    var show = wrap.style.display === 'none' || !wrap.style.display;
+    wrap.style.display = show ? 'flex' : 'none';
+    var inp = document.getElementById('friends-search-input');
+    if (show) {
+      if (inp) { inp.value = ''; inp.focus(); }
+    } else if (inp) {
+      inp.value = '';
+    }
+    filterFriendsList('');
+  }
+
+  function filterFriendsList(q) {
+    q = (q || '').toLowerCase();
+    document.querySelectorAll('#friends-list .friend-row').forEach(function (row) {
+      var name = row.querySelector('.fr-name');
+      var text = name ? name.textContent.toLowerCase() : '';
+      row.style.display = (!q || text.indexOf(q) !== -1) ? '' : 'none';
+    });
+  }
+
+  function focusAddFriend() {
+    var inp = document.getElementById('add-friend-input');
+    if (inp) {
+      inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      inp.focus();
+    }
+  }
+</script>
+
+<!-- ─── Scripts ────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<script src="/js/utils.js"></script>
+<script src="/js/state.js"></script>
+<script src="/js/badges.js"></script>
+<script src="/js/theme.js"></script>
+<script src="/js/prefs.js"></script>
+<script src="/js/i18n.js"></script>
+<script src="/js/router.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/invite.js"></script>
+<script src="/js/notifications.js"></script>
+<script src="/js/dashboard.js?v=20260925-imgfix2"></script>
+<script src="/js/wallet.js"></script>
+<script src="/js/marketplace.js"></script>
+<script src="/js/admin.js"></script>
+<script src="/js/voice.js"></script>
+<script src="/js/settings.js"></script>
+<script src="/js/cropper.js"></script>
+<script src="/js/app.js"></script>
+
+</body>
+</html>

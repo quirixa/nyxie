@@ -1,0 +1,165 @@
+/* ─────────────────────────────────────────────────────────
+   Invite landing page (/invite/:code)
+   Scoped under #view-invite. Matches the login/register look:
+   dark card on a near-black page, accent-colored primary action.
+   ───────────────────────────────────────────────────────── */
+#view-invite {
+  box-sizing: border-box;
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 16px;
+  font-family: 'Inter', sans-serif;
+  background: #0f0f10;
+  color: #f5f5f5;
+}
+#view-invite *, #view-invite *::before, #view-invite *::after { box-sizing: border-box; }
+
+#view-invite .invite-brand {
+  margin-top: auto;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #8b8b8b;
+}
+
+#view-invite .invite-card {
+  margin-bottom: auto;
+  width: 100%;
+  max-width: 440px;
+  padding: 32px 28px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: #151515;
+  border: 1px solid #262626;
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+}
+
+#view-invite .invite-eyebrow {
+  margin-bottom: 18px;
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8b8b8b;
+}
+
+#view-invite .invite-avatar {
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--accent, #5865f2);
+  color: #fff;
+  font-size: 1.9rem;
+  font-weight: 700;
+  user-select: none;
+}
+#view-invite .invite-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#view-invite .invite-avatar-muted { margin-bottom: 4px; background: #262626; color: #8b8b8b; }
+
+#view-invite .invite-title {
+  margin: 16px 0 6px;
+  max-width: 100%;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+#view-invite .invite-stats {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+  font-size: .85rem;
+  color: #a8a8a8;
+}
+#view-invite .invite-dot { width: 9px; height: 9px; border-radius: 50%; background: #8b8b8b; }
+
+#view-invite .invite-text {
+  margin: 14px 0 0;
+  max-width: 340px;
+  font-size: .92rem;
+  line-height: 1.6;
+  color: #8b8b8b;
+}
+#view-invite .invite-text-danger { color: #e68a8a; }
+
+#view-invite .invite-actions {
+  width: 100%;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#view-invite .invite-btn {
+  width: 100%;
+  padding: 13px 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: inherit;
+  font-size: .95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s ease, background .15s ease, border-color .15s ease;
+}
+#view-invite .invite-btn:focus-visible,
+#view-invite .invite-link:focus-visible { outline: 2px solid var(--accent, #5865f2); outline-offset: 2px; }
+#view-invite .invite-btn-primary { background: var(--accent, #5865f2); color: #fff; }
+#view-invite .invite-btn-primary:hover:not(:disabled) { opacity: .9; }
+#view-invite .invite-btn-secondary { background: transparent; color: #f5f5f5; border-color: #3a3a3a; }
+#view-invite .invite-btn-secondary:hover:not(:disabled) { background: #1d1d1d; border-color: #4a4a4a; }
+#view-invite .invite-btn:disabled { opacity: .6; cursor: default; }
+
+#view-invite .invite-error {
+  min-height: 1.2em;
+  margin-top: 10px;
+  font-size: .8rem;
+  color: #e68a8a;
+}
+#view-invite .invite-error:empty { min-height: 0; margin-top: 0; }
+
+#view-invite .invite-switch { margin-top: 14px; font-size: .8rem; color: #777; }
+#view-invite .invite-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: #f5f5f5;
+  font-weight: 600;
+  cursor: pointer;
+}
+#view-invite .invite-link:hover { text-decoration: underline; }
+
+#view-invite .invite-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #2c2c2c;
+  border-top-color: var(--accent, #5865f2);
+  border-radius: 50%;
+  animation: invite-spin .8s linear infinite;
+}
+@keyframes invite-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  #view-invite .invite-spinner { animation-duration: 2.4s; }
+  #view-invite .invite-btn { transition: none; }
+}
+
+@media (max-width: 500px) {
+  #view-invite { padding: 16px 12px; }
+  #view-invite .invite-card { padding: 26px 20px 22px; }
+  #view-invite .invite-title { font-size: 1.4rem; }
+}

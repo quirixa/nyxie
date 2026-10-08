@@ -1,0 +1,452 @@
+/* marketplace.css — styles for the marketplace panel/sub-views.
+   Base panel chrome (.panel-header, .panel-body, .icon-btn, .overlay,
+   .modal, .modal-actions, .btn-primary, .btn-cancel) already comes from
+   dashboard.css/theme.css via the #view-app scope — this file only adds
+   what's marketplace-specific, using the same CSS variables as the rest
+   of the app so it matches whichever theme (light/dark) is active. */
+
+#view-app #marketplace-panel .mp-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#view-app .mp-header {
+  height: 52px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#view-app .mp-header .mp-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#view-app .mp-header .mp-balance-pill {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+#view-app .mp-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+#view-app .mp-search-wrap {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+}
+#view-app .mp-search-wrap input {
+  border: none;
+  background: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  width: 100%;
+}
+#view-app .mp-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 0.82rem;
+}
+
+#view-app .mp-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+#view-app .mp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+#view-app .mp-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+#view-app .mp-card:hover {
+  border-color: var(--accent);
+}
+#view-app .mp-card-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--bg-input);
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 1.6rem;
+  font-weight: 700;
+  overflow: hidden;
+}
+#view-app .mp-card-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#view-app .mp-card-price {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+#view-app .mp-card-price small {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin-left: 4px;
+}
+#view-app .mp-card-seller {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+#view-app .mp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+#view-app .mp-badge.trusted {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+#view-app .mp-badge.stock-low {
+  background: rgba(250, 166, 26, 0.15);
+  color: var(--warning);
+}
+#view-app .mp-badge.status {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+#view-app .mp-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+#view-app .mp-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 4px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* ── Listing detail ── */
+#view-app .mp-detail-image {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  background-size: cover;
+  background-position: center;
+  margin-bottom: 14px;
+}
+#view-app .mp-detail-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+#view-app .mp-detail-price {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+#view-app .mp-detail-price small {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+#view-app .mp-detail-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+#view-app .mp-seller-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+#view-app .mp-seller-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+#view-app .mp-seller-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* ── Forms (sell view) ── */
+#view-app .mp-form {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+#view-app .mp-form label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  display: block;
+}
+#view-app .mp-form input,
+#view-app .mp-form textarea,
+#view-app .mp-form select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  outline: none;
+}
+#view-app .mp-form textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+#view-app .mp-form-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+#view-app .mp-form-row {
+  display: flex;
+  gap: 12px;
+}
+#view-app .mp-form-row > div {
+  flex: 1;
+}
+
+/* ── Tabs (manage view) ── */
+#view-app .mp-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+#view-app .mp-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 12px 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+#view-app .mp-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+#view-app .mp-order-row,
+#view-app .mp-listing-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+}
+#view-app .mp-row-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--bg-input);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+#view-app .mp-row-main {
+  flex: 1;
+  min-width: 0;
+}
+#view-app .mp-row-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#view-app .mp-row-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+#view-app .mp-row-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+#view-app .mp-row-status.paid,
+#view-app .mp-row-status.delivered { color: var(--warning); background: rgba(250, 166, 26, 0.12); }
+#view-app .mp-row-status.completed { color: var(--online); background: rgba(59, 165, 92, 0.12); }
+#view-app .mp-row-status.disputed,
+#view-app .mp-row-status.cancelled,
+#view-app .mp-row-status.refunded { color: var(--danger); background: rgba(237, 66, 69, 0.1); }
+#view-app .mp-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+#view-app .mp-row-actions button {
+  font-size: 0.72rem;
+  padding: 5px 8px;
+}
+
+/* ── Order detail ── */
+#view-app .mp-order-summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+#view-app .mp-order-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+#view-app .mp-order-summary-row:last-child { border-bottom: none; }
+#view-app .mp-order-summary-row span:first-child { color: var(--text-muted); }
+#view-app .mp-order-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+#view-app .mp-delivery-box {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-size: 0.82rem;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 16px;
+}
+
+/* ── Vendor profile ── */
+#view-app .mp-vendor-hero {
+  text-align: center;
+  padding: 20px 0;
+}
+#view-app .mp-vendor-hero .mp-seller-avatar {
+  width: 72px;
+  height: 72px;
+  font-size: 1.6rem;
+  margin: 0 auto 10px;
+}
+#view-app .mp-vendor-stats {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin: 12px 0 20px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+#view-app .mp-vendor-stats b {
+  display: block;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+#view-app .mp-review-row {
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px 0;
+  font-size: 0.85rem;
+}
+#view-app .mp-review-stars { color: var(--warning); letter-spacing: 1px; }
+
+/* ── Star rating input ── */
+#view-app .mp-star-input {
+  display: flex;
+  gap: 4px;
+  font-size: 1.6rem;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+#view-app .mp-star-input span { color: var(--border-medium); }
+#view-app .mp-star-input span.active { color: var(--warning); }
+
+@media (max-width: 768px) {
+  #view-app .mp-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
