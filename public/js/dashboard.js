@@ -381,6 +381,7 @@ function initDashboardView() {
   currentUser = JSON.parse(localStorage.getItem('nyxie_user') || 'null');
   ws = null; wsReady = false; currentRoom = null;
   dms = []; unreadCounts = {}; typingTimers = {}; pendingJoins = [];
+  try { clearAllDmTyping(); } catch (_) {}
   sentMsgIds.clear();
   let ctxRoomId = null, chatToDelete = null;
   let selectModeActive = false;
@@ -780,7 +781,7 @@ function initDashboardView() {
           if (sentMsgIds.has(m.id)) sentMsgIds.delete(m.id);
           if (m.user_id !== currentUser.id) {
             if (currentRoom?.id === m.room_id) clearTypingUser(m.user_id);
-            clearDmTyping(m.room_id);
+            clearDmTyping(m.room_id, m.user_id);
           }
 
           // Sound for anything from someone else, unless we're actively
@@ -816,7 +817,6 @@ function initDashboardView() {
                 }
                 dm.last_message = preview || 'Attachment';
                 dm.last_message_at = m.created_at;
-                delete dmTyping[dm.id];
                 dms = [dm, ...dms.filter(d => d.id !== dm.id)];
                 renderDMList();
               })();
@@ -888,7 +888,7 @@ function initDashboardView() {
         case 'typing':
           if (msg.user_id !== currentUser.id) {
             if (msg.room_id === currentRoom?.id) showTyping(msg.display_name || msg.username, msg.user_id);
-            setDmTyping(msg.room_id, msg.display_name || msg.username);   // animated dots in the DM list
+            setDmTyping(msg.room_id, msg.display_name || msg.username, msg.user_id);   // dots in the DM list
           }
           break;
 
@@ -896,6 +896,10 @@ function initDashboardView() {
           console.log(`[Presence] Received update for user ${msg.user_id} status ${msg.status}`);
           updatePresence(msg.user_id, msg.status);
           updateFriendStatus(msg.user_id, msg.status);
+          if (msg.status === 'offline' || msg.status === 'invisible') {
+            clearDmTypingForUser(msg.user_id);
+            clearTypingUser(msg.user_id);
+          }
           break;
         }
 
@@ -1167,6 +1171,8 @@ function initDashboardView() {
 
     ws.onclose = () => {
       wsReady = false;
+      clearAllDmTyping();
+      clearTypingAll();
       setTimeout(connectWS, 2000);
     };
   };
@@ -1564,23 +1570,81 @@ function initDashboardView() {
   };
 
   // ─── Typing indicator in the DM list ────────────────────
-  // The server delivers 'typing' for every DM we've joined, so the sidebar can
-  // show it for conversations that aren't open. Re-renders only when a row
-  // starts/stops typing, not on every keystroke event.
-  const dmTyping = {};          // roomId -> display name
-  const dmTypingTimers = {};
-  function setDmTyping(roomId, name) {
+  // Uses the same 'typing' WebSocket event as the open chat: the server delivers
+  // it for every DM we've joined, so the sidebar can show it for conversations
+  // that aren't open. State is per room and per user (a group can have several
+  // typists) and only the affected row's preview line is patched — never the
+  // whole list — so avatars, status pips and profile effects aren't rebuilt.
+  const TYPING_EXPIRE_MS = 5000;   // senders ping every ~2.5s while typing
+  const dmTyping = {};             // roomId -> Map(userId -> display name)
+  const dmTypingTimers = {};       // `${roomId}:${userId}` -> timeout id
+  function setDmTyping(roomId, name, userId) {
     if (!dms.some(d => d.id === roomId)) return;
-    const wasTyping = roomId in dmTyping;
-    dmTyping[roomId] = name;
-    clearTimeout(dmTypingTimers[roomId]);
-    dmTypingTimers[roomId] = setTimeout(() => clearDmTyping(roomId), 3500);
-    if (!wasTyping) renderDMList();
+    const key = userId || name;
+    const users = dmTyping[roomId] || (dmTyping[roomId] = new Map());
+    const changed = users.get(key) !== name;
+    users.set(key, name);
+    const tk = roomId + ':' + key;
+    clearTimeout(dmTypingTimers[tk]);
+    dmTypingTimers[tk] = setTimeout(() => clearDmTyping(roomId, key), TYPING_EXPIRE_MS);
+    if (changed) patchDmPreview(roomId);
   }
-  function clearDmTyping(roomId) {
-    clearTimeout(dmTypingTimers[roomId]);
-    delete dmTypingTimers[roomId];
-    if (roomId in dmTyping) { delete dmTyping[roomId]; renderDMList(); }
+  // Clears one typist, or everyone in the room when userId is omitted.
+  function clearDmTyping(roomId, userId) {
+    const users = dmTyping[roomId];
+    if (!users) return;
+    let changed = false;
+    for (const k of (userId ? [userId] : [...users.keys()])) {
+      const tk = roomId + ':' + k;
+      clearTimeout(dmTypingTimers[tk]);
+      delete dmTypingTimers[tk];
+      if (users.delete(k)) changed = true;
+    }
+    if (!users.size) delete dmTyping[roomId];
+    if (changed) patchDmPreview(roomId);
+  }
+  function clearDmTypingForUser(userId) {
+    for (const roomId of Object.keys(dmTyping)) clearDmTyping(roomId, userId);
+  }
+  function clearAllDmTyping() {
+    for (const roomId of Object.keys(dmTyping)) clearDmTyping(roomId);
+  }
+
+  const DM_TYPING_EMPTY_PREVIEW = '<i style="color:var(--text-muted)">No messages yet</i>';
+  // The preview line of a DM row is always the last-message preview; typing is
+  // shown inside the avatar's status pip instead (see dmPipHtml).
+  function dmPreviewHtml(dm) {
+    const previewIcon = dm.last_message ? DM_PREVIEW_ICONS[dm.last_message] : null;
+    return dm.last_message
+      ? (previewIcon
+        ? `<span style="display:inline-flex;align-items:center;gap:4px;">${previewIcon}${escapeHtml(dm.last_message)}</span>`
+        : escapeHtml(dm.last_message.slice(0, 50)))
+      : DM_TYPING_EMPTY_PREVIEW;
+  }
+  // Status pip of a DM row. While someone is typing, the pip turns into a small
+  // pill with three animated dots inside it (Discord style) instead of the
+  // status icon. Group DMs have no pip, so they only get one while typing.
+  const PIP_TYPING_DOTS = '<span class="pip-typing"><i></i><i></i><i></i></span>';
+  function dmPipHtml(dm, status, typing) {
+    if (dm.is_group && !typing) return '';
+    return `<div class="status-pip ${pipClass(status)}${typing ? ' is-typing' : ''}" data-uid-pip="${dm._otherId||''}">${typing ? PIP_TYPING_DOTS : ''}</div>`;
+  }
+  function patchDmPreview(roomId) {
+    const dm = dms.find(d => d.id === roomId);
+    if (!dm) return;
+    const item = document.querySelector(`#dm-list .dm-item[data-room-id="${CSS.escape(roomId)}"]`);
+    const wrap = item && item.querySelector('.dm-avatar-wrap');
+    if (!wrap) return renderDMList();   // row not drawn yet (e.g. list was empty)
+    const typing = !!dmTyping[roomId];
+    const pip = wrap.querySelector('.status-pip');
+    if (typing) {
+      if (pip && pip.classList.contains('is-typing')) return;   // already animating, don't restart it
+      const html = dmPipHtml(dm, dm._status || 'offline', true);
+      if (pip) pip.outerHTML = html; else wrap.insertAdjacentHTML('beforeend', html);
+    } else if (pip) {
+      if (dm.is_group) pip.remove();
+      else pip.outerHTML = dmPipHtml(dm, dm._status || 'offline', false);
+    }
   }
 
   function renderDMList() {
@@ -1593,18 +1657,10 @@ function initDashboardView() {
       const name = dm.display_name || dm.name || 'Unknown';
       const status = dm._status || 'offline';
       const unread = unreadCounts[dm.id] || 0;
-      const previewIcon = dm.last_message ? DM_PREVIEW_ICONS[dm.last_message] : null;
-      const preview = dm.last_message
-        ? (previewIcon
-          ? `<span style="display:inline-flex;align-items:center;gap:4px;">${previewIcon}${escapeHtml(dm.last_message)}</span>`
-          : escapeHtml(dm.last_message.slice(0, 50)))
-        : '<i style="color:var(--text-muted)">No messages yet</i>';
       const time = dm.last_message_at ? fmtTime(dm.last_message_at) : '';
       const isActive = currentRoom?.id === dm.id;
-      const typingName = dmTyping[dm.id];
-      const previewHtml = typingName !== undefined
-        ? `<span class="dm-typing"><span class="typing-dots"><i></i><i></i><i></i></span>${dm.is_group ? escapeHtml(typingName) + ' is typing…' : 'typing…'}</span>`
-        : preview;
+      const isTyping = !!dmTyping[dm.id];
+      const previewHtml = dmPreviewHtml(dm);
       let avatarHtml = dm._otherId ? identiconImg(dm._otherId) : name[0].toUpperCase();
       if (dm._avatar) {
         avatarHtml = `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />`;
@@ -1619,7 +1675,7 @@ function initDashboardView() {
           ${dm._profileEffect ? AVATAR_FX_HTML : ''}
           ${dm._otherId ? avatarDecorationHtml(dm._avatarDecoration, dm._otherId) : ''}
           ${dmAvatar}
-          ${dm.is_group ? '' : `<div class="status-pip ${pipClass(status)}" data-uid-pip="${dm._otherId||''}"></div>`}
+          ${dmPipHtml(dm, status, isTyping)}
         </div>
         <div class="dm-content">
           <div class="dm-top">
@@ -1629,7 +1685,7 @@ function initDashboardView() {
               <span class="dm-time">${time}</span>
             </div>
           </div>
-          <div class="dm-preview${typingName !== undefined ? ' is-typing' : ''}">${previewHtml}</div>
+          <div class="dm-preview">${previewHtml}</div>
         </div>
         <div class="dm-actions">
           <button class="dm-action-btn danger" onclick="event.stopPropagation();hideDM('${dm.id}')" title="Hide">
@@ -1647,6 +1703,7 @@ function initDashboardView() {
   function hideDM(roomId) {
     const dm = dms.find(d => d.id === roomId);
     if (!dm) return;
+    clearDmTyping(roomId);
     dms = dms.filter(d => d.id !== roomId);
     delete unreadCounts[roomId];
     if (currentRoom?.id === roomId) {
@@ -1663,7 +1720,7 @@ function initDashboardView() {
   // ─── PRESENCE (with null checks) ──────────────────────────
   function updatePresence(userId, status) {
     document.querySelectorAll(`[data-uid-pip="${userId}"]`).forEach(el => {
-      if (el) el.className = `status-pip ${pipClass(status)}`;
+      if (el) el.className = `status-pip ${pipClass(status)}${el.classList.contains('is-typing') ? ' is-typing' : ''}`;
     });
     const activeDm = dms.find(d => d.id === currentRoom?.id);
     if (activeDm && activeDm._otherId === userId) {
@@ -2945,9 +3002,9 @@ function initDashboardView() {
     const key = userId || name;
     typingUsers.set(key, name);
     renderTyping();
-    // Senders ping every ~2.5s while typing; if the pings stop, expire after 5s.
+    // Senders ping every ~2.5s while typing; if the pings stop, expire (TYPING_EXPIRE_MS).
     clearTimeout(typingTimers[key]);
-    typingTimers[key] = setTimeout(() => clearTypingUser(key), 5000);
+    typingTimers[key] = setTimeout(() => clearTypingUser(key), TYPING_EXPIRE_MS);
   }
   function clearTypingUser(key) {
     clearTimeout(typingTimers[key]);

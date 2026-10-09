@@ -284,8 +284,30 @@ body.select-mode #view-app .dm-checkbox {
   margin-top: 2px;
 }
 
-#view-app .dm-preview.is-typing { color: var(--accent); }
-#view-app .dm-typing { display: inline-flex; align-items: center; gap: 6px; }
+/* Typing in a DM row: the avatar's status pip becomes a small pill with three
+   animated dots inside it (replacing the status icon) while someone types. */
+#view-app .status-pip.is-typing { width: 28px; border-radius: 8px; }
+#view-app .status-pip.is-typing::after {
+  -webkit-mask: none; mask: none;
+  background: var(--pip-color, var(--offline));   /* pill keeps the user's status color */
+  border-radius: 5px;
+}
+#view-app .status-pip .pip-typing {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center; gap: 2px;
+}
+#view-app .status-pip .pip-typing i {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: #fff;
+  transform: scale(.7); opacity: .5;
+  animation: pip-typing-wave 1.4s infinite ease-in-out;
+}
+#view-app .status-pip .pip-typing i:nth-child(2) { animation-delay: .2s; }
+#view-app .status-pip .pip-typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes pip-typing-wave {
+  0%, 60%, 100% { transform: scale(.7); opacity: .5; }
+  30% { transform: scale(1.15); opacity: 1; }
+}
 /* Discord-style typing dots: three dots that swell and brighten in a wave. */
 #view-app .typing-dots { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
 #view-app .typing-dots i {
@@ -301,7 +323,11 @@ body.select-mode #view-app .dm-checkbox {
   0%, 60%, 100% { transform: scale(.6); opacity: .4; }
   30% { transform: scale(1); opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) { #view-app .typing-dots i { animation: none; opacity: .8; } }
+/* Reduced motion: static dots, no movement. */
+@media (prefers-reduced-motion: reduce) {
+  #view-app .typing-dots i,
+  #view-app .status-pip .pip-typing i { animation: none; transform: none; opacity: .85; }
+}
 
 #view-app .dm-actions {
   flex-shrink: 0;
