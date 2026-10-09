@@ -639,6 +639,7 @@ function initDashboardView() {
     if (!room) return toast('Conversation not found');
     const loadToken = ++_roomLoadToken;
     currentRoom = room;
+    clearTypingAll();
     const targetPath = `/app/rooms/${room.id}`;
     if (!fromRoute && window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
@@ -777,6 +778,10 @@ function initDashboardView() {
           // broadcast; appendMessage() is idempotent and will de-duplicate
           // against an already-rendered row.
           if (sentMsgIds.has(m.id)) sentMsgIds.delete(m.id);
+          if (m.user_id !== currentUser.id) {
+            if (currentRoom?.id === m.room_id) clearTypingUser(m.user_id);
+            clearDmTyping(m.room_id);
+          }
 
           // Sound for anything from someone else, unless we're actively
           // looking at that exact room right now (a focused, open
@@ -882,7 +887,7 @@ function initDashboardView() {
 
         case 'typing':
           if (msg.user_id !== currentUser.id) {
-            if (msg.room_id === currentRoom?.id) showTyping(msg.display_name || msg.username);
+            if (msg.room_id === currentRoom?.id) showTyping(msg.display_name || msg.username, msg.user_id);
             setDmTyping(msg.room_id, msg.display_name || msg.username);   // animated dots in the DM list
           }
           break;
@@ -2870,8 +2875,11 @@ function initDashboardView() {
         return;
       }
     }
-    if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
-    if (ws && ws.readyState === WebSocket.OPEN && currentRoom) {
+    if (e.key === 'Enter') { e.preventDefault(); _lastTypingSent = 0; sendMessage(); return; }
+    const nonTyping = e.ctrlKey || e.metaKey || e.altKey || e.key.length > 1 && !['Backspace', 'Delete', 'Space'].includes(e.key);
+    const now = Date.now();
+    if (!nonTyping && ws && ws.readyState === WebSocket.OPEN && currentRoom && now - _lastTypingSent > 2500) {
+      _lastTypingSent = now;
       ws.send(JSON.stringify({ type: 'typing', room_id: currentRoom.id }));
     }
   });
@@ -2928,17 +2936,44 @@ function initDashboardView() {
     window.addEventListener('dragend', hide);
   })();
 
+  // userId -> display name. Keyed by id so a message from that user can clear
+  // their entry (Discord drops the indicator the moment the message lands).
+  let _lastTypingSent = 0;
   const typingUsers = new Map();
-  function showTyping(name) {
-    typingUsers.set(name, Date.now());
+  let _typingHtml = null;
+  function showTyping(name, userId) {
+    const key = userId || name;
+    typingUsers.set(key, name);
     renderTyping();
-    clearTimeout(typingTimers[name]);
-    typingTimers[name] = setTimeout(() => { typingUsers.delete(name); renderTyping(); }, 3000);
+    // Senders ping every ~2.5s while typing; if the pings stop, expire after 5s.
+    clearTimeout(typingTimers[key]);
+    typingTimers[key] = setTimeout(() => clearTypingUser(key), 5000);
+  }
+  function clearTypingUser(key) {
+    clearTimeout(typingTimers[key]);
+    delete typingTimers[key];
+    if (typingUsers.delete(key)) renderTyping();
+  }
+  function clearTypingAll() {
+    for (const k of typingUsers.keys()) { clearTimeout(typingTimers[k]); delete typingTimers[k]; }
+    typingUsers.clear();
+    renderTyping();
   }
   function renderTyping() {
     const el = document.getElementById('typing-indicator');
-    const names = [...typingUsers.keys()];
-    el.textContent = names.length ? `${names[0]} is typing…` : '';
+    if (!el) return;
+    const names = [...typingUsers.values()].map(n => `<strong>${escapeHtml(n)}</strong>`);
+    let text = '';
+    if (names.length === 1) text = `${names[0]} is typing…`;
+    else if (names.length === 2) text = `${names[0]} and ${names[1]} are typing…`;
+    else if (names.length === 3) text = `${names[0]}, ${names[1]}, and ${names[2]} are typing…`;
+    else if (names.length > 3) text = 'Several people are typing…';
+    const html = text ? `<span class="typing-dots"><i></i><i></i><i></i></span><span class="typing-text">${text}</span>` : '';
+    // Only touch the DOM when something changed — rewriting it on every remote
+    // keystroke restarts the dot animation and makes it stutter.
+    if (html === _typingHtml) return;
+    _typingHtml = html;
+    el.innerHTML = html;
   }
 
   // ─── AVATAR DECORATIONS ─────────────────────────────────
@@ -4244,6 +4279,7 @@ function initDashboardView() {
       ws.send(JSON.stringify({ type: 'leave_room', room_id: currentRoom.id }));
     }
     currentRoom = channel;
+    clearTypingAll();
     currentRoomMembers = [];
     closeMentionSuggest();
 

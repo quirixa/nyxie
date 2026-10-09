@@ -286,17 +286,20 @@ body.select-mode #view-app .dm-checkbox {
 
 #view-app .dm-preview.is-typing { color: var(--accent); }
 #view-app .dm-typing { display: inline-flex; align-items: center; gap: 6px; }
-#view-app .typing-dots { display: inline-flex; align-items: center; gap: 3px; }
+/* Discord-style typing dots: three dots that swell and brighten in a wave. */
+#view-app .typing-dots { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
 #view-app .typing-dots i {
-  width: 5px; height: 5px; border-radius: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
   background: currentColor;
-  animation: dm-typing-bounce 1.2s infinite ease-in-out;
+  transform: scale(.6);
+  opacity: .4;
+  animation: typing-wave 1.4s infinite ease-in-out;
 }
-#view-app .typing-dots i:nth-child(2) { animation-delay: .15s; }
-#view-app .typing-dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes dm-typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: .45; }
-  30% { transform: translateY(-3px); opacity: 1; }
+#view-app .typing-dots i:nth-child(2) { animation-delay: .2s; }
+#view-app .typing-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes typing-wave {
+  0%, 60%, 100% { transform: scale(.6); opacity: .4; }
+  30% { transform: scale(1); opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) { #view-app .typing-dots i { animation: none; opacity: .8; } }
 
@@ -1186,12 +1189,20 @@ body.select-mode #view-app .dm-checkbox {
 }
 
 #view-app #typing-indicator {
-  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
   padding: 0 20px;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  line-height: 24px;
   color: var(--text-muted);
-  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
 }
+#view-app #typing-indicator .typing-dots { color: var(--text-primary); }
+#view-app #typing-indicator .typing-text { overflow: hidden; text-overflow: ellipsis; }
+#view-app #typing-indicator .typing-text strong { color: var(--text-primary); font-weight: 700; }
 
 /* ─────────────────────────────────────────────────────────
    Composer / input area
