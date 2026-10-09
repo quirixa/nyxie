@@ -3308,7 +3308,7 @@ body.select-mode #view-app .dm-checkbox {
 }
 #view-app .btn-danger:hover {
   background: var(--danger) !important;
-  color: #fff !important;
+  color: #ffffff !important;
 }
 
 @media (max-width: 768px) {
