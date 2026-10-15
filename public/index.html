@@ -481,12 +481,9 @@ __    __  __      __  __    __  ______  ________
     <div id="view-app">
         <div id="app">
             <!-- Server rail -->
-             <!-- this is just for a test -->
 <div id="server-rail">
-    <div class="server-pill home-pill active"
-         id="server-pill-home"
-         onclick="showDMView()"
-         title="Direct Messages">
+    <div class="server-pill home-pill active" id="server-pill-home"
+         onclick="showDMView()" title="Direct Messages">
         <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="m21.743 12.331-9-10c-.379-.422-1.107-.422-1.486 0l-9 10a.998.998 0 0 0-.17 1.076c.16.361.518.593.913.593h2v7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4h4v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-7h2a.998.998 0 0 0 .743-1.669z"/>
         </svg>
@@ -496,40 +493,55 @@ __    __  __      __  __    __  ______  ________
     <div id="server-rail-list"></div>
     <div class="server-rail-divider"></div>
 
-    <!-- Discord-style Add Server -->
+    <!-- Add Server -->
     <div class="server-pill server-pill-add"
          id="server-pill-add"
          onclick="showAddServerModal()"
          title="Add a server"
-         aria-label="Add a Server">
-        <svg class="circleIcon" aria-hidden="true"
-             xmlns="http://www.w3.org/2000/svg"
-             width="24" height="24" fill="none"
-             viewBox="0 0 24 24">
-            <path fill="currentColor" fill-rule="evenodd"
-                  d="M12 23a11 11 0 1 0 0-22 11 11 0 0 0 0 22Zm0-17a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2h-4v4a1 1 0 1 1-2 0v-4H7a1 1 0 1 1 0-2h4V7a1 1 0 0 1 1-1Z"
-                  clip-rule="evenodd"/>
+         aria-label="Add a server"
+         role="button"
+         tabindex="0"
+         style="color: #23a55a; background: #1e2522;
+                border-radius: 50%; transition: all 180ms ease;
+                cursor: pointer;"
+         onmouseenter="this.style.background='#23a55a'; this.style.color='#ffffff'; this.style.borderRadius='35%'; this.style.transform='scale(1.08)';"
+         onmouseleave="this.style.background='#1e2522'; this.style.color='#23a55a'; this.style.borderRadius='50%'; this.style.transform='scale(1)';"
+         onfocus="this.style.outline='2px solid #23a55a'; this.style.outlineOffset='3px';"
+         onblur="this.style.outline='none';">
+        <svg viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" width="26" height="26"
+             aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
     </div>
 
-    <!-- Discord-style Discover Servers -->
+    <!-- Discover Servers -->
     <div class="server-pill server-pill-discover"
          id="server-pill-discover"
          onclick="showDiscoverView()"
          title="Discover Servers"
-         aria-label="Discover Servers">
-        <svg class="circleIcon" aria-hidden="true"
-             xmlns="http://www.w3.org/2000/svg"
-             width="24" height="24" fill="none"
-             viewBox="0 0 24 24">
-            <path fill="currentColor"
-                  d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>
-            <path fill="currentColor" fill-rule="evenodd"
-                  d="M23 12a11 11 0 1 1-22 0 11 11 0 0 1 22 0ZM7.74 9.3A2 2 0 0 1 9.3 7.75l7.22-1.45a1 1 0 0 1 1.18 1.18l-1.45 7.22a2 2 0 0 1-1.57 1.57l-7.22 1.45a1 1 0 0 1-1.18-1.18L7.74 9.3Z"
-                  clip-rule="evenodd"/>
+         aria-label="Discover Servers"
+         role="button"
+         tabindex="0"
+         style="color: #5865f2; background: #202236;
+                border-radius: 50%; transition: all 180ms ease;
+                cursor: pointer;"
+         onmouseenter="this.style.background='#5865f2'; this.style.color='#ffffff'; this.style.borderRadius='35%'; this.style.transform='scale(1.08)';"
+         onmouseleave="this.style.background='#202236'; this.style.color='#5865f2'; this.style.borderRadius='50%'; this.style.transform='scale(1)';"
+         onfocus="this.style.outline='2px solid #5865f2'; this.style.outlineOffset='3px';"
+         onblur="this.style.outline='none';">
+        <svg viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"
+             width="26" height="26" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
         </svg>
     </div>
 </div>
+
 
             <!-- Sidebar -->
             <div id="sidebar">
