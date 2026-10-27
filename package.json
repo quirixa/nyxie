@@ -1,6 +1,6 @@
 {
   "name": "nyxie",
-  "version": "0.2.0",
+  "version": "0.6.0",
   "description": "Nyxie — chat, servers, marketplace and NX wallet (Express + WebSocket + sql.js).",
   "private": true,
   "main": "server/server.js",
@@ -25,6 +25,8 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
-    "jsdom": "^30.1.3"
+    "jsdom": "^30.1.3",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
   }
 }

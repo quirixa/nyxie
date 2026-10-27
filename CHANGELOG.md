@@ -3,6 +3,41 @@
 All notable changes to Nyxie. The same release notes appear in the app under
 Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 
+## [0.6.0] - 2026-10-27
+
+Versioned as beta 0.6.0. Contains all the changes listed under 0.2.1 and 0.2.0 below (those entries are kept as history).
+
+### Fixed
+- Removed the remaining static placeholder usernames from the interface, including the wallet "Receive" dialog (a one-line text change in `public/index.html`; the dialog is still filled from the API in `public/js/wallet.js`, which is unchanged). Usernames are now only ever rendered from account/API data.
+
+### Added
+- A regression test that scans the whole project for sample/placeholder usernames and static `@username` text.
+
+### Known limitations
+- The "Discover themes" button in Appearance opens a placeholder link (`example.com/themes`); there is no theme gallery.
+- Input hint text such as `you@example.com` in the email fields is standard placeholder hinting, not account data, and was left as is.
+- Not checked in a real browser (see 0.2.1).
+
+## [0.2.1] - 2026-10-26
+
+Fix release for 0.2.0.
+
+### Fixed
+- `toggleMemberList is not defined` / `loadChannelMemberList is not defined`: 0.2.0 deleted the right-hand member list (`loadChannelMemberList`, `toggleMemberList` and their helpers) from `public/js/dashboard.js` while replacing the old server-settings popup. They are restored unchanged from 0.1.0.
+- Seven dashboard functions (`loadServers`, `renderServerRail`, `loadServerChannels`, `loadServerRoles`, `selectServer`, `showDMView`, `renderChannelList`) were defined twice after the 0.2.0 edit; the stale second copies silently overrode the new ones, so the sidebar did not group channels by category and Administrators did not get the Server Settings button. The duplicates are removed.
+- Static placeholder usernames that could display instead of real data: in the chat header, the user panel and the Account settings field. They now stay empty until the real value is set from the API.
+- Revealing the email in Account settings showed `user@example.com` when the account had no email; it now shows `—`.
+- The Friends "Refresh" button (`loadFriendsData`/`renderFriendsList`) and the mobile "Settings" back button (`showSettingsList`) referenced functions that were never exported to `window` (present since 0.1.0).
+
+### Added
+- `tests/ui-dashboard.test.js`: boots the real `index.html` and every `public/js` file in jsdom against a live server and checks the member list (real usernames only, toggle in wide and narrow layouts), live updates (role change, kick, rejoin), category grouping and live channel hiding, opening Server Settings from the dashboard, and the handlers above.
+- Static guards in `tests/regression.test.js`: no function defined twice in a frontend closure; every `window.x = x` export refers to a real function.
+- Dev dependencies `tweetnacl` and `tweetnacl-util` (served to the jsdom page in place of the CDN copies).
+
+### Known limitations
+- The "Discover themes" button in Appearance opens a placeholder link (`example.com/themes`); there is no theme gallery.
+- The dashboard and Server Settings were exercised in jsdom (a DOM simulation) only; layout, CSS and phone responsiveness have not been checked in a real browser. jsdom does not attach inline `onclick` attributes on elements cloned from a `<template>`, so for those buttons the tests execute the button's own `onclick` code.
+
 ## [0.2.0] - 2026-10-24
 
 Server Settings overhaul.

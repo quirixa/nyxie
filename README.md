@@ -4,7 +4,7 @@ Chat, servers, marketplace and NX wallet. Node.js + Express backend, WebSocket
 messaging, SQLite (via `sql.js`) storage, and a vanilla-JS single-page frontend
 served from `public/`.
 
-**Current release: 0.2.0** (Server Settings overhaul) — see [CHANGELOG.md](CHANGELOG.md).
+**Current release: beta 0.6.0** (includes the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -129,15 +129,13 @@ npm run check # syntax check of the main files
 | `tests/server-settings.test.js` | REST + WebSocket: overview validation/persistence, icon validation, roles/hierarchy/escalation, members, kick/ban/timeout, categories/layout, channel overrides (REST + live WS), permission enforcement, audit log, server deletion |
 | `tests/migration.test.js` | Upgrade of a rewound "pre-0.2.0" database: data preserved, migrations applied once, safety copy written |
 | `tests/regression.test.js` | Login/registration, DMs with live delivery, server messaging, uploads, SPA shell, wallet route still guarded, JWT_SECRET enforcement, version consistency |
+| `tests/ui-dashboard.test.js` | The real `index.html` + all frontend scripts in jsdom against a live server: member list, toggle, live updates, categories, opening Server Settings, no placeholder usernames |
 | `tests/ui-settings.test.js` | The real settings panel code running in **jsdom** against a live server: navigation, dirty guards, forms, dialogs, lists, error/empty states, XSS escaping |
 
 Tests never touch `./data`; they use temporary directories via `NYXIE_DATA_DIR`.
 
 **What is not covered:** there is no real-browser testing. The jsdom tests do not
-render CSS, so layout/responsiveness of the panel is unverified, as are the
-dashboard integration points in `public/js/dashboard.js` (opening the panel,
-category grouping in the sidebar, live websocket event handling) — these were
-checked by code review and syntax checks only. The NX wallet and other
+render CSS, so layout and phone responsiveness are unverified. The NX wallet and other
 pre-existing features were not modified apart from what `tests/regression.test.js` exercises.
 
 ## Layout

@@ -514,7 +514,8 @@ function initSettingsView() {
     emailVisible = !emailVisible;
     const el = document.getElementById('settings-email');
     if (emailVisible) {
-      el.textContent = currentUser.email || 'user@example.com';
+      // Real value only; never a made-up address when the account has none.
+      el.textContent = currentUser.email || '—';
     } else {
       el.textContent = '••••••••';
     }
@@ -1177,6 +1178,44 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Beta 0.6.0',
+      version: '0.6.0',
+      date: 'October 27, 2026',
+      sections: [
+        { heading: 'Changed', items: [
+          'Nyxie is now versioned as beta 0.6.0. It includes everything from the earlier 0.2.0 and 0.2.1 releases below.',
+        ] },
+        { heading: 'Fixed', items: [
+          'Removed the last placeholder usernames from the interface, including the wallet “Receive” dialog. Usernames now only ever come from your account and the server.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'The “Discover themes” button in Appearance still opens a placeholder link; no theme gallery exists yet.',
+          'Layout and styling have not been checked in a real browser yet.',
+        ] },
+      ],
+    },
+    {
+      title: 'Member list and dashboard fixes',
+      version: '0.2.1',
+      date: 'October 26, 2026',
+      sections: [
+        { heading: 'Fixed', items: [
+          'The member list and its show/hide button stopped working in 0.2.0 (“toggleMemberList is not defined” and “loadChannelMemberList is not defined”). Both are restored.',
+          'Channels were not grouped under their categories, and Administrators did not get the Server Settings button, because older copies of several dashboard functions were overriding the new ones. The duplicates are removed.',
+          'Placeholder usernames in the chat header, the user panel and the Account settings field could show instead of real data. They now stay empty until your real details load.',
+          'Revealing your email in Account settings showed a made-up address when your account had none; it now shows a dash.',
+          'The Friends “Refresh” button and the mobile “Settings” back button called functions that were not available.',
+        ] },
+        { heading: 'Improved', items: [
+          'The member list, live member updates (role changes, kicks, rejoins), category grouping and opening Server Settings are now covered by automated tests that run the real dashboard.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'The “Discover themes” button in Appearance still opens a placeholder link; no theme gallery exists yet.',
+          'Layout and styling of the dashboard and Server Settings have still not been checked in a real browser.',
+        ] },
+      ],
+    },
+    {
       title: 'Server Settings overhaul',
       version: '0.2.0',
       date: 'October 24, 2026',
@@ -1444,5 +1483,7 @@ function initSettingsView() {
     // teardown and as a hook for future settings-view state.
   }
   window.destroySettingsView = destroySettingsView;
+  // Used by the mobile "Settings" back button's inline onclick in index.html.
+  window.showSettingsList = showSettingsList;
 }
 window.initSettingsView = initSettingsView;

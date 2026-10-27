@@ -545,17 +545,6 @@ function initDashboardView() {
     document.getElementById('sidebar').classList.toggle('collapsed');
   }
 
-  function toggleMemberList() {
-  const button = document.getElementById('member-list-toggle-btn');
-  const panel = document.getElementById('member-list-panel');
-  if (!button || !panel) return;
-
-  const isOpen = panel.style.display !== 'none';
-  panel.style.display = isOpen ? 'none' : 'flex';
-  panel.classList.remove('force-open');
-  button.classList.toggle('active', !isOpen);
-}
-
   async function navigateTo(section) {
     currentNav = section;
     inDiscoverView = false;
@@ -4208,6 +4197,9 @@ function initDashboardView() {
   window.searchUsers = searchUsers;
   window.startDM = startDM;
   window.switchFriendsTab = switchFriendsTab;
+  // Used by the Refresh button's inline onclick in index.html.
+  window.loadFriendsData = loadFriendsData;
+  window.renderFriendsList = renderFriendsList;
   window.sendFriendRequest = sendFriendRequest;
   window.sendFriendRequestTo = sendFriendRequestTo;
   window.acceptFriendRequest = acceptFriendRequest;
@@ -4367,132 +4359,6 @@ function initDashboardView() {
       html += `<div class="channel-category" style="padding:14px 8px 4px;font-size:0.68rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted)">${escapeHtml(k.name)}</div>` + chans.map(item).join('');
     });
     list.innerHTML = html;
-  }
-  async function loadServers() {
-    const data = await api('GET', '/servers');
-    if (!data) return;
-    servers = data.servers || [];
-    renderServerRail();
-  }
-
-  function renderServerRail() {
-    const list = document.getElementById('server-rail-list');
-    if (!list) return;
-    list.innerHTML = servers.map(s => {
-      const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
-      const inner = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
-      return `<div class="server-pill${currentServerId === s.id ? ' active' : ''}" data-server-id="${s.id}"
-        onclick="selectServer('${escapeJs(s.id)}')" title="${escapeHtml(s.name)}">${inner}</div>`;
-    }).join('');
-    document.getElementById('server-pill-home').classList.toggle('active', !currentServerId && !inDiscoverView);
-    document.getElementById('server-pill-discover')?.classList.toggle('active', inDiscoverView);
-  }
-
-  function showDMView() {
-    currentServerId = null;
-    currentRoom = null;
-    inDiscoverView = false;
-    document.getElementById('discover-panel').style.display = 'none';
-    document.getElementById('server-panel').classList.add('hidden');
-    const serverSettingsBtn = document.getElementById('server-settings-btn');
-    if (serverSettingsBtn) serverSettingsBtn.style.display = '';
-    document.getElementById('conv-header').classList.remove('hidden');
-    document.getElementById('search-wrap').classList.remove('hidden');
-    document.getElementById('dm-section').style.display = '';
-    document.getElementById('chat-view').style.display = 'none';
-    // Restore the normal global sidebar nav (Home/Friends/Marketplace/
-    // Wallet/Admin) that selectServer() hides — see the .in-server-view
-    // rule in dashboard.css.
-    document.getElementById('sidebar').classList.remove('in-server-view');
-    renderServerRail();
-    if (window.location.pathname.startsWith('/servers/') || window.location.pathname.startsWith('/discover')) {
-      window.history.replaceState({}, '', '/app');
-    }
-    navigateTo('home');
-  }
-
-  // `fromRoute: true` means router.js already matched '/servers/:serverId'
-  // or '/servers/:serverId/channels/:channelId' and mounted the dashboard
-  // for it (page load, refresh, or browser back/forward) — the address
-  // bar is already correct, so this and openChannel() below skip pushing
-  // a new history entry. Every other caller (clicking a server pill) is a
-  // real navigation and should push its own URL, same pattern as
-  // openRoom()'s fromRoute for DMs.
-  async function selectServer(serverId, { fromRoute = false, initialChannelId = null } = {}) {
-    inDiscoverView = false;
-    document.getElementById('discover-panel').style.display = 'none';
-    currentServerId = serverId;
-    currentRoom = null;
-    document.getElementById('welcome-view').style.display = 'none';
-    document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('wallet-panel').style.display = 'none';
-    document.getElementById('notifications-panel').style.display = 'none';
-    document.getElementById('chat-view').style.display = 'none';
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-
-    document.getElementById('conv-header').classList.add('hidden');
-    document.getElementById('search-wrap').classList.add('hidden');
-    document.getElementById('dm-section').style.display = 'none';
-    document.getElementById('server-panel').classList.remove('hidden');
-    // Server view gets its own nav (server rail + channel list); the
-    // global sidebar-nav has no place inside it, so hide it for as long
-    // as a server is active. Restored by showDMView().
-    document.getElementById('sidebar').classList.add('in-server-view');
-    renderServerRail();
-
-    const server = servers.find(s => s.id === serverId);
-    if (!server) {
-      toast('Server not found');
-      return showDMView();
-    }
-    document.getElementById('server-panel-name').textContent = server.name;
-    // Server Settings is a management surface. Only the owner or a member
-    // with MANAGE_SERVER (bit 3 / value 8) should be able to open it.
-    const canManageServer = !!(server.is_owner || (server.my_permissions & 8));
-    const serverSettingsBtn = document.getElementById('server-settings-btn');
-    if (serverSettingsBtn) serverSettingsBtn.style.display = canManageServer ? '' : 'none';
-    document.getElementById('channel-list').innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">Loading…</div>`;
-
-    await loadServerChannels(serverId);
-    await loadServerRoles();
-
-    const wanted = initialChannelId && serverChannels.find(c => c.id === initialChannelId);
-    if (wanted) {
-      openChannel(wanted.id, { fromRoute });
-    } else if (serverChannels.length) {
-      openChannel(serverChannels[0].id, { fromRoute });
-    } else if (!fromRoute) {
-      window.history.pushState({}, '', `/servers/${serverId}`);
-    }
-  }
-
-  async function loadServerChannels(serverId) {
-    const data = await api('GET', `/servers/${serverId}/channels`);
-    if (serverId !== currentServerId) return; // switched servers while loading
-    serverChannels = data?.channels || [];
-    serverCategories = data?.categories || [];
-    serverChannels.forEach(c => (c.server_id = serverId));
-    renderChannelList();
-    serverChannels.forEach(c => wsJoin(c.id));
-  }
-
-  async function loadServerRoles() {
-    if (!currentServerId) return;
-    const data = await api('GET', `/servers/${currentServerId}/roles`);
-    currentServerRoles = data?.roles || [];
-  }
-
-  function renderChannelList() {
-    const list = document.getElementById('channel-list');
-    if (!serverChannels.length) {
-      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">No channels yet</div>`;
-      return;
-    }
-    list.innerHTML = serverChannels.map(c => `
-      <div class="channel-item${currentRoom?.id === c.id ? ' active' : ''}" data-channel-id="${c.id}" onclick="openChannel('${c.id}')">
-        <span class="channel-hash">#</span><span>${escapeHtml(c.name)}</span>
-      </div>
-    `).join('');
   }
 
   function openChannel(channelId, { fromRoute = false } = {}) {
@@ -4906,6 +4772,143 @@ function initDashboardView() {
   async function renderServerMembersIfOpen() {
     if (currentRoom?.server_id === currentServerId) loadChannelMemberList();
   }
+
+  // ─── Right-side member list (persistent, not the settings modal's
+  // management list above) — shown whenever a server channel is open.
+  // Grouped ONLINE/OFFLINE like a typical Discord-style roster; DMs and
+  // group chats have no server roster so this stays hidden for those
+  // (see openRoom()/showDMView()).
+  async function loadChannelMemberList() {
+    const container = document.getElementById('member-list');
+    const countEl = document.getElementById('member-list-count');
+    const serverId = currentServerId;
+    if (!serverId) return;
+
+    const [membersData, rolesData] = await Promise.all([
+      api('GET', `/servers/${serverId}/members`),
+      api('GET', `/servers/${serverId}/roles`)
+    ]);
+    if (currentServerId !== serverId) return; // switched servers while loading
+
+    const members = membersData?.members || [];
+    const roles = (rolesData?.roles || []).slice().sort((a, b) => (b.position || 0) - (a.position || 0));
+    countEl.textContent = `${members.length} Member${members.length === 1 ? '' : 's'}`;
+
+    // Discord-style behavior:
+    // - only roles marked display_separately create their own member section;
+    // - a member appears in one section only, using their highest displayed role;
+    // - everyone else goes into the normal Members section;
+    // - offline users are kept in a separate Offline section.
+    const displayRoles = roles.filter(r => r.display_separately);
+    const displayRoleMap = new Map(displayRoles.map(r => [r.id, r]));
+    const groups = new Map(displayRoles.map(r => [r.id, []]));
+    const membersGroup = [];
+    const offlineGroup = [];
+
+    function getDisplayedRole(member) {
+      // The current Nyxie membership model assigns one role per member.
+      // Sorting by position here also makes this future-proof if the API
+      // later returns multiple roles on a member.
+      const candidates = [];
+      if (member.role?.id) candidates.push(member.role);
+      if (Array.isArray(member.roles)) candidates.push(...member.roles);
+      return candidates
+        .map(role => displayRoleMap.get(role.id) || (role.display_separately ? role : null))
+        .filter(Boolean)
+        .sort((a, b) => (b.position || 0) - (a.position || 0))[0] || null;
+    }
+
+    function isOffline(member) {
+      return (member.status || member._status || 'offline') === 'offline';
+    }
+
+    function row(m) {
+      const status = m.status || m._status || 'offline';
+      const isOfflineMember = status === 'offline';
+      const avatarHtml = m.avatar
+        ? `<img src="${versionedMediaUrl(m.avatar)}" />`
+        : identiconImg(m.id);
+      const role = getDisplayedRole(m) || m.role;
+      return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
+        <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
+        ${m.profile_effect ? AVATAR_FX_HTML : ''}
+        ${avatarDecorationHtml(m.avatar_decoration, m.id)}
+        <div class="ml-avatar">
+          ${avatarHtml}
+          <span class="ml-status-dot pip-${isOfflineMember ? 'offline' : (status === 'idle' ? 'idle' : status === 'dnd' ? 'dnd' : 'online')}"></span>
+        </div>
+        </div>
+        <div class="ml-info">
+          <div class="ml-name-row">
+            <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ownerCrownSvg() : ''}</div>
+          </div>
+          ${role?.name ? `<div class="ml-sub">${escapeHtml(role.name)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    for (const member of members) {
+      if (isOffline(member)) {
+        offlineGroup.push(member);
+        continue;
+      }
+      const displayedRole = getDisplayedRole(member);
+      if (displayedRole && groups.has(displayedRole.id)) {
+        groups.get(displayedRole.id).push(member);
+      } else {
+        membersGroup.push(member);
+      }
+    }
+
+    // Stable ordering inside each section: display name/username.
+    const sortMembers = list => list.sort((a, b) =>
+      String(a.display_name || a.username || '').localeCompare(
+        String(b.display_name || b.username || ''), undefined, { sensitivity: 'base' }
+      )
+    );
+    groups.forEach(sortMembers);
+    sortMembers(membersGroup);
+    sortMembers(offlineGroup);
+
+    let html = '';
+    for (const role of displayRoles) {
+      const group = groups.get(role.id) || [];
+      if (!group.length) continue;
+      html += `<div class="ml-group-label ml-role-group-label">${escapeHtml(role.name)} — ${group.length}</div>`;
+      html += group.map(row).join('');
+    }
+    if (membersGroup.length) {
+      html += `<div class="ml-group-label ml-role-group-label">Members — ${membersGroup.length}</div>`;
+      html += membersGroup.map(row).join('');
+    }
+    if (offlineGroup.length) {
+      html += `<div class="ml-group-label ml-offline-group-label">Offline — ${offlineGroup.length}</div>`;
+      html += offlineGroup.map(row).join('');
+    }
+
+    container.innerHTML = html || `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
+  }
+
+  // Toggles the member list panel. On wide layouts it's a normal flex
+  // sibling (CSS handles show/hide via display:none by default until
+  // this sets 'flex'); below the 1100px breakpoint (see dashboard.css)
+  // it's hidden by default and this instead adds .force-open, which the
+  // media query turns into a floating overlay panel.
+  function toggleMemberList() {
+    const panel = document.getElementById('member-list-panel');
+    const btn = document.getElementById('member-list-toggle-btn');
+    const narrow = window.innerWidth <= 1100;
+    if (narrow) {
+      const open = panel.classList.toggle('force-open');
+      panel.style.display = open ? 'flex' : 'none';
+      btn.classList.toggle('active', open);
+    } else {
+      const open = panel.style.display !== 'flex';
+      panel.style.display = open ? 'flex' : 'none';
+      btn.classList.toggle('active', open);
+    }
+  }
+
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  GROUP CHATS
