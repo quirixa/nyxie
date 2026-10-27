@@ -26,12 +26,80 @@ const PERMISSIONS = Object.freeze({
   BAN_MEMBERS: 1 << 7,
   MANAGE_MESSAGES: 1 << 8,
   MANAGE_ROLES: 1 << 9,
-  ADMINISTRATOR: 1 << 10
+  ADMINISTRATOR: 1 << 10,
+  // 0.2.0 — every bit below is enforced by real code (see the catalog
+  // further down for where). New bits only ever get appended.
+  VIEW_AUDIT_LOG: 1 << 11,
+  MODERATE_MEMBERS: 1 << 12,       // time out / un-time-out members
+  READ_MESSAGE_HISTORY: 1 << 13,
+  ATTACH_FILES: 1 << 14
 });
 
+// Every real permission except ADMINISTRATOR (kept as before: this is the
+// "ordinary" set; ADMINISTRATOR is the override-everything switch).
 const ALL_PERMISSIONS = Object.keys(PERMISSIONS)
   .filter(k => k !== 'ADMINISTRATOR')
   .reduce((mask, k) => mask | PERMISSIONS[k], 0);
+
+// Every defined bit including ADMINISTRATOR. Used to reject unknown bits
+// in role payloads and as the effective mask of owners/administrators.
+const ALL_PERMISSION_BITS = ALL_PERMISSIONS | PERMISSIONS.ADMINISTRATOR;
+
+// The subset that a channel can override per role. These are exactly the
+// permissions that are evaluated per channel in canViewRoom/canSendToRoom/
+// canReadHistory/canAttachInRoom below.
+const CHANNEL_OVERRIDABLE =
+  PERMISSIONS.VIEW_CHANNEL |
+  PERMISSIONS.SEND_MESSAGES |
+  PERMISSIONS.READ_MESSAGE_HISTORY |
+  PERMISSIONS.ATTACH_FILES;
+
+// Human-readable catalog served to the Server Settings UI so the client
+// never keeps its own (drift-prone) copy of the permission list.
+const PERMISSION_CATALOG = [
+  {
+    id: 'general', label: 'General server permissions',
+    items: [
+      { key: 'VIEW_CHANNEL', label: 'View channels', description: 'See channels and open them.' },
+      { key: 'MANAGE_SERVER', label: 'Manage server', description: 'Change the server name, description, icon and discovery settings; manage invites.' },
+      { key: 'MANAGE_CHANNELS', label: 'Manage channels', description: 'Create, edit, reorder and delete channels and categories, and edit channel permissions.' },
+      { key: 'MANAGE_ROLES', label: 'Manage roles', description: 'Create, edit, reorder and delete roles below their own highest role, and assign them.' },
+      { key: 'VIEW_AUDIT_LOG', label: 'View audit log', description: 'Read the server audit log.' },
+      { key: 'CREATE_INVITES', label: 'Invite members', description: 'Create invite links.' }
+    ]
+  },
+  {
+    id: 'membership', label: 'Membership and moderation',
+    items: [
+      { key: 'MANAGE_MEMBERS', label: 'Manage members', description: 'Change other members\u2019 nicknames and assign roles below their own highest role.' },
+      { key: 'KICK_MEMBERS', label: 'Kick members', description: 'Remove members who rank below them.' },
+      { key: 'BAN_MEMBERS', label: 'Ban members', description: 'Ban and unban members.' },
+      { key: 'MODERATE_MEMBERS', label: 'Timeout members', description: 'Temporarily stop members who rank below them from sending messages.' }
+    ]
+  },
+  {
+    id: 'text', label: 'Text-channel permissions',
+    items: [
+      { key: 'SEND_MESSAGES', label: 'Send messages', description: 'Post messages in channels.' },
+      { key: 'READ_MESSAGE_HISTORY', label: 'Read message history', description: 'Load messages that were sent before they opened the channel.' },
+      { key: 'ATTACH_FILES', label: 'Attach files', description: 'Upload files and images with a message.' },
+      { key: 'MANAGE_MESSAGES', label: 'Manage messages', description: 'Delete other members\u2019 messages.' }
+    ]
+  },
+  {
+    id: 'advanced', label: 'Advanced',
+    items: [
+      { key: 'ADMINISTRATOR', label: 'Administrator', description: 'Grants every permission and bypasses channel overrides. Only the owner and other administrators can grant this.' }
+    ]
+  }
+].map(cat => ({
+  ...cat,
+  items: cat.items.map(i => ({
+    ...i,
+    bit: PERMISSIONS[i.key],
+    channel_overridable: (CHANNEL_OVERRIDABLE & PERMISSIONS[i.key]) !== 0
+  }))
+}));
 
 // Default permission sets for the three roles every new server gets.
 const DEFAULT_ROLE_DEFS = [
@@ -44,7 +112,10 @@ const DEFAULT_ROLE_DEFS = [
       PERMISSIONS.SEND_MESSAGES |
       PERMISSIONS.CREATE_INVITES |
       PERMISSIONS.KICK_MEMBERS |
-      PERMISSIONS.MANAGE_MESSAGES,
+      PERMISSIONS.MANAGE_MESSAGES |
+      PERMISSIONS.MODERATE_MEMBERS |
+      PERMISSIONS.READ_MESSAGE_HISTORY |
+      PERMISSIONS.ATTACH_FILES,
     position: 50,
     is_default: 0,
     display_separately: 1
@@ -52,7 +123,12 @@ const DEFAULT_ROLE_DEFS = [
   {
     key: 'member',
     name: 'Member',
-    permissions: PERMISSIONS.VIEW_CHANNEL | PERMISSIONS.SEND_MESSAGES | PERMISSIONS.CREATE_INVITES,
+    permissions:
+      PERMISSIONS.VIEW_CHANNEL |
+      PERMISSIONS.SEND_MESSAGES |
+      PERMISSIONS.CREATE_INVITES |
+      PERMISSIONS.READ_MESSAGE_HISTORY |
+      PERMISSIONS.ATTACH_FILES,
     position: 0,
     is_default: 1,
     display_separately: 0
@@ -87,14 +163,22 @@ function getDefaultRoleId(db, serverId) {
 // existing member on the default Member role.
 function ensureMemberRoleAssignments(db, serverId) {
   // Migrate the old one-role-per-member column into the new many-to-many
-  // assignment table. INSERT OR IGNORE makes this safe to run repeatedly.
+  // assignment table. Only rows that are actually missing are inserted:
+  // run() persists the whole database after every statement, and this
+  // function is reached from every permission check, so re-inserting
+  // every member on every call (INSERT OR IGNORE) was needlessly O(members)
+  // disk writes per request. Behaviour is identical.
   const now = Date.now();
-  const legacy = all(db, `
-    SELECT server_id, user_id, role_id
-    FROM server_members
-    WHERE server_id = ? AND role_id IS NOT NULL
+  const missing = all(db, `
+    SELECT sm.server_id, sm.user_id, sm.role_id
+    FROM server_members sm
+    WHERE sm.server_id = ? AND sm.role_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM server_member_roles smr
+        WHERE smr.server_id = sm.server_id AND smr.user_id = sm.user_id AND smr.role_id = sm.role_id
+      )
   `, [serverId]);
-  for (const row of legacy) {
+  for (const row of missing) {
     run(db, `
       INSERT OR IGNORE INTO server_member_roles (server_id, user_id, role_id, assigned_at)
       VALUES (?, ?, ?, ?)
@@ -151,8 +235,15 @@ function ensureServerRoles(db, serverId) {
   // permission behavior while allowing additional roles to stack on top.
   const defaultRoleId = getDefaultRoleId(db, serverId);
   if (defaultRoleId) {
-    const members = all(db, 'SELECT user_id FROM server_members WHERE server_id = ?', [serverId]);
-    for (const m of members) {
+    const lacking = all(db, `
+      SELECT sm.user_id FROM server_members sm
+      WHERE sm.server_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM server_member_roles smr
+          WHERE smr.server_id = sm.server_id AND smr.user_id = sm.user_id AND smr.role_id = ?
+        )
+    `, [serverId, defaultRoleId]);
+    for (const m of lacking) {
       run(db, `
         INSERT OR IGNORE INTO server_member_roles (server_id, user_id, role_id, assigned_at)
         VALUES (?, ?, ?, ?)
@@ -171,7 +262,7 @@ function getServerContext(db, serverId, userId) {
   ensureServerRoles(db, serverId);
 
   const membership = get(db, `
-    SELECT sm.server_id, sm.user_id, sm.joined_at, sm.role_id, sm.nickname, sm.muted
+    SELECT sm.server_id, sm.user_id, sm.joined_at, sm.role_id, sm.nickname, sm.muted, sm.timeout_until
     FROM server_members sm
     WHERE sm.server_id = ? AND sm.user_id = ?
   `, [serverId, userId]);
@@ -191,7 +282,8 @@ function getServerContext(db, serverId, userId) {
     permissions,
     roles,
     nickname: membership.nickname || null,
-    muted: !!membership.muted
+    muted: !!membership.muted,
+    timeoutUntil: membership.timeout_until || null
   };
 }
 
@@ -237,9 +329,125 @@ function requireServerPermission(permBit) {
   };
 }
 
+// ─── Hierarchy / grant helpers ────────────────────────────────────
+
+// The permission bits `ctx` may hand out to others (put on a role, or
+// allow/deny in a channel override). Owners and administrators can grant
+// anything; everyone else only what they hold themselves. (Before this,
+// a non-owner Administrator's mask was just the single ADMINISTRATOR bit,
+// so "requested & mask" silently stripped every permission off roles they
+// created.)
+function grantableMask(ctx) {
+  if (!ctx) return 0;
+  if (ctx.isOwner || (ctx.permissions & PERMISSIONS.ADMINISTRATOR)) return ALL_PERMISSION_BITS;
+  return ctx.permissions & ALL_PERMISSION_BITS;
+}
+
+// True if `ctx` may edit/delete/assign/reorder `role` (strictly below the
+// actor's highest role; the owner may touch any role).
+function canManageRole(ctx, role) {
+  if (!ctx || !role) return false;
+  if (ctx.isOwner) return true;
+  return role.position < ctx.rolePosition;
+}
+
+// ─── Per-channel permissions ──────────────────────────────────────
+//
+// Evaluation order (documented in README):
+//   1. Owner / ADMINISTRATOR: every permission, overrides ignored.
+//   2. Start from the union of the member's role permissions (server level).
+//   3. Apply the default (@everyone-equivalent) role's override for the channel:
+//      perms = (perms & ~deny) | allow
+//   4. Apply the combined overrides of the member's other roles (all their
+//      denies OR-ed, all their allows OR-ed): perms = (perms & ~deny) | allow
+//   So a role-level allow beats any deny, and any deny beats the server-level grant.
+function getChannelPermissions(db, ctx, channelId) {
+  if (!ctx) return 0;
+  if (ctx.isOwner || (ctx.permissions & PERMISSIONS.ADMINISTRATOR)) return ALL_PERMISSION_BITS;
+  let perms = ctx.permissions;
+  if (!channelId) return perms;
+  const overrides = all(db, 'SELECT role_id, allow, deny FROM channel_permission_overrides WHERE channel_id = ?', [channelId]);
+  if (!overrides.length) return perms;
+
+  const byRole = new Map(overrides.map(o => [o.role_id, o]));
+  const defaultRole = ctx.roles.find(r => r.is_default);
+  const defOv = defaultRole && byRole.get(defaultRole.id);
+  if (defOv) perms = (perms & ~(defOv.deny | 0)) | (defOv.allow | 0);
+
+  let allow = 0, deny = 0;
+  for (const r of ctx.roles) {
+    if (r.is_default) continue;
+    const ov = byRole.get(r.id);
+    if (ov) { allow |= ov.allow | 0; deny |= ov.deny | 0; }
+  }
+  return (perms & ~deny) | allow;
+}
+
+function isTimedOut(ctx, now = Date.now()) {
+  return !!(ctx && !ctx.isOwner && ctx.timeoutUntil && ctx.timeoutUntil > now);
+}
+
+// True if `userId` may currently view `room` (a rooms row with at least
+// id/server_id). DMs and groups: membership alone. Server channels:
+// membership AND the effective per-channel VIEW_CHANNEL permission.
+function canViewRoom(db, room, userId) {
+  const isMember = !!get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room.id, userId]);
+  if (!isMember) return false;
+  if (!room.server_id) return true;
+  const ctx = getServerContext(db, room.server_id, userId);
+  return (getChannelPermissions(db, ctx, room.id) & PERMISSIONS.VIEW_CHANNEL) !== 0;
+}
+
+// Same, but also returns the effective permission mask for the room so a
+// caller that needs several checks only evaluates once. DMs get every bit.
+function getRoomAccess(db, room, userId) {
+  const isMember = !!get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room.id, userId]);
+  if (!isMember) return { member: false, ctx: null, perms: 0 };
+  if (!room.server_id) return { member: true, ctx: null, perms: ALL_PERMISSION_BITS };
+  const ctx = getServerContext(db, room.server_id, userId);
+  return { member: true, ctx, perms: getChannelPermissions(db, ctx, room.id) };
+}
+
+// True if `userId` may currently send messages into `room`.
+function canSendToRoom(db, room, userId) {
+  const acc = getRoomAccess(db, room, userId);
+  if (!acc.member || !(acc.perms & PERMISSIONS.VIEW_CHANNEL)) return false;
+  if (!room.server_id) return true;
+  if (acc.ctx && acc.ctx.muted && !acc.ctx.isOwner) return false;
+  if (isTimedOut(acc.ctx)) return false;
+  return (acc.perms & PERMISSIONS.SEND_MESSAGES) !== 0;
+}
+
+// Reading older messages needs VIEW_CHANNEL + READ_MESSAGE_HISTORY.
+function canReadHistory(db, room, userId) {
+  const acc = getRoomAccess(db, room, userId);
+  if (!acc.member || !(acc.perms & PERMISSIONS.VIEW_CHANNEL)) return false;
+  if (!room.server_id) return true;
+  return (acc.perms & PERMISSIONS.READ_MESSAGE_HISTORY) !== 0;
+}
+
+function canAttachInRoom(db, room, userId) {
+  const acc = getRoomAccess(db, room, userId);
+  if (!acc.member || !(acc.perms & PERMISSIONS.VIEW_CHANNEL)) return false;
+  if (!room.server_id) return true;
+  return (acc.perms & PERMISSIONS.ATTACH_FILES) !== 0;
+}
+
 module.exports = {
   PERMISSIONS,
   ALL_PERMISSIONS,
+  ALL_PERMISSION_BITS,
+  CHANNEL_OVERRIDABLE,
+  PERMISSION_CATALOG,
+  grantableMask,
+  canManageRole,
+  getChannelPermissions,
+  isTimedOut,
+  canViewRoom,
+  canSendToRoom,
+  canReadHistory,
+  canAttachInRoom,
+  getRoomAccess,
   createDefaultRoles,
   getDefaultRoleId,
   ensureServerRoles,

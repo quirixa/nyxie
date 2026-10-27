@@ -4,6 +4,7 @@ const { tokenIsLive } = require('../middleware/auth');
 const { getUserDb, get, run, all } = require('../database/userDb');
 const { isBlocked } = require('../services/blocks');
 const { STATUSES, effectiveStatus } = require('../services/presence');
+const { canViewRoom, canSendToRoom } = require('../services/permissions');
 
 const roomClients = new Map();
 const clientMeta = new Map();
@@ -219,6 +220,41 @@ function leaveRoom(ws, roomId) {
   if (meta) meta.rooms.delete(roomId);
 }
 
+// Re-checks every live subscription to the given rooms and drops sockets
+// whose user can no longer view the room (kicked/banned, role removed,
+// channel override added, permission edited...). Without this a socket
+// that joined a room earlier would keep receiving its messages after the
+// REST API had already started refusing that user.
+async function revalidateRooms(roomIds) {
+  const db = await getUserDb();
+  for (const roomId of roomIds) {
+    const clients = roomClients.get(roomId);
+    if (!clients || !clients.size) continue;
+    const room = get(db, 'SELECT id, server_id FROM rooms WHERE id = ?', [roomId]);
+    for (const ws of Array.from(clients)) {
+      const meta = clientMeta.get(ws);
+      if (!meta) continue;
+      if (meta.typingCheck) meta.typingCheck.delete(roomId);
+      if (room && canViewRoom(db, room, meta.userId)) continue;
+      leaveRoom(ws, roomId);
+      try { ws.send(JSON.stringify({ type: 'room_access_revoked', room_id: roomId })); } catch (_) {}
+    }
+  }
+}
+
+async function revalidateServerRooms(serverId) {
+  const db = await getUserDb();
+  const ids = all(db, 'SELECT id FROM rooms WHERE server_id = ? AND is_dm = 0', [serverId]).map(r => r.id);
+  await revalidateRooms(ids);
+}
+
+// A channel was deleted: drop every subscription to it.
+function closeRoom(roomId) {
+  const clients = roomClients.get(roomId);
+  if (!clients) return;
+  for (const ws of Array.from(clients)) leaveRoom(ws, roomId);
+}
+
 async function cleanupClient(ws) {
   const meta = clientMeta.get(ws);
   if (!meta) return;
@@ -323,6 +359,15 @@ function setupWebSocket(server) {
             ws.send(JSON.stringify({ type: 'error', message: 'Not a member' }));
             break;
           }
+          // Membership alone is not enough for a server channel: the same
+          // per-channel VIEW_CHANNEL rule the REST endpoints use applies
+          // here, otherwise a socket could read a private channel's live
+          // messages that the API would refuse to hand over.
+          const roomRow = get(db2, 'SELECT id, server_id FROM rooms WHERE id = ?', [room_id]);
+          if (roomRow && roomRow.server_id && !canViewRoom(db2, roomRow, meta.userId)) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Missing permission', room_id }));
+            break;
+          }
           joinRoom(ws, room_id);
           const myRow = get(db2, 'SELECT status FROM users WHERE id = ?', [meta.userId]);
           broadcastPresence(room_id, meta.userId, effectiveStatus(myRow?.status, { connected: true, isSelf: false }), meta.display_name, meta.avatar);
@@ -359,6 +404,22 @@ function setupWebSocket(server) {
           if (!room_id || !meta.rooms.has(room_id)) break;
           const clients = roomClients.get(room_id);
           if (!clients) break;
+          // Someone who cannot send here (timed out, SEND_MESSAGES denied,
+          // lost access) must not be able to signal in the channel either.
+          // Re-checked at most every 2s per socket+room since typing events
+          // are frequent.
+          const cache = meta.typingCheck || (meta.typingCheck = new Map());
+          const cached = cache.get(room_id);
+          let allowed;
+          if (cached && Date.now() - cached.at < 2000) {
+            allowed = cached.ok;
+          } else {
+            const db2 = await getUserDb();
+            const roomRow = get(db2, 'SELECT id, server_id FROM rooms WHERE id = ?', [room_id]);
+            allowed = !roomRow || !roomRow.server_id || canSendToRoom(db2, roomRow, meta.userId);
+            cache.set(room_id, { ok: allowed, at: Date.now() });
+          }
+          if (!allowed) break;
           const payload = JSON.stringify({
             type: 'typing',
             user_id: meta.userId,
@@ -493,7 +554,7 @@ function setupWebSocket(server) {
     ws.on('error', () => cleanupClient(ws));
   });
 
-  return { wss, broadcast, broadcastToUser, broadcastAll };
+  return { wss, broadcast, broadcastToUser, broadcastAll, revalidateRooms, revalidateServerRooms, closeRoom };
 }
 
 // Close every socket that belongs to a revoked session (or, with no sid,

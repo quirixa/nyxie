@@ -6,7 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { getUserDb, all, get, run } = require('../database/userDb');
+const { getUserDb, all, get, run, transaction } = require('../database/userDb');
+const { recordAudit } = require('../services/audit');
 const {
   PERMISSIONS,
   createDefaultRoles,
@@ -128,7 +129,16 @@ router.delete('/:code', requireAuth, async (req, res) => {
   const canRevoke = invite.creator_id === req.user.id || hasPermission(ctx, PERMISSIONS.MANAGE_SERVER);
   if (!canRevoke) return res.status(403).json({ error: 'Missing permission' });
 
-  run(db, 'UPDATE server_invites SET revoked = 1 WHERE code = ?', [req.params.code]);
+  if (invite.revoked) return res.json({ ok: true, already_revoked: true });
+  try {
+    transaction(db, () => {
+      run(db, 'UPDATE server_invites SET revoked = 1 WHERE code = ?', [req.params.code]);
+      recordAudit(db, { serverId: invite.server_id, actorId: req.user.id, action: 'invite.revoke', targetType: 'invite', targetId: invite.code, targetName: invite.code });
+    });
+  } catch (err) {
+    console.error('Error revoking invite:', err);
+    return res.status(500).json({ error: 'Failed to revoke invite' });
+  }
   res.json({ ok: true });
 });
 

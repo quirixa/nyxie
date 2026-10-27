@@ -1172,7 +1172,52 @@ function initSettingsView() {
   }
 
   // ---- Changelogs ----
+  // Releases are listed newest first. An entry has either a flat `items`
+  // list (older entries) or grouped `sections` ({ heading, items }).
+  // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
+    {
+      title: 'Server Settings overhaul',
+      version: '0.2.0',
+      date: 'October 24, 2026',
+      sections: [
+        { heading: 'Added', items: [
+          'A full-screen Server Settings panel with Overview, Members, Roles, Channels, Moderation and Audit Log sections.',
+          'Overview: edit the server name, description, icon, discovery category and visibility; manage invite links; leave or delete the server (deleting asks you to type the server name).',
+          'Members: search and page through members, edit their roles, view profiles, time out, kick or ban with an optional reason.',
+          'Roles: create, rename, recolour, reorder and delete roles, with permissions grouped by category and a member count per role.',
+          'Channels: create, rename, set topics, reorder and delete channels, organise them into categories, and set per-role permission overrides for a channel.',
+          'Moderation: ban a member, search and unban from the ban list, and see or lift active timeouts.',
+          'Audit Log: a permanent record of administrative actions with filters by action, moderator, date and search text.',
+          'New permissions: View audit log, Timeout members, Read message history and Attach files.',
+        ] },
+        { heading: 'Improved', items: [
+          'The server channel list now groups channels under their categories.',
+          'Changes made by other admins appear live in an open Server Settings panel and in the channel list.',
+          'Unsaved changes are protected when you switch sections or close the panel.',
+        ] },
+        { heading: 'Security', items: [
+          'Every settings action is re-checked on the server, including role hierarchy: you can only manage members and roles ranked below your own highest role, and only hand out permissions you hold.',
+          'Channel permissions are enforced when loading or sending messages and over the live connection, so hidden channels stay hidden.',
+          'Kicked, banned or demoted members stop receiving a channel’s live messages straight away.',
+          'Audit entries are written together with the change they describe, always use the signed-in user as the actor, and never contain message content or secrets.',
+        ] },
+        { heading: 'Fixed', items: [
+          'A kicked or banned Admin could get their roles back after rejoining.',
+          'Administrators who were not the owner could not see the Server Settings button.',
+          'Roles created by an Administrator who is not the owner silently lost permissions that Administrator did not hold individually, such as Kick Members.',
+          'Editing a server could clear the owner’s ownership state in the open app until reload.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'Text channels only; there are no voice channels or ownership transfer.',
+          'A timeout stops sending messages and typing signals; it does not stop reactions or editing existing messages.',
+          'Channel overrides cover View channel, Send messages, Read message history and Attach files.',
+          'Embed-links and automatic spam filtering are not offered because they cannot be enforced yet.',
+          'Server Settings is not part of the page address: the browser Back button leaves the panel rather than stepping through sections.',
+          'The panel’s layout on phones and the live updates in the channel list have not been checked in a real browser yet.',
+        ] },
+      ],
+    },
     {
       title: 'Settings and wallet filled in',
       date: 'September 28, 2026',
@@ -1203,11 +1248,14 @@ function initSettingsView() {
     const el = byId('changelog-list');
     if (!el || el.dataset.rendered) return;
     el.dataset.rendered = '1';
+    const list = items => `<ul>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
     el.innerHTML = CHANGELOG.map(r => `
       <div class="settings-section px-release">
-        <h3>${escapeHtml(r.title)}</h3>
+        <h3>${escapeHtml(r.title)}${r.version ? ` <span class="px-version">v${escapeHtml(r.version)}</span>` : ''}</h3>
         <div class="px-date">${escapeHtml(r.date)}</div>
-        <ul>${r.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+        ${r.sections
+          ? r.sections.map(sec => `<h4 class="px-sec">${escapeHtml(sec.heading)}</h4>${list(sec.items)}`).join('')
+          : list(r.items)}
       </div>`).join('');
   }
 

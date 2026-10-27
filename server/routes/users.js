@@ -14,7 +14,7 @@ const { assertCanEquip, CosmeticsError } = require('../services/cosmetics');
 
 // ─── Paths ──────────────────────────────────────────────────
 const PROJECT_ROOT = path.resolve(__dirname, '../..'); // because this file is in server/routes/
-const DATA_DIR = path.join(PROJECT_ROOT, 'data');
+const { DATA_DIR } = require('../config/paths');
 const AVATAR_DIR = path.join(DATA_DIR, 'avatars');
 const BANNER_DIR = path.join(DATA_DIR, 'banners');
 

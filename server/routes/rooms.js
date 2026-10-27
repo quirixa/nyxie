@@ -5,7 +5,10 @@ const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, allMessages, getMessage, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
 const { isBlocked } = require('../services/blocks');
-const { PERMISSIONS, getServerContext, hasPermission } = require('../services/permissions');
+const {
+  PERMISSIONS, getServerContext, hasPermission,
+  canViewRoom, canSendToRoom, canReadHistory, canAttachInRoom
+} = require('../services/permissions');
 
 // Resolves a reply_to_id into the shape the client needs to render a
 // reply quote (author + content/nonce, so it decrypts exactly like any
@@ -63,28 +66,10 @@ async function getLatestMessages(roomIds) {
   return map;
 }
 
-// True if `userId` may currently view/read `room` (a row from `rooms`,
-// must include at least id/server_id/is_dm/is_group). Room membership
-// (room_members) is necessary but not sufficient for a server channel —
-// the member's role also needs VIEW_CHANNEL. DMs/groups have no
-// server_id, so membership alone is sufficient there, same as before
-// this feature existed.
-function canViewRoom(db, room, userId) {
-  const isMember = !!get(db, 'SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?', [room.id, userId]);
-  if (!isMember) return false;
-  if (!room.server_id) return true;
-  const ctx = getServerContext(db, room.server_id, userId);
-  return hasPermission(ctx, PERMISSIONS.VIEW_CHANNEL);
-}
-
-// True if `userId` may currently send messages into `room`.
-function canSendToRoom(db, room, userId) {
-  if (!canViewRoom(db, room, userId)) return false;
-  if (!room.server_id) return true;
-  const ctx = getServerContext(db, room.server_id, userId);
-  if (ctx && ctx.muted && !ctx.isOwner) return false;
-  return hasPermission(ctx, PERMISSIONS.SEND_MESSAGES);
-}
+// canViewRoom / canSendToRoom / canReadHistory / canAttachInRoom live in
+// services/permissions.js so REST, channels.js and the WebSocket layer all
+// evaluate the exact same rules (membership + per-channel permissions +
+// timeouts). They are re-exported below for existing importers.
 
 router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
@@ -100,6 +85,9 @@ router.get('/', requireAuth, async (req, res) => {
       WHERE r.server_id = ? AND r.is_dm = 0 AND rm.user_id = ?
       ORDER BY r.position ASC, r.created_at ASC
     `, [server_id, req.user.id]);
+    // Membership is not enough: hide channels this user cannot view (and
+    // with them their last-message previews).
+    rooms = rooms.filter(r => canViewRoom(db, { id: r.id, server_id }, req.user.id));
   } else {
     rooms = all(db, `
       SELECT r.id, r.name, r.description, r.created_at, r.is_dm, r.is_group, r.icon, r.created_by,
@@ -196,6 +184,7 @@ async function listMessages(req, res) {
   const room = get(userDb, 'SELECT id, server_id, is_dm, is_group FROM rooms WHERE id = ?', [req.params.id]);
   if (!room) return res.status(404).json({ error: 'Not found' });
   if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
+  if (!canReadHistory(userDb, room, req.user.id)) return res.status(403).json({ error: 'You do not have permission to read message history here' });
 
   const msgDb = await getMessageDb();
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
@@ -291,6 +280,9 @@ async function postMessage(req, res) {
   if (attachments) {
     if (!Array.isArray(attachments) || attachments.length > 10) {
       return res.status(400).json({ error: 'Invalid attachments' });
+    }
+    if (attachments.length && !canAttachInRoom(userDb, room, req.user.id)) {
+      return res.status(403).json({ error: 'You do not have permission to attach files here' });
     }
     cleanAttachments = attachments.map(a => {
       const out = {
@@ -489,6 +481,12 @@ async function editMessage(req, res) {
 async function deleteMessage(req, res) {
   const userDb = await getUserDb();
   const msgDb = await getMessageDb();
+  {
+    const roomRow = get(userDb, 'SELECT id, server_id FROM rooms WHERE id = ?', [req.params.id]);
+    if (roomRow && roomRow.server_id && !canViewRoom(userDb, roomRow, req.user.id)) {
+      return res.status(403).json({ error: 'Not a member' });
+    }
+  }
   const msg = getMessage(msgDb, 'SELECT * FROM messages WHERE id = ? AND room_id = ?', [req.params.msgId, req.params.id]);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
 
@@ -522,7 +520,7 @@ async function deleteMessage(req, res) {
       const attachments = JSON.parse(msg.attachments);
       const fs = require('fs');
       const path = require('path');
-      const uploadDir = path.join(__dirname, '..', '..', 'data', 'uploads');
+      const uploadDir = require('../config/paths').UPLOAD_DIR;
       for (const attachment of Array.isArray(attachments) ? attachments : []) {
         const url = typeof attachment?.url === 'string' ? attachment.url : '';
         if (!url.startsWith('/uploads/')) continue;

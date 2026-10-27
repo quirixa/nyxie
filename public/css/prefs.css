@@ -88,3 +88,7 @@ body.exp-strong-borders #view-settings .settings-section { border-color: var(--b
   .px-card-actions { width: 100%; justify-content: flex-start; }
   .px-kv { flex-direction: column; gap: 2px; }
 }
+
+/* Release entries with a version badge and grouped sections (0.2.0+) */
+.px-release .px-version { margin-left: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-medium); color: var(--text-muted); font-size: 0.72rem; font-weight: 600; vertical-align: 2px; }
+.px-release .px-sec { margin: 12px 0 4px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }

@@ -12,7 +12,9 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
-const USER_DB_PATH = path.join(__dirname, '..', '..', 'data', 'nyxie_users.db');
+const { DATA_DIR } = require('../config/paths');
+
+const USER_DB_PATH = path.join(DATA_DIR, 'nyxie_users.db');
 
 let db = null;
 let SqlJs = null;
@@ -422,6 +424,68 @@ async function getUserDb() {
   // being force-injected into every account.
   try { db.run("UPDATE servers SET is_discoverable = 1 WHERE id = 'nyxie-default'"); } catch (e) {}
 
+  // ── 0.2.0: server settings (categories, overrides, timeouts, audit) ──
+  // role colour (#RRGGBB or NULL for the default colour)
+  try { db.run("ALTER TABLE server_roles ADD COLUMN color TEXT"); } catch (e) {}
+  // timeout_until: epoch ms. While it is in the future the member cannot
+  // send messages (enforced in services/permissions.js canSendToRoom and
+  // the WebSocket typing signal). Expiry is implicit — no job needed.
+  try { db.run("ALTER TABLE server_members ADD COLUMN timeout_until INTEGER"); } catch (e) {}
+  // category_id: which server_categories row a channel is filed under.
+  try { db.run("ALTER TABLE rooms ADD COLUMN category_id TEXT"); } catch (e) {}
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS server_categories (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_server_categories_server ON server_categories (server_id)');
+
+  // Per-channel, per-role permission overrides. `allow` / `deny` are
+  // bitmasks over the channel-overridable permissions only.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS channel_permission_overrides (
+      channel_id TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      allow INTEGER NOT NULL DEFAULT 0,
+      deny INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (channel_id, role_id)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_channel_overrides_role ON channel_permission_overrides (role_id)');
+
+  // Append-only administrative history. Rows are only ever INSERTed by
+  // services/audit.js; no route updates or deletes them (except when the
+  // whole server is deleted).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS server_audit_log (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      target_name TEXT,
+      reason TEXT,
+      details TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_audit_server_time ON server_audit_log (server_id, created_at DESC)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_audit_server_action ON server_audit_log (server_id, action)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at INTEGER NOT NULL
+    )
+  `);
+  require('./migrations').runMigrations(db, { all, get, run, transaction }, USER_DB_PATH);
+
   persist();
   setInterval(persist, 5000);
   return db;
@@ -479,4 +543,22 @@ function flush() {
   if (db) persist();
 }
 
-module.exports = { getUserDb, all, get, run, flush };
+// Runs `fn` between BEGIN and COMMIT; any throw rolls everything back and
+// is re-thrown. `fn` MUST be synchronous: sql.js is a single in-process
+// connection, so a synchronous block cannot interleave with another
+// request, which is what makes check-then-mutate sequences race-free.
+// Nested calls join the outer transaction.
+function transaction(db, fn) {
+  if (inTransaction) return fn();
+  run(db, 'BEGIN');
+  try {
+    const result = fn();
+    run(db, 'COMMIT');
+    return result;
+  } catch (err) {
+    try { run(db, 'ROLLBACK'); } catch (_) { inTransaction = false; }
+    throw err;
+  }
+}
+
+module.exports = { getUserDb, all, get, run, flush, transaction };

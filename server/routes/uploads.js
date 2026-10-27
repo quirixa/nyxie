@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
+const { UPLOAD_DIR } = require('../config/paths');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // Any file extension is accepted here now — users can attach whatever

@@ -16,6 +16,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roomRoutes = require('./routes/rooms');
 const serverRoutes = require('./routes/servers');
+const serverSettingsRoutes = require('./routes/serverSettings');
 const channelRoutes = require('./routes/channels');
 const inviteRoutes = require('./routes/invites');
 const groupRoutes = require('./routes/groups');
@@ -38,7 +39,7 @@ const PORT = process.env.PORT || 3000;
 // ─── Project paths ──────────────────────────────────────────────
 const PROJECT_ROOT = path.join(__dirname, '..');
 const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
-const DATA_DIR = path.join(PROJECT_ROOT, 'data');
+const { DATA_DIR } = require('./config/paths');
 
 // ── Security: validate JWT secret before starting ─────────────────
 // A missing, placeholder, or short secret would make token forgery
@@ -229,6 +230,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/servers', serverRoutes);
+// Server Settings extras (audit log, timeouts, categories, channel layout/overrides).
+app.use('/api/servers', serverSettingsRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/groups', groupRoutes);
@@ -298,11 +301,15 @@ app.use((err, req, res, next) => {
 });
 
 // ── WebSocket setup ──────────────────────────────────────────────
-const { broadcast, broadcastToUser, broadcastAll } = setupWebSocket(server);
+const { broadcast, broadcastToUser, broadcastAll, revalidateRooms, revalidateServerRooms, closeRoom } = setupWebSocket(server);
 
 app.locals.broadcast = broadcast;
 app.locals.broadcastToUser = broadcastToUser;
 app.locals.broadcastAll = broadcastAll;
+// Drop live room subscriptions whose user lost access (kick/ban/permission change).
+app.locals.revalidateRooms = revalidateRooms;
+app.locals.revalidateServerRooms = revalidateServerRooms;
+app.locals.closeRoom = closeRoom;
 app.locals.isUserConnected = isUserConnected;
 app.locals.broadcastPresenceChange = broadcastPresenceChange;
 

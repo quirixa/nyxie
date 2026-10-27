@@ -402,6 +402,7 @@ function initDashboardView() {
   let servers = [];              // servers I'm a member of, from GET /servers
   let currentServerId = null;    // server currently shown in the sidebar, or null (DM view)
   let serverChannels = [];       // channels of currentServerId, from GET /servers/:id/channels
+  let serverCategories = [];     // categories of currentServerId (0.2.0)
   let currentServerRoles = [];   // roles of currentServerId, cached for the members/role picker
   let joinPreviewInvite = null;  // last invite preview shown in the "Join a Server" tab
   // ─── Server Discovery state ────────────────────────────────
@@ -475,6 +476,7 @@ function initDashboardView() {
 
   function logout() {
     clearSession();
+    if (window.ServerSettings) { try { ServerSettings.destroy(); } catch (e) {} }
     if (ws) { try { ws.close(); } catch (e) {} }
     if (_dashboardPollTimer) clearInterval(_dashboardPollTimer);
     router.navigate('/login');
@@ -542,6 +544,17 @@ function initDashboardView() {
     if (isMobileLayout()) { showMobileList(); return; }
     document.getElementById('sidebar').classList.toggle('collapsed');
   }
+
+  function toggleMemberList() {
+  const button = document.getElementById('member-list-toggle-btn');
+  const panel = document.getElementById('member-list-panel');
+  if (!button || !panel) return;
+
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'flex';
+  panel.classList.remove('force-open');
+  button.classList.toggle('active', !isOpen);
+}
 
   async function navigateTo(section) {
     currentNav = section;
@@ -772,6 +785,7 @@ function initDashboardView() {
       let msg;
       try { msg = JSON.parse(e.data); } catch { return; }
 
+      if (window.ServerSettings && /^(server_|channel_)/.test(msg.type)) ServerSettings.handleEvent(msg);
       switch (msg.type) {
         case 'new_message': {
           const m = msg.message;
@@ -1058,6 +1072,7 @@ function initDashboardView() {
           const idx = servers.findIndex(s => s.id === msg.server.id);
           if (idx !== -1) servers[idx] = { ...servers[idx], ...msg.server };
           renderServerRail();
+          if (idx !== -1 && window.ServerSettings) ServerSettings.syncServer(servers[idx]);
           if (currentServerId === msg.server.id) {
             document.getElementById('server-panel-name').textContent = msg.server.name;
           }
@@ -1065,6 +1080,7 @@ function initDashboardView() {
         }
         case 'server_deleted':
         case 'server_left': {
+          if (window.ServerSettings && ServerSettings.serverId() === msg.server_id) ServerSettings.destroy();
           servers = servers.filter(s => s.id !== msg.server_id);
           renderServerRail();
           if (currentServerId === msg.server_id) { showDMView(); toast('You are no longer in that server'); }
@@ -1074,6 +1090,7 @@ function initDashboardView() {
         case 'server_member_kicked':
         case 'server_member_banned': {
           if (msg.user_id === currentUser.id && msg.server_id) {
+            if (window.ServerSettings && ServerSettings.serverId() === msg.server_id) ServerSettings.destroy();
             servers = servers.filter(s => s.id !== msg.server_id);
             renderServerRail();
             if (currentServerId === msg.server_id) {
@@ -1087,12 +1104,29 @@ function initDashboardView() {
         }
         case 'server_member_updated': {
           if (currentServerId === msg.server_id) renderServerMembersIfOpen();
+          // Our own roles may have changed — refresh permissions (settings
+          // access, channel visibility) from the server.
+          if (msg.user_id === currentUser.id && currentServerId === msg.server_id) { syncServerSettingsServer(); loadServerChannels(currentServerId); }
           break;
         }
         case 'server_role_created':
         case 'server_role_updated':
         case 'server_role_deleted': {
-          if (currentServerId === msg.server_id) loadServerRoles();
+          if (currentServerId === msg.server_id) { loadServerRoles(); syncServerSettingsServer(); loadServerChannels(currentServerId); }
+          break;
+        }
+        // Categories, ordering and channel permission overrides changed.
+        case 'server_channels_refresh': {
+          if (currentServerId === msg.server_id) loadServerChannels(currentServerId);
+          break;
+        }
+        // The server stopped letting us see a channel we had open.
+        case 'room_access_revoked': {
+          if (currentRoom?.id === msg.room_id) {
+            currentRoom = null;
+            document.getElementById('chat-view').style.display = 'none';
+            toast('You no longer have access to that channel');
+          }
           break;
         }
         case 'channel_created': {
@@ -4277,6 +4311,143 @@ function initDashboardView() {
     document.getElementById('server-panel-name').textContent = server.name;
     // Server Settings is a management surface. Only the owner or a member
     // with MANAGE_SERVER (bit 3 / value 8) should be able to open it.
+    const canManageServer = !!(window.ServerSettings && ServerSettings.canOpen(server));
+    const serverSettingsBtn = document.getElementById('server-settings-btn');
+    if (serverSettingsBtn) serverSettingsBtn.style.display = canManageServer ? '' : 'none';
+    document.getElementById('channel-list').innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">Loading…</div>`;
+
+    await loadServerChannels(serverId);
+    await loadServerRoles();
+
+    const wanted = initialChannelId && serverChannels.find(c => c.id === initialChannelId);
+    if (wanted) {
+      openChannel(wanted.id, { fromRoute });
+    } else if (serverChannels.length) {
+      openChannel(serverChannels[0].id, { fromRoute });
+    } else if (!fromRoute) {
+      window.history.pushState({}, '', `/servers/${serverId}`);
+    }
+  }
+
+  async function loadServerChannels(serverId) {
+    const data = await api('GET', `/servers/${serverId}/channels`);
+    if (serverId !== currentServerId) return; // switched servers while loading
+    serverChannels = data?.channels || [];
+    serverCategories = data?.categories || [];
+    serverChannels.forEach(c => (c.server_id = serverId));
+    renderChannelList();
+    serverChannels.forEach(c => wsJoin(c.id));
+  }
+
+  async function loadServerRoles() {
+    if (!currentServerId) return;
+    const data = await api('GET', `/servers/${currentServerId}/roles`);
+    currentServerRoles = data?.roles || [];
+  }
+
+  function renderChannelList() {
+    const list = document.getElementById('channel-list');
+    if (!serverChannels.length) {
+      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.85rem">No channels yet</div>`;
+      return;
+    }
+    const item = c => `
+      <div class="channel-item${currentRoom?.id === c.id ? ' active' : ''}" data-channel-id="${c.id}" onclick="openChannel('${c.id}')">
+        <span class="channel-hash">#</span><span>${escapeHtml(c.name)}</span>
+      </div>`;
+    const byPos = (a, b) => (a.position || 0) - (b.position || 0);
+    // Uncategorised channels first, then each category (in its saved order)
+    // with its channels.
+    const known = new Set(serverCategories.map(k => k.id));
+    const loose = serverChannels.filter(c => !c.category_id || !known.has(c.category_id)).sort(byPos);
+    let html = loose.map(item).join('');
+    serverCategories.slice().sort(byPos).forEach(k => {
+      const chans = serverChannels.filter(c => c.category_id === k.id).sort(byPos);
+      if (!chans.length) return;   // empty categories are only shown in Server Settings
+      html += `<div class="channel-category" style="padding:14px 8px 4px;font-size:0.68rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted)">${escapeHtml(k.name)}</div>` + chans.map(item).join('');
+    });
+    list.innerHTML = html;
+  }
+  async function loadServers() {
+    const data = await api('GET', '/servers');
+    if (!data) return;
+    servers = data.servers || [];
+    renderServerRail();
+  }
+
+  function renderServerRail() {
+    const list = document.getElementById('server-rail-list');
+    if (!list) return;
+    list.innerHTML = servers.map(s => {
+      const initials = (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+      const inner = s.icon ? `<img src="${versionedMediaUrl(s.icon)}" />` : initials;
+      return `<div class="server-pill${currentServerId === s.id ? ' active' : ''}" data-server-id="${s.id}"
+        onclick="selectServer('${escapeJs(s.id)}')" title="${escapeHtml(s.name)}">${inner}</div>`;
+    }).join('');
+    document.getElementById('server-pill-home').classList.toggle('active', !currentServerId && !inDiscoverView);
+    document.getElementById('server-pill-discover')?.classList.toggle('active', inDiscoverView);
+  }
+
+  function showDMView() {
+    currentServerId = null;
+    currentRoom = null;
+    inDiscoverView = false;
+    document.getElementById('discover-panel').style.display = 'none';
+    document.getElementById('server-panel').classList.add('hidden');
+    const serverSettingsBtn = document.getElementById('server-settings-btn');
+    if (serverSettingsBtn) serverSettingsBtn.style.display = '';
+    document.getElementById('conv-header').classList.remove('hidden');
+    document.getElementById('search-wrap').classList.remove('hidden');
+    document.getElementById('dm-section').style.display = '';
+    document.getElementById('chat-view').style.display = 'none';
+    // Restore the normal global sidebar nav (Home/Friends/Marketplace/
+    // Wallet/Admin) that selectServer() hides — see the .in-server-view
+    // rule in dashboard.css.
+    document.getElementById('sidebar').classList.remove('in-server-view');
+    renderServerRail();
+    if (window.location.pathname.startsWith('/servers/') || window.location.pathname.startsWith('/discover')) {
+      window.history.replaceState({}, '', '/app');
+    }
+    navigateTo('home');
+  }
+
+  // `fromRoute: true` means router.js already matched '/servers/:serverId'
+  // or '/servers/:serverId/channels/:channelId' and mounted the dashboard
+  // for it (page load, refresh, or browser back/forward) — the address
+  // bar is already correct, so this and openChannel() below skip pushing
+  // a new history entry. Every other caller (clicking a server pill) is a
+  // real navigation and should push its own URL, same pattern as
+  // openRoom()'s fromRoute for DMs.
+  async function selectServer(serverId, { fromRoute = false, initialChannelId = null } = {}) {
+    inDiscoverView = false;
+    document.getElementById('discover-panel').style.display = 'none';
+    currentServerId = serverId;
+    currentRoom = null;
+    document.getElementById('welcome-view').style.display = 'none';
+    document.getElementById('friends-panel').style.display = 'none';
+    document.getElementById('wallet-panel').style.display = 'none';
+    document.getElementById('notifications-panel').style.display = 'none';
+    document.getElementById('chat-view').style.display = 'none';
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+    document.getElementById('conv-header').classList.add('hidden');
+    document.getElementById('search-wrap').classList.add('hidden');
+    document.getElementById('dm-section').style.display = 'none';
+    document.getElementById('server-panel').classList.remove('hidden');
+    // Server view gets its own nav (server rail + channel list); the
+    // global sidebar-nav has no place inside it, so hide it for as long
+    // as a server is active. Restored by showDMView().
+    document.getElementById('sidebar').classList.add('in-server-view');
+    renderServerRail();
+
+    const server = servers.find(s => s.id === serverId);
+    if (!server) {
+      toast('Server not found');
+      return showDMView();
+    }
+    document.getElementById('server-panel-name').textContent = server.name;
+    // Server Settings is a management surface. Only the owner or a member
+    // with MANAGE_SERVER (bit 3 / value 8) should be able to open it.
     const canManageServer = !!(server.is_owner || (server.my_permissions & 8));
     const serverSettingsBtn = document.getElementById('server-settings-btn');
     if (serverSettingsBtn) serverSettingsBtn.style.display = canManageServer ? '' : 'none';
@@ -4297,7 +4468,9 @@ function initDashboardView() {
 
   async function loadServerChannels(serverId) {
     const data = await api('GET', `/servers/${serverId}/channels`);
+    if (serverId !== currentServerId) return; // switched servers while loading
     serverChannels = data?.channels || [];
+    serverCategories = data?.categories || [];
     serverChannels.forEach(c => (c.server_id = serverId));
     renderChannelList();
     serverChannels.forEach(c => wsJoin(c.id));
@@ -4700,328 +4873,38 @@ function initDashboardView() {
     openChannel(data.channel.id);
   }
 
-  // ─── Server Settings (overview / members / invites) ─────────
+  // ─── Server Settings ────────────────────────────────────────
+  // The settings UI lives in js/serverSettings.js (+ Panels). This file only
+  // opens it and keeps its own server/channel/member state in sync via hooks.
 
-  async function showServerSettingsModal() {
+  async function syncServerSettingsServer() {
+    await loadServers();
+    const server = servers.find(s => s.id === currentServerId);
+    if (!server) return;
+    document.getElementById('server-panel-name').textContent = server.name;
+    const btn = document.getElementById('server-settings-btn');
+    if (btn) btn.style.display = ServerSettings.canOpen(server) ? '' : 'none';
+    ServerSettings.syncServer(server);
+  }
+
+  function showServerSettingsModal(section) {
     if (!currentServerId) return;
     const server = servers.find(s => s.id === currentServerId);
     if (!server) return;
-    // Keep the UI permission check in sync with the server-side
-    // MANAGE_SERVER guard. This prevents ordinary members from opening an
-    // editable server-settings screen even though the PATCH endpoint already
-    // rejects unauthorized changes.
-    if (!server.is_owner && !(server.my_permissions & 8)) {
+    if (!window.ServerSettings || !ServerSettings.canOpen(server)) {
       return toast('You do not have permission to manage this server');
     }
-    document.getElementById('ss-server-name').textContent = server.name;
-    document.getElementById('ss-name-input').value = server.name;
-    document.getElementById('ss-desc-input').value = server.description || '';
-    await ensureDiscoverCategoriesLoaded();
-    populateCategorySelects();
-    document.getElementById('ss-category-input').value = server.category || '';
-    document.getElementById('ss-discoverable-input').checked = !!server.is_discoverable;
-    document.getElementById('ss-delete-btn').style.display = server.is_owner ? '' : 'none';
-    document.getElementById('ss-leave-btn').style.display = server.is_owner ? 'none' : '';
-    document.getElementById('server-settings-modal').style.display = 'flex';
-    switchServerSettingsTab('overview');
+    ServerSettings.open(server, {
+      onServerChanged: async () => { await syncServerSettingsServer(); if (currentRoom?.server_id === currentServerId) loadChannelMemberList(); },
+      onMembersChanged: () => { loadServerRoles(); if (currentRoom?.server_id === currentServerId) loadChannelMemberList(); },
+      onChannelsChanged: () => loadServerChannels(currentServerId),
+      onLeft: () => { servers = servers.filter(s => s.id !== currentServerId); renderServerRail(); showDMView(); }
+    }, typeof section === 'string' ? section : undefined);
   }
 
-  function switchServerSettingsTab(tab) {
-    ['overview', 'members', 'invites'].forEach(t => {
-      document.getElementById(`ss-tab-${t}`).classList.toggle('active', t === tab);
-      document.getElementById(`ss-pane-${t}`).style.display = t === tab ? '' : 'none';
-    });
-    if (tab === 'members') renderServerMembers();
-    if (tab === 'invites') renderServerInvites();
-  }
-
+  // Kept under its old name: websocket handlers call it when members change.
   async function renderServerMembersIfOpen() {
-    if (document.getElementById('server-settings-modal').style.display === 'flex' &&
-        document.getElementById('ss-pane-members').style.display !== 'none') {
-      renderServerMembers();
-    }
     if (currentRoom?.server_id === currentServerId) loadChannelMemberList();
-  }
-
-  // ─── Right-side member list (persistent, not the settings modal's
-  // management list above) — shown whenever a server channel is open.
-  // Grouped ONLINE/OFFLINE like a typical Discord-style roster; DMs and
-  // group chats have no server roster so this stays hidden for those
-  // (see openRoom()/showDMView()).
-  async function loadChannelMemberList() {
-    const container = document.getElementById('member-list');
-    const countEl = document.getElementById('member-list-count');
-    const serverId = currentServerId;
-    if (!serverId) return;
-
-    const [membersData, rolesData] = await Promise.all([
-      api('GET', `/servers/${serverId}/members`),
-      api('GET', `/servers/${serverId}/roles`)
-    ]);
-    if (currentServerId !== serverId) return; // switched servers while loading
-
-    const members = membersData?.members || [];
-    const roles = (rolesData?.roles || []).slice().sort((a, b) => (b.position || 0) - (a.position || 0));
-    countEl.textContent = `${members.length} Member${members.length === 1 ? '' : 's'}`;
-
-    // Discord-style behavior:
-    // - only roles marked display_separately create their own member section;
-    // - a member appears in one section only, using their highest displayed role;
-    // - everyone else goes into the normal Members section;
-    // - offline users are kept in a separate Offline section.
-    const displayRoles = roles.filter(r => r.display_separately);
-    const displayRoleMap = new Map(displayRoles.map(r => [r.id, r]));
-    const groups = new Map(displayRoles.map(r => [r.id, []]));
-    const membersGroup = [];
-    const offlineGroup = [];
-
-    function getDisplayedRole(member) {
-      // The current Nyxie membership model assigns one role per member.
-      // Sorting by position here also makes this future-proof if the API
-      // later returns multiple roles on a member.
-      const candidates = [];
-      if (member.role?.id) candidates.push(member.role);
-      if (Array.isArray(member.roles)) candidates.push(...member.roles);
-      return candidates
-        .map(role => displayRoleMap.get(role.id) || (role.display_separately ? role : null))
-        .filter(Boolean)
-        .sort((a, b) => (b.position || 0) - (a.position || 0))[0] || null;
-    }
-
-    function isOffline(member) {
-      return (member.status || member._status || 'offline') === 'offline';
-    }
-
-    function row(m) {
-      const status = m.status || m._status || 'offline';
-      const isOfflineMember = status === 'offline';
-      const avatarHtml = m.avatar
-        ? `<img src="${versionedMediaUrl(m.avatar)}" />`
-        : identiconImg(m.id);
-      const role = getDisplayedRole(m) || m.role;
-      return `<div class="ml-row ${isOfflineMember ? 'offline' : ''}" onclick="showUserProfile(event, '${m.id}')">
-        <div class="ml-avatar-wrap" data-fx-uid="${m.id}">
-        ${m.profile_effect ? AVATAR_FX_HTML : ''}
-        ${avatarDecorationHtml(m.avatar_decoration, m.id)}
-        <div class="ml-avatar">
-          ${avatarHtml}
-          <span class="ml-status-dot pip-${isOfflineMember ? 'offline' : (status === 'idle' ? 'idle' : status === 'dnd' ? 'dnd' : 'online')}"></span>
-        </div>
-        </div>
-        <div class="ml-info">
-          <div class="ml-name-row">
-            <div class="ml-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ownerCrownSvg() : ''}</div>
-          </div>
-          ${role?.name ? `<div class="ml-sub">${escapeHtml(role.name)}</div>` : ''}
-        </div>
-      </div>`;
-    }
-
-    for (const member of members) {
-      if (isOffline(member)) {
-        offlineGroup.push(member);
-        continue;
-      }
-      const displayedRole = getDisplayedRole(member);
-      if (displayedRole && groups.has(displayedRole.id)) {
-        groups.get(displayedRole.id).push(member);
-      } else {
-        membersGroup.push(member);
-      }
-    }
-
-    // Stable ordering inside each section: display name/username.
-    const sortMembers = list => list.sort((a, b) =>
-      String(a.display_name || a.username || '').localeCompare(
-        String(b.display_name || b.username || ''), undefined, { sensitivity: 'base' }
-      )
-    );
-    groups.forEach(sortMembers);
-    sortMembers(membersGroup);
-    sortMembers(offlineGroup);
-
-    let html = '';
-    for (const role of displayRoles) {
-      const group = groups.get(role.id) || [];
-      if (!group.length) continue;
-      html += `<div class="ml-group-label ml-role-group-label">${escapeHtml(role.name)} — ${group.length}</div>`;
-      html += group.map(row).join('');
-    }
-    if (membersGroup.length) {
-      html += `<div class="ml-group-label ml-role-group-label">Members — ${membersGroup.length}</div>`;
-      html += membersGroup.map(row).join('');
-    }
-    if (offlineGroup.length) {
-      html += `<div class="ml-group-label ml-offline-group-label">Offline — ${offlineGroup.length}</div>`;
-      html += offlineGroup.map(row).join('');
-    }
-
-    container.innerHTML = html || `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
-  }
-
-  // Toggles the member list panel. On wide layouts it's a normal flex
-  // sibling (CSS handles show/hide via display:none by default until
-  // this sets 'flex'); below the 1100px breakpoint (see dashboard.css)
-  // it's hidden by default and this instead adds .force-open, which the
-  // media query turns into a floating overlay panel.
-  function toggleMemberList() {
-    const panel = document.getElementById('member-list-panel');
-    const btn = document.getElementById('member-list-toggle-btn');
-    const narrow = window.innerWidth <= 1100;
-    if (narrow) {
-      const open = panel.classList.toggle('force-open');
-      panel.style.display = open ? 'flex' : 'none';
-      btn.classList.toggle('active', open);
-    } else {
-      const open = panel.style.display !== 'flex';
-      panel.style.display = open ? 'flex' : 'none';
-      btn.classList.toggle('active', open);
-    }
-  }
-
-  async function renderServerMembers() {
-    const container = document.getElementById('ss-member-list');
-    container.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Loading…</div>`;
-    const server = servers.find(s => s.id === currentServerId);
-    const [membersData] = await Promise.all([api('GET', `/servers/${currentServerId}/members`), loadServerRoles()]);
-    const members = membersData?.members || [];
-    const canManage = server && (server.is_owner || (server.my_permissions & 16) /* MANAGE_MEMBERS */);
-    const canKick = server && (server.is_owner || (server.my_permissions & 64));
-    const roleOptions = currentServerRoles.slice().sort((a, b) => b.position - a.position);
-
-    container.innerHTML = members.map(m => {
-      const avatarHtml = m.avatar ? `<img src="${versionedMediaUrl(m.avatar)}" />` : identiconImg(m.id);
-      const assignedRoleIds = new Set((m.roles || []).map(r => r.id));
-      const roleSelect = (canManage && !m.is_owner)
-        ? `<details class="picker-role-menu">
-             <summary class="picker-role-summary">Roles · ${assignedRoleIds.size}</summary>
-             <div class="picker-role-options">
-               ${roleOptions.map(r => `
-                 <label class="picker-role-option">
-                   <input type="checkbox" value="${r.id}" ${assignedRoleIds.has(r.id) ? 'checked' : ''} ${r.is_default ? 'disabled' : ''}
-                     onchange="submitMemberRoleChange('${m.id}', this)">
-                   <span>${escapeHtml(r.name)}</span>
-                 </label>`).join('')}
-             </div>
-           </details>`
-        : `<span class="picker-sub">${escapeHtml((m.roles || []).map(r => r.name).join(', ') || m.role?.name || 'Member')}</span>`;
-      const kickBtn = (canKick && !m.is_owner && m.id !== currentUser.id)
-        ? `<button class="picker-action-btn" onclick="confirmKickMember('${m.id}', ${JSON.stringify(m.display_name || m.username).replace(/"/g, '&quot;')})">Kick</button>`
-        : '';
-      return `<div class="picker-row">
-        <div class="picker-avatar">${avatarHtml}</div>
-        <div class="picker-info">
-          <div class="picker-name">${escapeHtml(m.display_name || m.username)}${m.is_owner ? ' <span class="picker-owner-tag">Owner</span>' : ''}</div>
-          <div class="picker-sub">@${escapeHtml(m.username)}</div>
-        </div>
-        ${roleSelect}
-        ${kickBtn}
-      </div>`;
-    }).join('') || `<div style="padding:10px;color:var(--text-muted)">No members</div>`;
-  }
-
-  async function submitMemberRoleChange(userId, input) {
-    const menu = input?.closest('.picker-role-menu');
-    if (!menu) return;
-    const roleIds = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked')).map(el => el.value);
-    const data = await api('PATCH', `/servers/${currentServerId}/members/${userId}`, { role_ids: roleIds });
-    if (!data?.ok) {
-      toast(data?.error || 'Failed to update roles');
-      renderServerMembers();
-      return;
-    }
-    const summary = menu.querySelector('.picker-role-summary');
-    if (summary) summary.textContent = `Roles · ${roleIds.length}`;
-    toast('Roles updated');
-  }
-
-  function confirmKickMember(userId, name) {
-    if (!confirm(`Kick ${name} from this server?`)) return;
-    api('DELETE', `/servers/${currentServerId}/members/${userId}`).then(data => {
-      if (!data?.ok) return toast(data?.error || 'Failed to kick member');
-      toast(`${name} was kicked`);
-      renderServerMembers();
-    });
-  }
-
-  async function renderServerInvites() {
-    const container = document.getElementById('ss-invite-list');
-    container.innerHTML = `<div style="padding:10px;color:var(--text-muted)">Loading…</div>`;
-    const data = await api('GET', `/servers/${currentServerId}/invites`);
-    const invites = data?.invites || [];
-    container.innerHTML = invites.map(inv => {
-      const meta = [
-        inv.max_uses ? `${inv.uses}/${inv.max_uses} uses` : `${inv.uses} uses`,
-        inv.expires_at ? `expires ${new Date(inv.expires_at).toLocaleDateString()}` : 'never expires',
-        inv.revoked ? 'revoked' : ''
-      ].filter(Boolean).join(' · ');
-      return `<div class="invite-row">
-        <div>
-          <div class="invite-code">${escapeHtml(inv.code)}</div>
-          <div class="invite-meta">${escapeHtml(meta)}</div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="picker-action-btn" onclick="copyInviteCode('${inv.code}')">Copy</button>
-          ${!inv.revoked ? `<button class="picker-action-btn" onclick="revokeInvite('${inv.code}')">Revoke</button>` : ''}
-        </div>
-      </div>`;
-    }).join('') || `<div style="padding:10px;color:var(--text-muted)">No invites yet</div>`;
-  }
-
-  function copyInviteCode(code) {
-    const url = `${location.origin}/invite/${code}`;
-    navigator.clipboard?.writeText(url);
-    toast('Invite link copied');
-  }
-
-  async function revokeInvite(code) {
-    const data = await api('DELETE', `/invites/${code}`);
-    if (!data?.ok) return toast(data?.error || 'Failed to revoke invite');
-    toast('Invite revoked');
-    renderServerInvites();
-  }
-
-  async function submitCreateInvite() {
-    const data = await api('POST', `/servers/${currentServerId}/invites`, {});
-    if (!data?.invite) return toast(data?.error || 'Failed to create invite');
-    renderServerInvites();
-  }
-
-  async function submitServerOverview() {
-    const name = document.getElementById('ss-name-input').value.trim();
-    const description = document.getElementById('ss-desc-input').value.trim();
-    const category = document.getElementById('ss-category-input').value || null;
-    const is_discoverable = document.getElementById('ss-discoverable-input').checked;
-    if (!name) return toast('Server name required');
-    const data = await api('PATCH', `/servers/${currentServerId}`, { name, description, category, is_discoverable });
-    if (!data?.server) return toast(data?.error || 'Failed to update server');
-    await loadServers();
-    document.getElementById('server-panel-name').textContent = data.server.name;
-    document.getElementById('ss-server-name').textContent = data.server.name;
-    toast('Server updated');
-  }
-
-  function confirmDeleteServer() {
-    const server = servers.find(s => s.id === currentServerId);
-    if (!confirm(`Delete "${server?.name}"? This cannot be undone — all channels and messages will be lost.`)) return;
-    api('DELETE', `/servers/${currentServerId}`).then(data => {
-      if (!data?.ok) return toast(data?.error || 'Failed to delete server');
-      document.getElementById('server-settings-modal').style.display = 'none';
-      servers = servers.filter(s => s.id !== currentServerId);
-      showDMView();
-      toast('Server deleted');
-    });
-  }
-
-  function confirmLeaveServer() {
-    if (!confirm('Leave this server?')) return;
-    api('POST', `/servers/${currentServerId}/leave`).then(data => {
-      if (!data?.ok) return toast(data?.error || 'Failed to leave server');
-      document.getElementById('server-settings-modal').style.display = 'none';
-      servers = servers.filter(s => s.id !== currentServerId);
-      showDMView();
-      toast('Left server');
-    });
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -5170,15 +5053,6 @@ function initDashboardView() {
   window.showCreateChannelModal = showCreateChannelModal;
   window.submitCreateChannel = submitCreateChannel;
   window.showServerSettingsModal = showServerSettingsModal;
-  window.switchServerSettingsTab = switchServerSettingsTab;
-  window.submitMemberRoleChange = submitMemberRoleChange;
-  window.confirmKickMember = confirmKickMember;
-  window.copyInviteCode = copyInviteCode;
-  window.revokeInvite = revokeInvite;
-  window.submitCreateInvite = submitCreateInvite;
-  window.submitServerOverview = submitServerOverview;
-  window.confirmDeleteServer = confirmDeleteServer;
-  window.confirmLeaveServer = confirmLeaveServer;
   window.showNewGroupModal = showNewGroupModal;
   window.submitCreateGroup = submitCreateGroup;
   window.openRoomInfo = openRoomInfo;

@@ -22,7 +22,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
+const { UPLOAD_DIR } = require('../config/paths');
 
 const INLINE_SAFE_TYPES = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',

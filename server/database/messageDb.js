@@ -4,7 +4,9 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
-const MESSAGE_DB_PATH = path.join(__dirname, '..', '..', 'data', 'nyxie_messages.db');
+const { DATA_DIR } = require('../config/paths');
+
+const MESSAGE_DB_PATH = path.join(DATA_DIR, 'nyxie_messages.db');
 
 let db = null;
 let SqlJs = null;
