@@ -3,6 +3,25 @@
 All notable changes to Nyxie. The same release notes appear in the app under
 Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 
+## [0.7.0] - 2026-10-28
+
+### Added
+- **Server ownership transfer.** `POST /api/servers/:serverId/transfer-ownership` with `{ user_id, confirm_name }`, and a "Make owner" button on each other member's row in Server Settings → Members (Overview's danger zone points to it).
+  - Only the current owner may transfer, only to a current member (never yourself, a banned user, or a non-member), and `confirm_name` must equal the server's exact name. All enforced on the server.
+  - The ownership change, lifting any timeout the new owner had, and the audit entry happen in one transaction; a lost race (ownership changed meanwhile) aborts without an audit record and returns `409`.
+  - New audit action `server.ownership_transfer` ("Ownership transferred").
+  - New WebSocket event `server_ownership_changed`; the dashboard refreshes permissions, the settings button and the owner crown live, and an open Server Settings panel closes itself if the former owner has nothing left to manage.
+  - The members endpoint reports `actions.can_transfer` (true only for the owner, never for themselves).
+- `tests/ownership.test.js` (backend), plus UI and live-dashboard tests for the flow.
+
+### Notes
+- The former owner **keeps the roles they hold**. Servers give their creator the Admin role, so they remain an Administrator until the new owner removes it. They lose only the owner-only powers (delete the server, transfer it, protection from kick/ban/timeout).
+- The owner still cannot leave a server; they must transfer it (or delete it) first. The former owner can leave afterwards.
+
+### Known limitations
+- No undo: only the new owner can transfer it back.
+- Deleting an account that owns a server does not hand the server on and leaves it without a valid owner (present since the original beta, unchanged). Transfer ownership before deleting an account.
+
 ## [0.6.0] - 2026-10-27
 
 Versioned as beta 0.6.0. Contains all the changes listed under 0.2.1 and 0.2.0 below (those entries are kept as history).

@@ -497,6 +497,61 @@ router.delete('/:serverId', requireAuth, requireServerPermission(null), async (r
   }
 });
 
+// Ownership transfer. Only the current owner may do it, to another current
+// member of the server, and — as with deletion — the caller must echo the
+// server's exact name as `confirm_name`; both are enforced here, not in the UI.
+// Ownership is derived everywhere from servers.owner_id, so this is one
+// UPDATE plus cleanup, done in one synchronous transaction together with the
+// audit row. The former owner becomes an ordinary member with whatever roles
+// they hold (they are not given Admin automatically).
+router.post('/:serverId/transfer-ownership', requireAuth, requireServerPermission(null), async (req, res) => {
+  try {
+    const db = await getUserDb();
+    const { serverId } = req.params;
+    if (!req.serverCtx.isOwner) return res.status(403).json({ error: 'Only the owner can transfer ownership' });
+
+    const body = req.body || {};
+    const targetId = typeof body.user_id === 'string' ? body.user_id : null;
+    if (!targetId) return res.status(400).json({ error: 'user_id is required' });
+    if (targetId === req.user.id) return res.status(400).json({ error: 'You already own this server' });
+    const confirmName = typeof body.confirm_name === 'string' ? body.confirm_name : null;
+    if (confirmName === null || confirmName.trim() !== req.serverCtx.server.name) {
+      return res.status(400).json({ error: 'Type the exact server name to confirm the transfer' });
+    }
+
+    // Must be a real, current member (banned users are never members).
+    const target = getServerContext(db, serverId, targetId);
+    if (!target) return res.status(404).json({ error: 'That user is not a member of this server' });
+    const targetUser = get(db, 'SELECT id, username, display_name FROM users WHERE id = ?', [targetId]);
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+    const oldOwner = get(db, 'SELECT username, display_name FROM users WHERE id = ?', [req.user.id]);
+
+    transaction(db, () => {
+      run(db, 'UPDATE servers SET owner_id = ? WHERE id = ? AND owner_id = ?', [targetId, serverId, req.user.id]);
+      // The `AND owner_id = ?` guard makes a racing second transfer change nothing; detect that
+      // BEFORE writing the audit row so a transfer that did not happen is never recorded.
+      if (get(db, 'SELECT owner_id FROM servers WHERE id = ?', [serverId])?.owner_id !== targetId) {
+        const e = new Error('ownership changed'); e.conflict = true; throw e;
+      }
+      // An owner can't be timed out, so lift any timeout the new owner had.
+      run(db, 'UPDATE server_members SET timeout_until = NULL WHERE server_id = ? AND user_id = ?', [serverId, targetId]);
+      recordAudit(db, {
+        serverId, actorId: req.user.id, action: 'server.ownership_transfer',
+        targetType: 'member', targetId, targetName: targetUser.display_name || targetUser.username,
+        details: { from: oldOwner?.display_name || oldOwner?.username || null, to: targetUser.display_name || targetUser.username }
+      });
+    });
+
+    broadcastToServer(req, db, serverId, { type: 'server_ownership_changed', server_id: serverId, owner_id: targetId, previous_owner_id: req.user.id });
+    req.app.locals.revalidateServerRooms?.(serverId);
+    res.json({ ok: true, owner_id: targetId });
+  } catch (err) {
+    if (err && err.conflict) return res.status(409).json({ error: 'Ownership changed while you were transferring it — try again' });
+    console.error('Error transferring ownership:', err);
+    res.status(500).json({ error: 'Failed to transfer ownership' });
+  }
+});
+
 router.post('/:serverId/leave', requireAuth, requireServerPermission(null), async (req, res) => {
   try {
     const db = await getUserDb();
@@ -605,7 +660,8 @@ router.get('/:serverId/members', requireAuth, requireServerPermission(null), asy
         can_edit_roles: canRoles && above,
         can_kick: hasPermission(actor, PERMISSIONS.KICK_MEMBERS) && above && !self,
         can_ban: hasPermission(actor, PERMISSIONS.BAN_MEMBERS) && above && !self,
-        can_timeout: hasPermission(actor, PERMISSIONS.MODERATE_MEMBERS) && above && !self
+        can_timeout: hasPermission(actor, PERMISSIONS.MODERATE_MEMBERS) && above && !self,
+        can_transfer: !!actor.isOwner && !self
       };
     }
     return item;

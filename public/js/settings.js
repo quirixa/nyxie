@@ -1178,6 +1178,26 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Server ownership transfer',
+      version: '0.7.0',
+      date: 'October 28, 2026',
+      sections: [
+        { heading: 'Added', items: [
+          'Owners can hand a server to another member: open Server Settings, go to Members and choose “Make owner” on their row. You have to type the server name to confirm.',
+          'The transfer is recorded in the Audit Log, and everyone in the server sees the owner crown move straight away.',
+        ] },
+        { heading: 'Security', items: [
+          'Only the current owner can transfer, and only to a current member. The server checks this itself, including the name confirmation; the app cannot bypass it.',
+          'If the new owner was timed out, the timeout is lifted. The new owner is protected from kicks, bans and timeouts like any owner.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'The former owner keeps the roles they hold. Servers give their creator the Admin role, so they stay an Administrator until the new owner removes that role. They lose the owner-only powers: deleting the server, transferring it, and being protected from moderation.',
+          'There is no undo: only the new owner can give the server back.',
+          'Deleting an account that owns a server does not hand the server on; transfer it first.',
+        ] },
+      ],
+    },
+    {
       title: 'Beta 0.6.0',
       version: '0.6.0',
       date: 'October 27, 2026',

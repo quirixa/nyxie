@@ -1104,6 +1104,19 @@ function initDashboardView() {
           if (currentServerId === msg.server_id) { loadServerRoles(); syncServerSettingsServer(); loadServerChannels(currentServerId); }
           break;
         }
+        // Ownership moved to another member: is_owner / permissions changed for
+        // both of them (and the owner crown moves in the member list).
+        case 'server_ownership_changed': {
+          if (currentServerId === msg.server_id) {
+            renderServerMembersIfOpen();
+            syncServerSettingsServer();
+            loadServerChannels(currentServerId);
+          } else {
+            loadServers();
+          }
+          if (msg.owner_id === currentUser.id) toast('You are now the owner of this server');
+          break;
+        }
         // Categories, ordering and channel permission overrides changed.
         case 'server_channels_refresh': {
           if (currentServerId === msg.server_id) loadServerChannels(currentServerId);

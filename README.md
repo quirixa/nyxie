@@ -4,7 +4,7 @@ Chat, servers, marketplace and NX wallet. Node.js + Express backend, WebSocket
 messaging, SQLite (via `sql.js`) storage, and a vanilla-JS single-page frontend
 served from `public/`.
 
-**Current release: beta 0.6.0** (includes the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
+**Current release: beta 0.7.0** (adds server ownership transfer; includes the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -89,6 +89,7 @@ is served by `GET /api/servers/:id/permissions`.
 - You can only put permissions on a role, or in a channel override, that you hold yourself (owner/Administrator: any). Bits you don't hold can't be changed by you.
 - New roles are created at the bottom. Reordering can never move a role to or above the actor's own rank.
 - Role assignment requires `MANAGE_ROLES` or `MANAGE_MEMBERS`.
+- **Ownership transfer** is owner-only, to a current member, and needs the exact server name as confirmation. The former owner keeps the roles they hold (including the Admin role every server gives its creator) until the new owner removes them; they lose delete/transfer rights and owner protection. Recorded as `server.ownership_transfer` in the audit log.
 
 ### Channel permission overrides
 
@@ -130,6 +131,7 @@ npm run check # syntax check of the main files
 | `tests/migration.test.js` | Upgrade of a rewound "pre-0.2.0" database: data preserved, migrations applied once, safety copy written |
 | `tests/regression.test.js` | Login/registration, DMs with live delivery, server messaging, uploads, SPA shell, wallet route still guarded, JWT_SECRET enforcement, version consistency |
 | `tests/ui-dashboard.test.js` | The real `index.html` + all frontend scripts in jsdom against a live server: member list, toggle, live updates, categories, opening Server Settings, no placeholder usernames |
+| `tests/ownership.test.js` | Ownership transfer: authorization, validation, consequences for old/new owner, audit entry, live event |
 | `tests/ui-settings.test.js` | The real settings panel code running in **jsdom** against a live server: navigation, dirty guards, forms, dialogs, lists, error/empty states, XSS escaping |
 
 Tests never touch `./data`; they use temporary directories via `NYXIE_DATA_DIR`.

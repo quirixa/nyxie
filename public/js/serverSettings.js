@@ -250,6 +250,9 @@
   SS.syncServer = function (server) {
     if (!state.open || !server || server.id !== sid()) return;
     state.server = server;
+    // Lost every management right (e.g. just handed over ownership): nothing
+    // left to show here but a read-only overview, so close the panel.
+    if (!SS.canOpen(server)) { close(true); return; }
     renderNav();
     if (!allowedSections().includes(state.section)) show('overview', { force: true });
     else if (state.root) { state.root.querySelectorAll('.ssv-nav-item').forEach(b => b.classList.toggle('active', b.dataset.section === state.section)); }
@@ -341,7 +344,8 @@
       <section class="ssv-card ssv-danger">
         <h3>Danger zone</h3>
         ${s.is_owner
-          ? `<div class="ssv-danger-row"><div><strong>Delete this server</strong><div class="ssv-help">Permanently deletes every channel and message. This cannot be undone.</div></div><button class="ssv-btn ssv-btn-danger" data-act="delete-server">Delete server</button></div>`
+          ? `<div class="ssv-danger-row"><div><strong>Transfer ownership</strong><div class="ssv-help">Hand the server to another member. You keep the roles you have (including Admin, if you hold it) but lose the owner-only powers. Choose “Make owner” on their row in Members.</div></div><button class="ssv-btn ssv-btn-danger-o" data-act="goto-members">Go to Members</button></div>
+          <div class="ssv-danger-row" style="margin-top:14px"><div><strong>Delete this server</strong><div class="ssv-help">Permanently deletes every channel and message. This cannot be undone.</div></div><button class="ssv-btn ssv-btn-danger" data-act="delete-server">Delete server</button></div>`
           : `<div class="ssv-danger-row"><div><strong>Leave this server</strong><div class="ssv-help">You will need a new invite to come back.</div></div><button class="ssv-btn ssv-btn-danger" data-act="leave-server">Leave server</button></div>`}
       </section>
       <div class="ssv-savebar" id="ov-savebar" hidden><span>Careful — you have unsaved changes.</span>
@@ -430,6 +434,7 @@
     async onClick(act, t) {
       if (act === 'icon-pick') $('#ov-icon-file').click();
       else if (act === 'icon-remove') { ov.draft.icon = null; ovPaint($('#ssv-content')); }
+      else if (act === 'goto-members') show('members');
       else if (act === 'ov-reset') { ov.draft = Object.assign({}, ov.orig); ovPaint($('#ssv-content')); }
       else if (act === 'ov-save') ovSave(t);
       else if (act === 'invite-create') {
@@ -500,6 +505,7 @@
         ${a.can_timeout ? (timed ? '<button class="ssv-btn" data-act="m-untimeout">Remove timeout</button>' : '<button class="ssv-btn" data-act="m-timeout">Timeout</button>') : ''}
         ${a.can_kick ? '<button class="ssv-btn ssv-btn-danger-o" data-act="m-kick">Kick</button>' : ''}
         ${a.can_ban ? '<button class="ssv-btn ssv-btn-danger-o" data-act="m-ban">Ban</button>' : ''}
+        ${a.can_transfer ? '<button class="ssv-btn ssv-btn-danger-o" data-act="m-owner">Make owner</button>' : ''}
       </div></div>`;
   }
 
@@ -564,6 +570,21 @@
         const r = await call('DELETE', `/servers/${sid()}/members/${m.id}`, { reason: v.reason || undefined });
         if (!r.ok) return notify(r.error, true);
         notify(`${name} was kicked`); mbLoad(); state.hooks.onServerChanged && state.hooks.onServerChanged();
+      } else if (act === 'm-owner') {
+        const v = await dialog({
+          title: `Transfer ownership to ${name}?`,
+          message: `${name} will become the owner of “${state.server.name}” and you will lose the owner-only powers (deleting the server, transferring it, being protected from moderation). You keep the roles you already hold. Only the new owner can give it back. Type the server name to confirm.`,
+          fields: [{ name: 'confirm', label: 'Server name', type: 'confirm', match: state.server.name, placeholder: state.server.name }],
+          confirmText: 'Transfer ownership', danger: true
+        });
+        if (!v) return;
+        const r = await call('POST', `/servers/${sid()}/transfer-ownership`, { user_id: m.id, confirm_name: v.confirm });
+        if (!r.ok) return notify(r.error, true);
+        notify(`${name} is now the owner`);
+        // Our own authority just changed: refresh the cached server so the
+        // panel re-evaluates (it closes if nothing is left to manage).
+        if (state.hooks.onServerChanged) await state.hooks.onServerChanged();
+        if (state.open) mbLoad();
       } else if (act === 'm-ban') {
         const v = await dialog({ title: `Ban ${name}?`, message: 'They are removed and can’t rejoin until unbanned. Their account and messages are not deleted.', fields: [{ name: 'reason', label: 'Reason (optional)', type: 'textarea', maxlength: 300 }], confirmText: 'Ban member', danger: true });
         if (!v) return;

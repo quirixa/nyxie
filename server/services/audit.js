@@ -19,6 +19,7 @@ const { all, get, run } = require('../database/userDb');
 const ACTIONS = Object.freeze({
   'server.update': 'Server settings changed',
   'server.icon_update': 'Server icon changed',
+  'server.ownership_transfer': 'Ownership transferred',
   'invite.create': 'Invite created',
   'invite.revoke': 'Invite revoked',
   'role.create': 'Role created',
@@ -160,6 +161,7 @@ function describe(action, actor, target, d) {
       const fields = d && d.changes ? Object.keys(d.changes) : [];
       return `${actor} changed the server ${fields.length ? fields.join(', ') : 'settings'}`;
     }
+    case 'server.ownership_transfer': return `${actor} transferred ownership of the server to ${target || 'another member'}`;
     case 'server.icon_update': return `${actor} ${d && d.removed ? 'removed' : 'changed'} the server icon`;
     case 'invite.create': return `${actor} created an invite`;
     case 'invite.revoke': return `${actor} revoked an invite`;
