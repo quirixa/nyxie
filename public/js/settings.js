@@ -1178,6 +1178,27 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Privacy: “Last seen” removed',
+      version: '0.8.0',
+      date: 'October 28, 2026',
+      sections: [
+        { heading: 'Removed', items: [
+          'Nyxie no longer records or shows when you were last online. DM headers show “Offline” instead of “last seen …”, and the server no longer stores or sends the value.',
+          'Old “last seen” values stored by earlier versions are cleared when the server updates.',
+        ] },
+        { heading: 'Fixed', items: [
+          'Invisible now stays quiet: coming online, reconnecting, opening a chat or going offline no longer sends anything that could reveal you were there.',
+          'Changing status with several tabs or devices open now updates everyone, instead of leaving some chats showing an old status.',
+          'People you were chatting with no longer get stuck seeing you as Online after you disconnect.',
+          'Calling someone who is Invisible and already on a call no longer reveals that they are online.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'People can still see your live status, and anything you do (sending messages, typing, answering calls) is visible even when Invisible. Removing “last seen” does not make you untraceable.',
+          'The server can still see connections, IP addresses and your devices’ activity. Your own device list in Settings still shows when each of your devices was last active.',
+        ] },
+      ],
+    },
+    {
       title: 'Server ownership transfer',
       version: '0.7.0',
       date: 'October 28, 2026',

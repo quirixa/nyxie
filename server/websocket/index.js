@@ -119,6 +119,30 @@ async function broadcastPresenceToFriends(userId, publicStatus, displayName, ava
   for (const fid of friendIds) broadcastToUser(fid, payload);
 }
 
+// Every room any of this user's live sockets has joined. A user with two
+// tabs open in different rooms must have their presence change reach both
+// rooms — using only one socket's rooms left the other room showing a
+// stale (possibly no-longer-true, e.g. pre-Invisible) status.
+function joinedRoomsOf(userId) {
+  const rooms = new Set();
+  const conns = userConnections.get(userId);
+  if (conns) for (const ws of conns) {
+    const m = clientMeta.get(ws);
+    if (m) for (const r of m.rooms) rooms.add(r);
+  }
+  return rooms;
+}
+
+// Whether the user's stored preference is Invisible. Invisible users are
+// already shown as offline to everyone else, so connect / disconnect /
+// room-join events for them must produce NO presence traffic at all —
+// even an "offline" update would tell watchers exactly when a supposedly
+// hidden user came or went (see docs in README, "Privacy").
+function isInvisible(db, userId) {
+  const row = get(db, 'SELECT status FROM users WHERE id = ?', [userId]);
+  return !!row && row.status === 'invisible';
+}
+
 // Used by the REST fallback in routes/users.js PATCH /status (the primary
 // path is the 'set_status' WS message below, which also calls this).
 function broadcastPresenceChange(userId, rawStatus) {
@@ -127,10 +151,8 @@ function broadcastPresenceChange(userId, rawStatus) {
   const avatar = meta?.avatar;
   const connected = isUserConnected(userId);
   const publicStatus = effectiveStatus(rawStatus, { connected, isSelf: false });
-  if (meta) {
-    for (const roomId of meta.rooms) {
-      broadcast(roomId, { type: 'presence_update', user_id: userId, status: publicStatus, display_name: displayName, avatar });
-    }
+  for (const roomId of joinedRoomsOf(userId)) {
+    broadcast(roomId, { type: 'presence_update', user_id: userId, status: publicStatus, display_name: displayName, avatar });
   }
   broadcastPresenceToFriends(userId, publicStatus, displayName, avatar);
   // Let the user's own other sessions know their real (unmasked) status too.
@@ -269,9 +291,6 @@ async function cleanupClient(ws) {
       clients.delete(ws);
       if (clients.size === 0) roomClients.delete(roomId);
     }
-    // Only tell the room "offline" once every one of this user's sessions
-    // is gone — with a second tab/device still open they're still here.
-    if (isLastConnection) broadcastPresence(roomId, meta.userId, 'offline', meta.display_name, meta.avatar);
   }
 
   const conns = userConnections.get(meta.userId);
@@ -279,17 +298,33 @@ async function cleanupClient(ws) {
     conns.delete(ws);
     if (conns.size === 0) userConnections.delete(meta.userId);
   }
-
   clientMeta.delete(ws);
+
+  // Nothing is written to the database here on purpose: `status` is the
+  // user's manually-chosen preference (online/idle/dnd/invisible) and must
+  // survive a dropped connection or page refresh unchanged, and Nyxie no
+  // longer records when a user was last connected at all. Losing
+  // connectivity is represented purely by isUserConnected() returning
+  // false, which effectiveStatus() turns into "offline" for anyone looking.
+  if (!isLastConnection) return;
+
   const db = await getUserDb();
-  // last_seen only — `status` is the user's manually-chosen preference
-  // (online/idle/dnd/invisible) and must survive a dropped connection or
-  // page refresh unchanged. Losing connectivity is represented purely by
-  // isUserConnected() returning false, which effectiveStatus() already
-  // turns into "offline" for anyone looking, without needing to touch
-  // (and thereby forget) what the user actually picked.
-  run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), meta.userId]);
-  if (isLastConnection) broadcastPresenceToFriends(meta.userId, 'offline', meta.display_name, meta.avatar);
+  // They may have reconnected (page refresh) while we awaited the DB; the
+  // new socket has already announced them, so an "offline" now would be stale.
+  if (isUserConnected(meta.userId)) return;
+  // Invisible users already look offline to everyone else, so their
+  // disconnect must not emit anything (an "offline" event would reveal
+  // exactly when a hidden user left).
+  if (isInvisible(db, meta.userId)) return;
+
+  // Tell every room the user belongs to (the same set that was told
+  // "online" on connect), not just this socket's rooms: an earlier-closed
+  // tab may have been the only one in some room, which would otherwise be
+  // left showing the user online forever.
+  const roomIds = new Set(meta.rooms);
+  for (const row of all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [meta.userId])) roomIds.add(row.room_id);
+  for (const roomId of roomIds) broadcastPresence(roomId, meta.userId, 'offline', meta.display_name, meta.avatar);
+  broadcastPresenceToFriends(meta.userId, 'offline', meta.display_name, meta.avatar);
 }
 
 function setupWebSocket(server) {
@@ -326,18 +361,24 @@ function setupWebSocket(server) {
     // 'online' if the column has never been set at all (brand new user).
     const rawStatus = STATUSES.includes(user.status) ? user.status : 'online';
     if (rawStatus !== user.status) run(db, 'UPDATE users SET status = ? WHERE id = ?', [rawStatus, user.id]);
-    run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
 
     clientMeta.set(ws, { sid: payload.sid || null, userId: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, rooms: new Set() });
     if (!userConnections.has(user.id)) userConnections.set(user.id, new Set());
     userConnections.get(user.id).add(ws);
 
+    // An Invisible user connecting (or reconnecting) must not announce
+    // anything: they already read as offline, and a presence event right
+    // now would reveal that they just came online. Likewise a second tab
+    // of an already-connected user is not a presence change.
     const publicStatus = effectiveStatus(rawStatus, { connected: true, isSelf: false });
-    const userRooms = all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [user.id]);
-    for (const row of userRooms) {
-      broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: publicStatus, display_name: user.display_name, avatar: user.avatar });
+    const firstConnection = userConnections.get(user.id).size === 1;
+    if (rawStatus !== 'invisible' && firstConnection) {
+      const userRooms = all(db, 'SELECT room_id FROM room_members WHERE user_id = ?', [user.id]);
+      for (const row of userRooms) {
+        broadcast(row.room_id, { type: 'presence_update', user_id: user.id, status: publicStatus, display_name: user.display_name, avatar: user.avatar });
+      }
+      broadcastPresenceToFriends(user.id, publicStatus, user.display_name, user.avatar);
     }
-    broadcastPresenceToFriends(user.id, publicStatus, user.display_name, user.avatar);
 
     ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, display_name: user.display_name, avatar: user.avatar, status: rawStatus } }));
 
@@ -370,7 +411,12 @@ function setupWebSocket(server) {
           }
           joinRoom(ws, room_id);
           const myRow = get(db2, 'SELECT status FROM users WHERE id = ?', [meta.userId]);
-          broadcastPresence(room_id, meta.userId, effectiveStatus(myRow?.status, { connected: true, isSelf: false }), meta.display_name, meta.avatar);
+          // Joining a room announces presence — except for Invisible users,
+          // for whom any event at all (even "offline") would reveal when
+          // they opened this conversation.
+          if (myRow?.status !== 'invisible') {
+            broadcastPresence(room_id, meta.userId, effectiveStatus(myRow?.status, { connected: true, isSelf: false }), meta.display_name, meta.avatar);
+          }
 
           const members = all(db2, `
             SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.public_key
@@ -442,12 +488,18 @@ function setupWebSocket(server) {
           const { status } = msg;
           if (!STATUSES.includes(status)) break;
           const db2 = await getUserDb();
+          const before = get(db2, 'SELECT status FROM users WHERE id = ?', [meta.userId]);
           run(db2, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?', [status, Date.now(), meta.userId]);
           const publicStatus = effectiveStatus(status, { connected: true, isSelf: false });
-          for (const roomId of meta.rooms) {
-            broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status: publicStatus, display_name: meta.display_name, avatar: meta.avatar });
+          // Re-picking Invisible while already Invisible changes nothing
+          // anyone can see, so it must not emit an event either.
+          const unchangedHidden = before?.status === 'invisible' && status === 'invisible';
+          if (!unchangedHidden) {
+            for (const roomId of joinedRoomsOf(meta.userId)) {
+              broadcast(roomId, { type: 'presence_update', user_id: meta.userId, status: publicStatus, display_name: meta.display_name, avatar: meta.avatar });
+            }
+            broadcastPresenceToFriends(meta.userId, publicStatus, meta.display_name, meta.avatar);
           }
-          broadcastPresenceToFriends(meta.userId, publicStatus, meta.display_name, meta.avatar);
           // Sync the real (unmasked) status to this user's own other
           // sessions — e.g. another open tab — so their own UI shows
           // "Invisible" rather than the "offline" everyone else sees.
@@ -487,7 +539,10 @@ function setupWebSocket(server) {
             break;
           }
           if (userActiveCall.has(target_user_id)) {
-            ws.send(JSON.stringify({ type: 'call_busy', call_id }));
+            // "Busy" would reveal that an Invisible (apparently offline)
+            // user is connected and on a call. For them behave exactly as
+            // for an offline user: no reply.
+            if (!isInvisible(db2, target_user_id)) ws.send(JSON.stringify({ type: 'call_busy', call_id }));
             break;
           }
           activeCalls.set(call_id, { callerId: meta.userId, calleeId: target_user_id, roomId: room_id });

@@ -67,7 +67,7 @@ router.get('/search', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ users: [] });
   const users = all(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, last_seen, status
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status
     FROM users
     WHERE (username LIKE ? OR display_name LIKE ?) AND id != ?
     LIMIT 20
@@ -81,7 +81,7 @@ router.get('/search', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const user = get(db, `
-    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status, created_at, last_seen
+    SELECT id, username, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, role, public_key, status, created_at
     FROM users WHERE id = ?
   `, [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found' });

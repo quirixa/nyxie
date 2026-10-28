@@ -85,7 +85,7 @@ async function getUserDb() {
       status TEXT DEFAULT 'online',
       status_updated_at INTEGER,
       created_at INTEGER NOT NULL,
-      last_seen INTEGER,
+      last_seen INTEGER,         -- DEPRECATED since 0.8.0: no longer written or read (always NULL); kept so existing databases and tools keep working
       disabled INTEGER DEFAULT 0
     )
   `);

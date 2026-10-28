@@ -527,15 +527,6 @@ function initDashboardView() {
     if (d.toDateString() === y.toDateString()) return 'Yesterday';
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
-  function fmtLastSeen(ts) {
-    if (!ts) return 'unknown';
-    const d = new Date(ts), now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  }
 
   function isMobileLayout() { return window.matchMedia('(max-width: 768px)').matches; }
   function showMobileList() { document.getElementById('app').classList.remove('mobile-view-detail'); }
@@ -693,7 +684,7 @@ function initDashboardView() {
           const status = udata.user.status || 'offline';
           const dot = document.getElementById('ch-status-dot');
           if (dot) dot.className = `ch-status-dot ${pipClass(status)}`;
-          const statusText = status === 'offline' ? (udata.user.last_seen ? `last seen ${fmtLastSeen(udata.user.last_seen)}` : 'offline') : presenceLabel(status).toLowerCase();
+          const statusText = presenceLabel(status).toLowerCase();
           const text = document.getElementById('chat-status-text');
           if (text) text.textContent = statusText;
           const chAvatarEl = document.getElementById('ch-avatar');

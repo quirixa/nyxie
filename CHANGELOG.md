@@ -3,6 +3,36 @@
 All notable changes to Nyxie. The same release notes appear in the app under
 Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 
+## [0.8.0] - 2026-10-28
+
+### Removed
+- **"Last seen" is gone everywhere.** Nyxie no longer records, stores or shows when a user was last connected.
+  - The DM header no longer shows "last seen 5m ago" for offline users; it shows "Offline" (and `public/js/dashboard.js` no longer contains the formatter at all).
+  - `last_seen` is no longer returned by `GET /api/users/:id`, `GET /api/users/search`, `GET /api/auth/me`, `GET /api/friends`, or the `friend_accepted` WebSocket payload.
+  - `users.last_seen` is no longer written on registration, login, WebSocket connect or disconnect. The column is kept (so existing databases and tools still work) but is always `NULL`; migration `0.8.0-clear-last-seen` wipes values stored by earlier versions, once.
+
+### Fixed (presence privacy)
+- **Invisible users no longer emit presence events.** Connecting, reconnecting, opening a conversation, disconnecting, or re-selecting Invisible used to broadcast an `offline` `presence_update`, which told watchers exactly when a "hidden" user came or went. These now send nothing. Switching *to* Invisible still sends one `offline` so others' views update.
+- **Stale presence with several tabs/devices.** Status changes (and the REST fallback) only reached the rooms joined by one of the user's sockets, so another room could keep showing the old status (for example "Online" after switching to Invisible). They now reach every room the user has joined.
+- **Stale "Online" after disconnect.** When a user's last socket closed, only that socket's rooms were told "offline". All of the user's rooms are now notified, and no stale "offline" is sent if the user reconnected meanwhile.
+- `PATCH /api/auth/status` (a second status endpoint) saved the status but never notified anyone; it now broadcasts like `PATCH /api/users/status`.
+- A call to an Invisible user who is already on a call no longer answers `call_busy` (which revealed they were online); it behaves like calling an offline user.
+
+### Kept
+- Online / Idle / Do Not Disturb / Invisible work as before, including the masking rules in `server/services/presence.js`.
+- Session `last_active` (Settings → Security, only your own devices; also used for session expiry), `status_updated_at` (never returned by any endpoint), message timestamps, audit and rate-limit data are unchanged.
+
+### Added
+- `tests/privacy.test.js`: no last-seen fields in any user-facing response or event, `last_seen` never written to the database, the migration clears old values, Invisible users produce no presence traffic and look offline in every endpoint, and normal presence still works.
+
+### Known limitations (what others and the server can still observe)
+- Other users still see your live status (Online, Idle, Do Not Disturb) and see you go offline when your last connection drops. This is real-time presence, not history.
+- Anything you *do* is visible to the people it reaches, even when Invisible: sending a message (and its timestamp), typing in a room, editing, answering a call. Calling an Invisible user who is connected still rings them.
+- Someone watching an account can still infer activity from the above. Hiding the timestamp does **not** make anyone untraceable.
+- The server operator can still see who is connected, IP addresses and user agents, session `last_active`, the stored status preference (including Invisible), logs, and message metadata.
+- Database copies made before upgrading (backups, snapshots, `nyxie_users.db.pre-0.2.0.bak`) can still contain old `last_seen` values; delete them if that matters.
+- Not checked in a real browser (see 0.2.1); the UI change was exercised in jsdom only.
+
 ## [0.7.0] - 2026-10-28
 
 ### Added

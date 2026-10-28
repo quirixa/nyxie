@@ -1,6 +1,6 @@
 {
   "name": "nyxie",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Nyxie — chat, servers, marketplace and NX wallet (Express + WebSocket + sql.js).",
   "private": true,
   "main": "server/server.js",

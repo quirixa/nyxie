@@ -4,7 +4,7 @@ Chat, servers, marketplace and NX wallet. Node.js + Express backend, WebSocket
 messaging, SQLite (via `sql.js`) storage, and a vanilla-JS single-page frontend
 served from `public/`.
 
-**Current release: beta 0.7.0** (adds server ownership transfer; includes the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
+**Current release: beta 0.8.0** (removes "Last seen" and tightens presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -118,6 +118,25 @@ Detail objects are sanitized (secret-like and content-like keys are dropped,
 strings truncated). Visible to `VIEW_AUDIT_LOG` holders only. Entries are kept
 until the server is deleted.
 
+## Privacy: presence and "last seen"
+
+Nyxie does **not** record or show when a user was last online. `users.last_seen`
+is deprecated (kept, always `NULL`; migration `0.8.0-clear-last-seen` clears old values).
+
+What other users can see: your live status (Online / Idle / Do Not Disturb), going
+offline when your last connection closes, and anything you do (messages and their
+timestamps, typing, answering calls). Invisible shows as offline everywhere (profile,
+friends, server and group member lists, room state, search, WebSocket) and produces no
+presence events when you connect, disconnect, open a chat or re-select it.
+
+What the server (operator) can still see: live connections, IPs and user agents,
+session `last_active` (also shown to you, only for your own devices, in Settings →
+Security; used for session expiry), the stored status preference including Invisible,
+`status_updated_at` (never sent to clients), logs, message metadata. Old database
+copies/backups can still contain pre-0.8.0 `last_seen` values.
+
+This reduces what is exposed; it does not make anyone untraceable.
+
 ## Tests
 
 ```bash
@@ -132,6 +151,7 @@ npm run check # syntax check of the main files
 | `tests/regression.test.js` | Login/registration, DMs with live delivery, server messaging, uploads, SPA shell, wallet route still guarded, JWT_SECRET enforcement, version consistency |
 | `tests/ui-dashboard.test.js` | The real `index.html` + all frontend scripts in jsdom against a live server: member list, toggle, live updates, categories, opening Server Settings, no placeholder usernames |
 | `tests/ownership.test.js` | Ownership transfer: authorization, validation, consequences for old/new owner, audit entry, live event |
+| `tests/privacy.test.js` | No last-seen data in any API response/event or the database, migration clears old values, Invisible produces no presence traffic and looks offline everywhere, normal presence still works |
 | `tests/ui-settings.test.js` | The real settings panel code running in **jsdom** against a live server: navigation, dirty guards, forms, dialogs, lists, error/empty states, XSS escaping |
 
 Tests never touch `./data`; they use temporary directories via `NYXIE_DATA_DIR`.

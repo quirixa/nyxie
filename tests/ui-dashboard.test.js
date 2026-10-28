@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, requestInterceptor, VirtualConsole } = require('jsdom');
-const { startServer, registerUser } = require('./helpers');
+const { startServer, registerUser, openWs } = require('./helpers');
 const nacl = require('tweetnacl');
 
 // Accounts created through the REST API have no encryption keys yet, so the
@@ -257,4 +257,40 @@ test('ownership transfer is reflected live in the real dashboard: crown moves, o
     await until(() => ui.$('#server-settings-btn').style.display === 'none');
     assert.deepEqual(notDefinedErrors(ui), []);
   } finally { ui.close(); }
+});
+
+test('DM header shows plain presence and never a "last seen" time, for offline, online and Invisible users', async () => {
+  const dm = (await alice.post('/rooms/dm', { target_user_id: bob.id })).body.room_id;
+  // Bob has been connected before and is now gone: under 0.7.0 the header would read "last seen Xm ago".
+  const past = await openWs(s.base, bob.token); await past.waitFor(m => m.type === 'connected'); past.close();
+  await new Promise(r => setTimeout(r, 300));
+  // The header text is set when a conversation is opened, so each state gets a fresh page.
+  const headerFor = async () => {
+    const ui = await openApp(alice);
+    try {
+      await until(() => ui.$(`[data-room-id="${dm}"]`));   // the DM list has loaded (openRoom ignores unknown rooms)
+      // The header starts with a static default; wait for the profile lookup
+      // that fills it in (and let its handler run) before reading it.
+      let lookedUp = false;
+      const realFetch = ui.w.fetch;
+      ui.w.fetch = (u, o) => realFetch(u, o).finally(() => { if (String(u).includes('/users/' + bob.id)) lookedUp = true; });
+      ui.w.openRoom(dm);
+      await until(() => lookedUp);
+      await new Promise(r => setTimeout(r, 100));
+      assert.doesNotMatch(ui.doc.body.textContent, /last seen|\d+\s?(m|h) ago/i, 'no last-seen text anywhere in the page');
+      assert.deepEqual(notDefinedErrors(ui), []);
+      return ui.$('#chat-status-text').textContent.trim();
+    } finally { ui.close(); }
+  };
+  let live;
+  try {
+    assert.equal(await headerFor(), 'offline');
+    live = await openWs(s.base, bob.token); await live.waitFor(m => m.type === 'connected');
+    assert.equal(await headerFor(), 'online');
+    await bob.patch('/users/status', { status: 'invisible' });
+    assert.equal(await headerFor(), 'offline', 'Invisible reads as plain offline');
+  } finally {
+    if (live) live.close();
+    await bob.patch('/users/status', { status: 'online' });
+  }
 });

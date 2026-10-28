@@ -13,7 +13,7 @@ router.get('/', requireAuth, async (req, res) => {
   const db = await getUserDb();
   ensureBlocksTable(db);
   const friends = all(db, `
-    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_decoration, u.status, u.last_seen
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_decoration, u.status
     FROM friends f
     JOIN users u ON u.id = CASE WHEN f.user_a = ? THEN f.user_b ELSE f.user_a END
     WHERE (f.user_a = ? OR f.user_b = ?) AND f.status = 'accepted'
@@ -135,7 +135,7 @@ router.post('/request', requireAuth, async (req, res) => {
       run(db, 'INSERT OR IGNORE INTO friends (id, user_a, user_b, status, created_at) VALUES (?, ?, ?, \'accepted\', ?)',
           [friendId, req.user.id, to_id, Date.now()]);
       // Fetch the friend's full profile (including avatar)
-      const me = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration, status, last_seen FROM users WHERE id = ?', [req.user.id]);
+      const me = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration, status FROM users WHERE id = ?', [req.user.id]);
       me.status = effectiveStatus(me.status, { connected: (req.app.locals.isUserConnected || (() => false))(me.id), isSelf: false });
       req.app.locals.broadcastToUser(to_id, { type: 'friend_accepted', request_id: pending.id, friend: me });
       return res.json({ ok: true, auto_accepted: true });
@@ -176,7 +176,7 @@ router.post('/requests/:id/accept', requireAuth, async (req, res) => {
   run(db, 'INSERT OR IGNORE INTO friends (id, user_a, user_b, status, created_at) VALUES (?, ?, ?, \'accepted\', ?)',
       [friendId, fr.from_id, fr.to_id, Date.now()]);
 
-  const me = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration, status, last_seen FROM users WHERE id = ?', [req.user.id]);
+  const me = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration, status FROM users WHERE id = ?', [req.user.id]);
   me.status = effectiveStatus(me.status, { connected: (req.app.locals.isUserConnected || (() => false))(me.id), isSelf: false });
   req.app.locals.broadcastToUser(fr.from_id, { type: 'friend_accepted', request_id: fr.id, friend: me });
   res.json({ ok: true });

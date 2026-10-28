@@ -80,6 +80,19 @@ const MIGRATIONS = [
              SELECT 1 FROM server_roles sr
              WHERE sr.id = server_member_roles.role_id AND sr.server_id = server_member_roles.server_id)`);
     }
+  },
+  {
+    id: '0.8.0-clear-last-seen',
+    // 0.8.0 stops recording when a user was last connected. Wipe the
+    // values already stored so old data doesn't linger in the database for
+    // no purpose. The `last_seen` column itself is deliberately kept —
+    // dropping columns is not supported on every SQLite build and older
+    // code/tools may still name it — it simply stays NULL from now on.
+    // Session `last_active` (the user's own device list, used for expiry)
+    // is a different field and is not touched.
+    up({ run }) {
+      run('UPDATE users SET last_seen = NULL WHERE last_seen IS NOT NULL');
+    }
   }
 ];
 

@@ -64,9 +64,9 @@ router.post('/register', async (req, res) => {
     const role = trimmedUsername.toLowerCase() === 'admin' ? 'ADMIN' : 'USER';
 
     run(db,
-      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, banner, banner_color, bio, status, created_at, last_seen, role)
-       VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'online', ?, ?, ?)`,
-      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, now, role]
+      `INSERT INTO users (id, username, email, password_hash, display_name, avatar, banner, banner_color, bio, status, created_at, role)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'online', ?, ?)`,
+      [userId, trimmedUsername, trimmedEmail, passwordHash, displayName, now, role]
     );
 
     // New users start in zero servers. Servers are opt-in: create one
@@ -146,8 +146,6 @@ router.post('/login', async (req, res) => {
       totp.clearFailures(user.id);
     }
 
-    run(db, 'UPDATE users SET last_seen = ? WHERE id = ?', [Date.now(), user.id]);
-
     const token = signToken(user.id, createSession(db, user.id, req));
     res.json({
       token,
@@ -194,7 +192,7 @@ router.get('/me', async (req, res) => {
     // response above) — dashboard.js refreshes currentUser from this
     // endpoint on every app load, so it's the other place the client's
     // cached role can go stale without this.
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, last_seen, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     if (!tokenIsLive(db, payload, user.tokens_invalid_before)) {
       return res.status(401).json({ error: 'Session expired or revoked' });
@@ -222,6 +220,12 @@ router.patch('/status', async (req, res) => {
     const db = await getUserDb();
     run(db, 'UPDATE users SET status = ?, status_updated_at = ? WHERE id = ?',
         [status, Date.now(), payload.sub]);
+    // Same fallback broadcast as PATCH /api/users/status: without it a
+    // change made through this endpoint (e.g. switching to Invisible)
+    // would leave other people's clients showing the stale old status.
+    if (typeof req.app.locals.broadcastPresenceChange === 'function') {
+      req.app.locals.broadcastPresenceChange(payload.sub, status);
+    }
     res.json({ ok: true, status });
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
