@@ -4,7 +4,7 @@ Chat, servers, marketplace and NX wallet. Node.js + Express backend, WebSocket
 messaging, SQLite (via `sql.js`) storage, and a vanilla-JS single-page frontend
 served from `public/`.
 
-**Current release: beta 0.10.0** (long messages over 2,000 characters are sent as a message.txt attachment, with a multi-line composer and a text-file viewer; 0.10.0 added the Developer role and the Developer workspace for Feedback & Issues; 0.8.0 removed "Last seen" and tightened presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
+**Current release: beta 0.11.0** (long messages over 2,000 characters are sent as a message.txt attachment, with a multi-line composer and a text-file viewer; 0.9.0 added the Developer role and the Developer workspace for Feedback & Issues; 0.8.0 removed "Last seen" and tightened presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 

@@ -1,4 +1,4 @@
-// 0.10.0: the Developer navigation item and workspace in the REAL dashboard
+// 0.9.0: the Developer navigation item and workspace in the REAL dashboard
 // (public/index.html + public/js/*.js inside jsdom, against a live server).
 // Regular users must not see it, developers and administrators must, report
 // text must be rendered as text (never markup), and Admin must keep working.
@@ -208,7 +208,7 @@ test('a developer gets the Developer item next to Admin, and it opens the real w
 test('workspace shows real reports; report text is rendered as text, never as markup', async () => {
   const evilTitle = '<img src=x onerror=window.__pwned=1> bug';
   const evilBody = '<script>window.__pwned=1</script> long enough description here';
-  await submit(U.uirep, { title: evilTitle, description: evilBody, category: 'BUG', app_version: '0.10.0', platform: 'Linux' });
+  await submit(U.uirep, { title: evilTitle, description: evilBody, category: 'BUG', app_version: '0.9.0', platform: 'Linux' });
   await submit(U.uirep, { title: 'Please add dark mode scheduling', category: 'FEATURE' });
   await submit(U.uirep, { title: 'General thoughts about Nyxie', category: 'GENERAL' });
   const sec = await submit(U.uirep, { title: 'Private vulnerability report', category: 'SECURITY' });

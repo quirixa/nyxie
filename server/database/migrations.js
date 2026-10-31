@@ -95,7 +95,7 @@ const MIGRATIONS = [
     }
   },
   {
-    id: '0.10.0-feedback-to-reports',
+    id: '0.9.0-feedback-to-reports',
     // The old Settings → Feedback form wrote to `user_feedback`, which nothing
     // could read. Copy those rows into `reports` so the Developer workspace
     // sees them. `user_feedback` is left untouched (nothing is deleted), and
@@ -124,7 +124,7 @@ const MIGRATIONS = [
     }
   },
   {
-    id: '0.10.0-sync-developer-roles',
+    id: '0.9.0-sync-developer-roles',
     // The Developer role is derived from the developer badge (see
     // services/staff.js). Bring existing databases in line once; the same
     // reconciliation also runs on every start and via

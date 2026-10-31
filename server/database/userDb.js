@@ -393,9 +393,9 @@ async function getUserDb() {
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_user_feedback_user ON user_feedback (user_id, created_at)');
 
-  // ── Feedback & Issues (0.10.0) ────────────────────────────────────────
+  // ── Feedback & Issues (0.9.0) ────────────────────────────────────────
   // `reports` supersedes `user_feedback` (that table is kept, read-only, as
-  // the source for migration 0.10.0-feedback-to-reports). Nothing here stores
+  // the source for migration 0.9.0-feedback-to-reports). Nothing here stores
   // message contents, keys or tokens: only what the reporter typed in the
   // report form (and, only if they ticked the box, a short diagnostics line).
   db.run(`

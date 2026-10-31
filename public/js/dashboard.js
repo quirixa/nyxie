@@ -496,6 +496,7 @@ function initDashboardView() {
     if (ws) { try { ws.close(); } catch (e) {} }
     if (_dashboardPollTimer) clearInterval(_dashboardPollTimer);
     if (typeof destroyVoiceFeatures === 'function') { try { destroyVoiceFeatures(); } catch (e) {} }
+    if (typeof destroyDeveloperPanel === 'function') { try { destroyDeveloperPanel(); } catch (e) {} }
   }
 
   function escapeHtml(s) {
@@ -505,6 +506,110 @@ function initDashboardView() {
   function escapeJs(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+  }
+
+  // Spoilers are revealed on click, Enter, or Space without changing message content.
+  if (!window.__nyxieMarkdownSpoilerHandler) {
+    window.__nyxieMarkdownSpoilerHandler = true;
+    // `event.target` is not always an Element (a key event can be dispatched at
+    // `document` itself, and text nodes have no closest()), so check first.
+    document.addEventListener('click', event => {
+      const spoiler = event.target.closest ? event.target.closest('.md-spoiler') : null;
+      if (spoiler) spoiler.classList.toggle('revealed');
+    });
+    document.addEventListener('keydown', event => {
+      const spoiler = event.target.closest ? event.target.closest('.md-spoiler') : null;
+      if (spoiler && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault(); spoiler.classList.toggle('revealed');
+      }
+    });
+  }
+
+  // Safe Discord-style Markdown renderer. All user text is escaped before it
+  // becomes HTML; only markup generated here is inserted into the message DOM.
+  function renderMessageMarkdown(input) {
+    const source = String(input == null ? '' : input).replace(/\r\n?/g, '\n');
+    const codeBlocks = [];
+    const withCodeTokens = source.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (_, language, code) => {
+      const lang = String(language || '').trim().replace(/[^a-zA-Z0-9_+-]/g, '').slice(0, 32);
+      const token = `\u0000CODEBLOCK${codeBlocks.length}\u0000`;
+      codeBlocks.push(`<pre class="md-codeblock"><code${lang ? ` class="language-${escapeHtml(lang)}"` : ''}>${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`);
+      return token;
+    });
+
+    function inline(text) {
+      const codeSpans = [];
+      let safe = String(text).replace(/`([^`\n]+)`/g, (_, code) => {
+        const token = `\u0001INLINECODE${codeSpans.length}\u0001`;
+        codeSpans.push(`<code class="md-inline-code">${escapeHtml(code)}</code>`);
+        return token;
+      });
+      safe = escapeHtml(safe);
+      // Discord-style masked links; reject executable and non-web protocols.
+      safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, (_, label, url) => {
+        const href = url.replace(/&amp;/g, '&').replace(/&quot;/g, '%22').replace(/&#39;/g, '%27');
+        return `<a class="md-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+      });
+      safe = safe
+        .replace(/\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/___(?=\S)([\s\S]*?\S)___/g, '<u><strong><em>$1</em></strong></u>')
+        .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(?=\S)([\s\S]*?\S)__/g, '<u>$1</u>')
+        .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>')
+        .replace(/\|\|(?=\S)([\s\S]*?\S)\|\|/g, '<span class="md-spoiler" role="button" tabindex="0" aria-label="Spoiler (click to reveal)">$1</span>')
+        .replace(/(^|[\s(<])\*([^*\n]+)\*(?=$|[\s).,!?:;>])/g, '$1<em>$2</em>')
+        .replace(/(^|[\s(<])_([^_\n]+)_(?=$|[\s).,!?:;>])/g, '$1<em>$2</em>');
+      safe = safe.replace(/\u0001INLINECODE(\d+)\u0001/g, (_, i) => codeSpans[Number(i)] || '');
+      return safe;
+    }
+
+    const lines = withCodeTokens.split('\n');
+    const out = [];
+    let paragraph = [];
+    let listType = null;
+    let quote = [];
+    const flushParagraph = () => {
+      // Keep real newline characters in the DOM text, not only <br> elements.
+      // This preserves copy/paste and textContent for messages that contain
+      // multiple lines, while the inherited pre-wrap style keeps indentation.
+      if (paragraph.length) { out.push(`<p>${paragraph.map(inline).join('\n')}</p>`); paragraph = []; }
+    };
+    const flushList = () => { if (listType) { out.push(`</${listType}>`); listType = null; } };
+    const flushQuote = () => { if (quote.length) { out.push(`<blockquote>${quote.map(inline).join('<br>')}</blockquote>`); quote = []; } };
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const codeMatch = line.match(/^\u0000CODEBLOCK(\d+)\u0000$/);
+      if (codeMatch) { flushParagraph(); flushList(); flushQuote(); out.push(codeBlocks[Number(codeMatch[1])] || ''); continue; }
+      if (!line.trim()) {
+        const endedParagraph = paragraph.length > 0;
+        flushParagraph(); flushList(); flushQuote();
+        // Keep the source line separators as text nodes. The first blank line
+        // after a paragraph needs two newlines (end-of-line + empty line);
+        // further blank lines each contribute one more.
+        out.push(endedParagraph ? '\n\n' : '\n');
+        continue;
+      }
+      const quoteMatch = line.match(/^\s*(?:>>>\s?|>\s?)(.*)$/);
+      if (quoteMatch) { flushParagraph(); flushList(); quote.push(quoteMatch[1]); continue; }
+      flushQuote();
+      if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) { flushParagraph(); flushList(); out.push('<hr class="md-divider">'); continue; }
+      const heading = line.match(/^(#{1,3})\s+(.+)$/);
+      if (heading) { flushParagraph(); flushList(); const level = heading[1].length; out.push(`<h${level} class="md-heading">${inline(heading[2])}</h${level}>`); continue; }
+      if (/^-#\s+/.test(line)) { flushParagraph(); flushList(); out.push(`<div class="md-subtext">${inline(line.replace(/^-#\s+/, ''))}</div>`); continue; }
+      const bullet = line.match(/^\s*[-*+]\s+(.+)$/);
+      const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+      if (bullet || numbered) {
+        flushParagraph();
+        const type = bullet ? 'ul' : 'ol';
+        if (listType !== type) { flushList(); listType = type; out.push(`<${type}>`); }
+        out.push(`<li>${inline((bullet || numbered)[1])}</li>`);
+        continue;
+      }
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph(); flushList(); flushQuote();
+    return out.join('');
   }
   function hashColor(name) {
     const colors = ['#fd6671', '#eb459e', '#ed4245', '#3ba55c', '#faa61a', '#1abc9c', '#e67e22', '#9b59b6'];
@@ -536,34 +641,63 @@ function initDashboardView() {
     document.getElementById('sidebar').classList.toggle('collapsed');
   }
 
+  // ── Main-area view manager ───────────────────────────────────────
+  // The dashboard's main area holds several sibling panels, of which exactly
+  // one may be visible. Every function that switches views (navigateTo,
+  // openRoom, selectServer, openChannel, showDiscoverView, showDMView) goes
+  // through showMainView() so the set of panels lives in ONE place. Before
+  // this existed each caller kept its own hand-written hide list, and the
+  // lists drifted apart — e.g. openRoom() never hid the Developer panel, so
+  // opening a DM from Developer left both on screen.
+  const MAIN_VIEW_PANELS = {
+    home: 'welcome-view',
+    friends: 'friends-panel',
+    wallet: 'wallet-panel',
+    marketplace: 'marketplace-panel',
+    admin: 'admin-panel',
+    developer: 'developer-panel',
+    discover: 'discover-panel',
+    notifications: 'notifications-panel',
+    chat: 'chat-view'
+  };
+  let activeMainView = null;
+
+  // Show `name` (a key of MAIN_VIEW_PANELS) and hide every other panel.
+  // showMainView(null) hides all of them. Sections with a teardown hook
+  // (Developer) are deactivated when they stop being the visible view.
+  function showMainView(name) {
+    const previous = activeMainView;
+    if (previous === 'developer' && name !== 'developer' && typeof destroyDeveloperPanel === 'function') {
+      try { destroyDeveloperPanel(); } catch (e) { console.error('Developer teardown error:', e); }
+    }
+    for (const [key, id] of Object.entries(MAIN_VIEW_PANELS)) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = key === name ? 'flex' : 'none';
+    }
+    activeMainView = name in MAIN_VIEW_PANELS ? name : null;
+  }
+
   async function navigateTo(section) {
     currentNav = section;
     inDiscoverView = false;
-    document.getElementById('discover-panel').style.display = 'none';
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById('nav-' + section)?.classList.add('active');
-    document.getElementById('welcome-view').style.display = 'none';
-    document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('wallet-panel').style.display = 'none';
-    document.getElementById('marketplace-panel').style.display = 'none';
-    document.getElementById('admin-panel').style.display = 'none';
-    document.getElementById('developer-panel').style.display = 'none';
-    document.getElementById('chat-view').style.display = 'none';
+    showMainView(null);
     renderServerRail();
     if (section === 'home') {
-      document.getElementById('welcome-view').style.display = 'flex';
+      showMainView('home');
       showMobileList();
     } else if (section === 'friends') {
-      document.getElementById('friends-panel').style.display = 'flex';
+      showMainView('friends');
       await loadFriendsData();
       renderFriendsList();
       showMobileDetail();
     } else if (section === 'wallet') {
-      document.getElementById('wallet-panel').style.display = 'flex';
+      showMainView('wallet');
       if (typeof initWalletPanel === 'function') initWalletPanel();
       showMobileDetail();
     } else if (section === 'marketplace') {
-      document.getElementById('marketplace-panel').style.display = 'flex';
+      showMainView('marketplace');
       if (typeof initMarketplacePanel === 'function') initMarketplacePanel();
       showMobileDetail();
     } else if (section === 'admin') {
@@ -577,7 +711,7 @@ function initDashboardView() {
         toast('Admin access required', true);
         return navigateTo('home');
       }
-      document.getElementById('admin-panel').style.display = 'flex';
+      showMainView('admin');
       if (typeof initAdminPanel === 'function') initAdminPanel();
       showMobileDetail();
     } else if (section === 'developer') {
@@ -588,7 +722,7 @@ function initDashboardView() {
         toast('Developer access required', true);
         return navigateTo('home');
       }
-      document.getElementById('developer-panel').style.display = 'flex';
+      showMainView('developer');
       if (typeof initDeveloperPanel === 'function') initDeveloperPanel();
       showMobileDetail();
     }
@@ -661,15 +795,7 @@ function initDashboardView() {
     const el = document.querySelector(`[data-room-id="${room.id}"]`);
     if (el) el.classList.add('active');
 
-    document.getElementById('welcome-view').style.display = 'none';
-    document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('wallet-panel').style.display = 'none';
-    // Added as requested: ensure wallet-panel and notifications-panel are hidden
-    document.getElementById('wallet-panel').style.display = 'none';
-    document.getElementById('notifications-panel').style.display = 'none';
-    document.getElementById('marketplace-panel').style.display = 'none';
-    document.getElementById('admin-panel').style.display = 'none';
-    document.getElementById('chat-view').style.display = 'flex';
+    showMainView('chat');
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     showMobileDetail();
 
@@ -846,7 +972,7 @@ function initDashboardView() {
             }
             if (cached) { cached.content = plaintext; cached.nonce = msg.nonce; cached.key_envelopes = msg.key_envelopes; cached.edited_at = msg.edited_at; }
             const el = document.querySelector(`[data-msg-id="${msg.message_id}"] .msg-text`);
-            if (el) el.innerHTML = escapeHtml(plaintext) + '<span class="edited-tag">(edited)</span>';
+            if (el) el.innerHTML = renderMessageMarkdown(plaintext) + '<span class="edited-tag">(edited)</span>';
           };
           apply().catch(() => {});
           break;
@@ -2544,9 +2670,7 @@ function initDashboardView() {
     const mentionedMembers = msg.mentions && msg.mentions.length
       ? currentRoomMembers.filter(m => msg.mentions.includes(m.id))
       : null;
-    const escapedContent = escapeHtml(msg.content);
-    const highlightedContent = mentionedMembers ? highlightMentions(escapedContent, mentionedMembers, currentUser.id) : escapedContent;
-    const textHtml = msg.deleted ? 'Message deleted' : `${highlightedContent}${msg.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}`;
+    const textHtml = msg.deleted ? 'Message deleted' : `${renderMessageMarkdown(msg.content)}${msg.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}`;
     const replyHtml = buildReplyQuoteHtml(msg);
     const reactionsHtml = buildReactionsHtml(msg);
     const attachmentsHtml = buildAttachmentsHtml(msg);
@@ -2767,13 +2891,13 @@ function initDashboardView() {
         if (msg) { msg.content = newContent; msg.nonce = patchPayload.nonce; msg.key_envelopes = patchPayload.key_envelopes; }
         const span = document.createElement('span');
         span.className = 'msg-text';
-        span.innerHTML = `${escapeHtml(newContent)}<span class="edited-tag">(edited)</span>`;
+        span.innerHTML = `${renderMessageMarkdown(newContent)}<span class="edited-tag">(edited)</span>`;
         wrapper.replaceWith(span);
         await api('PATCH', `/rooms/${currentRoom.id}/messages/${msgId}`, patchPayload);
       } else {
         const span = document.createElement('span');
         span.className = 'msg-text' + (msg?.deleted ? ' deleted' : '');
-        span.innerHTML = msg?.deleted ? 'Message deleted' : `${escapeHtml(original)}${msg?.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}`;
+        span.innerHTML = msg?.deleted ? 'Message deleted' : `${renderMessageMarkdown(original)}${msg?.edited_at ? '<span class="edited-tag">(edited)</span>' : ''}`;
         wrapper.replaceWith(span);
       }
     };
@@ -4465,7 +4589,7 @@ function initDashboardView() {
     currentServerId = null;
     currentRoom = null;
     inDiscoverView = false;
-    document.getElementById('discover-panel').style.display = 'none';
+    showMainView(null);
     document.getElementById('server-panel').classList.add('hidden');
     const serverSettingsBtn = document.getElementById('server-settings-btn');
     if (serverSettingsBtn) serverSettingsBtn.style.display = '';
@@ -4493,14 +4617,9 @@ function initDashboardView() {
   // openRoom()'s fromRoute for DMs.
   async function selectServer(serverId, { fromRoute = false, initialChannelId = null } = {}) {
     inDiscoverView = false;
-    document.getElementById('discover-panel').style.display = 'none';
     currentServerId = serverId;
     currentRoom = null;
-    document.getElementById('welcome-view').style.display = 'none';
-    document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('wallet-panel').style.display = 'none';
-    document.getElementById('notifications-panel').style.display = 'none';
-    document.getElementById('chat-view').style.display = 'none';
+    showMainView(null);
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
 
     document.getElementById('conv-header').classList.add('hidden');
@@ -4606,11 +4725,7 @@ function initDashboardView() {
     const el = document.querySelector(`[data-channel-id="${channelId}"]`);
     if (el) el.classList.add('active');
 
-    document.getElementById('welcome-view').style.display = 'none';
-    document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('wallet-panel').style.display = 'none';
-    document.getElementById('notifications-panel').style.display = 'none';
-    document.getElementById('chat-view').style.display = 'flex';
+    showMainView('chat');
     showMobileDetail();
 
     document.getElementById('member-list-toggle-btn').style.display = 'flex';
@@ -4862,14 +4977,7 @@ function initDashboardView() {
     document.getElementById('conv-header').classList.add('hidden');
     document.getElementById('search-wrap').classList.add('hidden');
     document.getElementById('dm-section').style.display = 'none';
-    document.getElementById('chat-view').style.display = 'none';
-    document.getElementById('welcome-view').style.display = 'none';
-    document.getElementById('friends-panel').style.display = 'none';
-    document.getElementById('wallet-panel').style.display = 'none';
-    document.getElementById('marketplace-panel').style.display = 'none';
-    document.getElementById('admin-panel')?.style && (document.getElementById('admin-panel').style.display = 'none');
-    document.getElementById('notifications-panel').style.display = 'none';
-    document.getElementById('discover-panel').style.display = 'flex';
+    showMainView('discover');
     document.getElementById('sidebar').classList.remove('in-server-view');
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     renderServerRail();

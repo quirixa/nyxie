@@ -1228,8 +1228,20 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Navigation fixes',
+      version: '0.11.0',
+      date: 'October 31, 2026',
+      sections: [
+        { heading: 'Fixed', items: [
+          'Opening a direct message, a server or a channel from the Developer workspace no longer leaves parts of Developer on screen next to it. Only the section you picked is shown, whichever section you came from.',
+          'Using the browser Back and Forward buttons to return to Developer now shows the full workspace again instead of an empty page.',
+          'Leaving Developer now stops its pending searches and loads, so nothing from it can appear late or keep running in the background.',
+        ] },
+      ],
+    },
+    {
       title: 'Long messages & text files',
-      version: '0.10.0',
+      version: '0.11.0',
       date: 'October 31, 2026',
       sections: [
         { heading: 'Added', items: [
@@ -1252,7 +1264,7 @@ function initSettingsView() {
     },
     {
       title: 'Developer workspace & report management',
-      version: '0.10.0',
+      version: '0.9.0',
       date: 'October 31, 2026',
       sections: [
         { heading: 'Added', items: [

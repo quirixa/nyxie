@@ -14,6 +14,9 @@
 
 const _dev = {
   built: false,
+  panel: null,                      // the #developer-panel element devBuild() populated
+  handlers: null,                   // listeners devBuild() attached, so destroy can remove them
+  session: 0,                       // bumped on every init/destroy; stale async work checks it
   tab: 'overview',                  // overview | all | bug | feature | general | security
   filters: { q: '', status: '', priority: '', assignee: '', sort: 'newest' },
   page: 1,
@@ -110,32 +113,84 @@ function devBuild() {
       <div class="mp-body" id="dev-body"><div class="mp-empty">Loading…</div></div>
       <div class="mp-pagination" id="dev-pagination" style="display:none;"></div>
     </div>`;
-  panel.addEventListener('click', devOnClick);
-  panel.addEventListener('keydown', e => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.dev-row')) { e.preventDefault(); devOnClick(e); }
-  });
-  panel.addEventListener('change', devOnChange);
-  panel.addEventListener('input', e => {
-    if (e.target.id !== 'dev-search') return;
-    clearTimeout(_dev.searchTimer);
-    _dev.searchTimer = setTimeout(() => { _dev.filters.q = e.target.value.trim(); _dev.page = 1; devLoadList(); }, 250);
-  });
+  // Named handlers so destroyDeveloperPanel() can detach exactly what was
+  // attached here — nothing is ever added twice to the same element.
+  const handlers = {
+    click: devOnClick,
+    keydown: e => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.dev-row')) { e.preventDefault(); devOnClick(e); }
+    },
+    change: devOnChange,
+    input: e => {
+      if (e.target.id !== 'dev-search') return;
+      clearTimeout(_dev.searchTimer);
+      _dev.searchTimer = setTimeout(() => { _dev.filters.q = e.target.value.trim(); _dev.page = 1; devLoadList(); }, 250);
+    },
+  };
+  for (const [type, fn] of Object.entries(handlers)) panel.addEventListener(type, fn);
+  _dev.panel = panel;
+  _dev.handlers = handlers;
   _dev.built = true;
 }
 
+// True while `el` still belongs to the Developer panel that is currently on
+// screen. Async work started before the user left the section (or before the
+// dashboard was re-mounted by the router) must not touch the DOM afterwards.
+function devAlive(el) {
+  return !!(el && el.isConnected && _dev.panel && _dev.panel.isConnected && _dev.panel.contains(el));
+}
+
 async function initDeveloperPanel() {
-  if (!_dev.built) devBuild();
+  const panel = document.getElementById('developer-panel');
+  if (!panel) return;
+  // The router re-clones the dashboard template on every full navigation
+  // (including browser back/forward), which gives us a brand-new, empty
+  // #developer-panel. A bare "built" flag would then skip the build and
+  // leave the panel blank, so build whenever the panel we populated is not
+  // the one in the document, or has lost its markup.
+  if (!_dev.built || _dev.panel !== panel || !panel.querySelector('#dev-view')) {
+    devDetach();
+    devBuild();
+  }
+  const session = ++_dev.session;
   _dev.detail = null;
   try {
     const [ov, st] = await Promise.all([devRequest('GET', '/overview?days=' + _dev.days), devRequest('GET', '/staff')]);
+    if (session !== _dev.session || !devAlive(document.getElementById('dev-body'))) return;   // user already left
     _dev.overview = ov.overview;
     _dev.staff = st.staff;
   } catch (err) {
-    devRenderError(err);
+    if (session === _dev.session && devAlive(document.getElementById('dev-body'))) devRenderError(err);
     return;
   }
   devRenderTabs();
   devShowTab(_dev.tab);
+}
+
+// Remove the listeners devBuild() attached to the panel it built.
+function devDetach() {
+  if (_dev.panel && _dev.handlers) {
+    for (const [type, fn] of Object.entries(_dev.handlers)) _dev.panel.removeEventListener(type, fn);
+  }
+  _dev.panel = null;
+  _dev.handlers = null;
+  _dev.built = false;
+}
+
+// Called by dashboard.js when the Developer panel stops being the visible
+// view (showMainView) and when the dashboard itself is torn down. Cancels
+// pending timers and in-flight loads and detaches listeners, so nothing from
+// the workspace keeps running or can paint after the user has left it. The
+// markup stays in the (hidden) panel; re-opening rebuilds it from scratch.
+function destroyDeveloperPanel() {
+  clearTimeout(_dev.searchTimer);
+  _dev.searchTimer = null;
+  _dev.session++;
+  _dev.loadToken++;
+  _dev.detail = null;
+  const panel = _dev.panel;
+  devDetach();
+  if (panel) panel.innerHTML = '';
 }
 
 // ── Tabs ────────────────────────────────────────────────────────────
@@ -152,6 +207,7 @@ function devTabCount(id) {
 
 function devRenderTabs() {
   const el = document.getElementById('dev-tabs');
+  if (!el) return;
   if (_dev.tab === 'security' && !devHasSecurity()) _dev.tab = 'overview';
   el.innerHTML = DEV_TABS.filter(t => t.id !== 'security' || devHasSecurity()).map(t => {
     const c = devTabCount(t.id);
@@ -178,13 +234,16 @@ function devSyncToolbar() {
 // ── Overview ────────────────────────────────────────────────────────
 async function devLoadOverview() {
   const body = document.getElementById('dev-body');
+  if (!body) return;
+  const session = _dev.session;
   document.getElementById('dev-pagination').style.display = 'none';
   try {
     const ov = await devRequest('GET', '/overview?days=' + _dev.days);
+    if (session !== _dev.session || !devAlive(body)) return;   // user left Developer meanwhile
     _dev.overview = ov.overview;
     devRenderTabs();
     body.innerHTML = devOverviewHtml(ov.overview);
-  } catch (err) { devRenderError(err); }
+  } catch (err) { if (session === _dev.session && devAlive(body)) devRenderError(err); }
 }
 
 function devReportMini(r) {
@@ -236,11 +295,12 @@ function devListQuery() {
 
 async function devLoadList() {
   const body = document.getElementById('dev-body');
+  if (!body) return;
   const token_ = ++_dev.loadToken;
   body.innerHTML = '<div class="mp-empty">Loading…</div>';
   try {
     const data = await devRequest('GET', '/reports?' + devListQuery());
-    if (token_ !== _dev.loadToken) return;              // a newer search/filter superseded this one
+    if (token_ !== _dev.loadToken || !devAlive(body)) return;   // superseded, or the user left Developer
     _dev.list = data;
     devRenderTabs();
     body.innerHTML = data.reports.length
@@ -248,7 +308,7 @@ async function devLoadList() {
       : `<div class="mp-empty">${_dev.filters.q || _dev.filters.status || _dev.filters.priority || _dev.filters.assignee ? 'No reports match these filters.' : 'No reports in this queue yet.'}</div>`;
     devRenderPagination(data);
   } catch (err) {
-    if (token_ === _dev.loadToken) devRenderError(err);
+    if (token_ === _dev.loadToken && devAlive(body)) devRenderError(err);
   }
 }
 
@@ -280,23 +340,28 @@ function devRenderPagination(d) {
 }
 
 function devRenderError(err) {
-  document.getElementById('dev-pagination').style.display = 'none';
   const body = document.getElementById('dev-body');
+  if (!body) return;
+  document.getElementById('dev-pagination').style.display = 'none';
   body.innerHTML = `<div class="mp-empty">Couldn’t load this: ${devEsc(err.message || 'unknown error')}<br><button class="btn-cancel dev-retry" data-act="retry">Try again</button></div>`;
 }
 
 // ── Report details ──────────────────────────────────────────────────
 async function devOpenReport(n) {
   const body = document.getElementById('dev-body');
+  if (!body) return;
+  const session = _dev.session;
   document.getElementById('dev-toolbar').style.display = 'none';
   document.getElementById('dev-pagination').style.display = 'none';
   body.innerHTML = '<div class="mp-empty">Loading…</div>';
   try {
     const d = await devRequest('GET', '/reports/' + n);
+    if (session !== _dev.session || !devAlive(body)) return;   // user left Developer meanwhile
     _dev.detail = d.report;
     body.innerHTML = devDetailHtml(d.report);
     body.scrollTop = 0;
   } catch (err) {
+    if (session !== _dev.session || !devAlive(body)) return;
     _dev.detail = null;
     devRenderError(err);
   }

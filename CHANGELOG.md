@@ -3,7 +3,7 @@
 All notable changes to Nyxie. The same release notes appear in the app under
 Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 
-## [0.10.0] - 2026-10-31
+## [0.11.0] - 2026-10-31
 
 ### Added
 - **Long messages become a `message.txt` attachment.** The limit is exactly **2,000 characters** (Unicode code points, so an emoji counts as one). A message of 2,000 characters or fewer is sent as normal text. A message of 2,001 or more is sent, complete and unchanged, as an attached `message.txt` instead of text. Nothing is cut: the file contains exactly what was typed (line breaks, spacing and indentation included). If the conversion is impossible (the file would exceed the 10 MB upload limit, all 10 attachment slots are taken, the upload fails, or the room does not allow attachments) the text goes back into the message box and nothing is sent.
@@ -26,7 +26,7 @@ Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 - Open shows a file in one piece; a `.txt` file near the 10 MB limit can take a moment to appear.
 - Not checked in a real browser: the UI was exercised in jsdom (no layout or CSS rendering).
 
-## [0.10.0] - 2026-10-31
+## [0.9.0] - 2026-10-31
 
 ### Added
 - **Developer role.** `users.role` gains `DEVELOPER`. It is derived from the official `developer` badge by one shared service (`server/services/staff.js`): granting or revoking the badge updates the role in the same transaction, the server re-derives all roles on every start, and `node scripts/syncDeveloperRoles.js` does it on demand. It is idempotent and never changes an `ADMIN`. Nothing a client sends (profile fields, headers, local storage, the badge shown in the UI) can grant it.
@@ -44,9 +44,9 @@ Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 - Optional `REPORT_REF_SECRET` (defaults to `JWT_SECRET`).
 
 ### Changed
-- **Feedback is now stored as reports.** Migration `0.10.0-feedback-to-reports` copies existing `user_feedback` rows into `reports` (bug → Bug, idea → Feature request, other → General), once and without duplicates; the old table is left untouched. `POST/GET /api/account/feedback` still work and use the same store and rules.
+- **Feedback is now stored as reports.** Migration `0.9.0-feedback-to-reports` copies existing `user_feedback` rows into `reports` (bug → Bug, idea → Feature request, other → General), once and without duplicates; the old table is left untouched. `POST/GET /api/account/feedback` still work and use the same store and rules.
 - **Diagnostics are opt-in.** The Feedback form used to have diagnostics ticked and sent the full browser user-agent string. They are now off by default, show the exact text before sending, and contain only the browser name, screen size, language and theme.
-- Migration `0.10.0-sync-developer-roles` brings existing databases in line with the developer badge.
+- Migration `0.9.0-sync-developer-roles` brings existing databases in line with the developer badge.
 - `scripts/setRole.js` explains that `DEVELOPER` follows the badge, and demoting an admin who still holds the badge leaves them a developer.
 - Test helper stops a leftover test server with `SIGKILL` after 4 s so a lingering test connection cannot hang the test run.
 

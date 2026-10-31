@@ -1,4 +1,4 @@
-// 0.10.0: Developer role (derived from the developer badge), Developer
+// 0.9.0: Developer role (derived from the developer badge), Developer
 // workspace API (Feedback & Issues), report submission, attachments, security
 // reports and migrations. Each test runs against the real server on a
 // throwaway data dir (see helpers.js).
@@ -144,7 +144,7 @@ test('badge grant is idempotent and revoking it removes Developer access immedia
 test('submitting a report persists it, appears in the queue and ignores forged privileged fields', async () => {
   const before = (await U.dev.get('/developer/overview')).body.overview.total;
   const r = await submit(U.rep, {
-    title: 'Crash when opening settings', category: 'BUG', app_version: '0.10.0', platform: 'Linux / Firefox',
+    title: 'Crash when opening settings', category: 'BUG', app_version: '0.9.0', platform: 'Linux / Firefox',
     status: 'RESOLVED', priority: 'URGENT', assignee_id: U.dev.id, reporter_id: U.rep2.id, reporter_ref: 'forged',
     internal_notes: 'forged', notes: ['forged'], role: 'ADMIN', linked_url: 'https://evil.example', version: 99,
     diagnostics: 'should not be stored', // no consent flag
@@ -156,7 +156,7 @@ test('submitting a report persists it, appears in the queue and ignores forged p
   const d = (await U.dev.get(`/developer/reports/${number}`)).body.report;
   assert.equal(d.status, 'OPEN'); assert.equal(d.priority, 'NORMAL'); assert.equal(d.assignee, null);
   assert.equal(d.linked, null); assert.equal(d.version, 1);
-  assert.equal(d.app_version, '0.10.0'); assert.equal(d.platform, 'Linux / Firefox');
+  assert.equal(d.app_version, '0.9.0'); assert.equal(d.platform, 'Linux / Firefox');
   assert.equal(d.diagnostics, null, 'diagnostics are only stored with explicit consent');
   assert.equal(d.events.filter(e => e.type === 'CREATED').length, 1);
   assert.equal(d.events.some(e => e.type === 'NOTE'), false);
@@ -165,8 +165,8 @@ test('submitting a report persists it, appears in the queue and ignores forged p
   assert.equal((await U.rep2.get('/reports/mine')).body.reports.some(x => x.number === number), false);
   assert.equal((await U.dev.get('/developer/overview')).body.overview.total, before + 1);
 
-  const withDiag = await submit(U.rep, { title: 'Diagnostics opted in', diagnostics_consent: true, diagnostics: 'app 0.10.0 · Linux · Firefox 130' });
-  assert.equal((await U.dev.get(`/developer/reports/${withDiag.body.report.number}`)).body.report.diagnostics, 'app 0.10.0 · Linux · Firefox 130');
+  const withDiag = await submit(U.rep, { title: 'Diagnostics opted in', diagnostics_consent: true, diagnostics: 'app 0.9.0 · Linux · Firefox 130' });
+  assert.equal((await U.dev.get(`/developer/reports/${withDiag.body.report.number}`)).body.report.diagnostics, 'app 0.9.0 · Linux · Firefox 130');
 });
 
 test('submission is validated server-side and rate limited', async () => {
@@ -516,7 +516,7 @@ test('upgrading an existing database migrates feedback, reconciles developer rol
     db.run("UPDATE users SET role = 'ADMIN' WHERE id = ?", [names.adminbadge.id]);
     db.run("UPDATE users SET role = 'DEVELOPER' WHERE id = ?", [names.stale.id]);
     for (const id of [names.badge.id, names.adminbadge.id]) db.run("INSERT INTO user_badges (user_id, badge_id, assigned_by, assigned_at) VALUES (?, 'developer', ?, ?)", [id, names.adm.id, now]);
-    db.run("DELETE FROM schema_migrations WHERE id IN ('0.10.0-feedback-to-reports', '0.10.0-sync-developer-roles')");
+    db.run("DELETE FROM schema_migrations WHERE id IN ('0.9.0-feedback-to-reports', '0.9.0-sync-developer-roles')");
     db.run('DELETE FROM reports');
   });
 
@@ -540,7 +540,7 @@ test('upgrading an existing database migrates feedback, reconciles developer rol
   assert.equal(one.reports[0].diagnostics, 'v0.8.0 Linux');
 
   // run everything again, including forcing the migrations to re-apply: nothing duplicates
-  await editDb(dir, (db) => db.run("DELETE FROM schema_migrations WHERE id IN ('0.10.0-feedback-to-reports', '0.10.0-sync-developer-roles')"));
+  await editDb(dir, (db) => db.run("DELETE FROM schema_migrations WHERE id IN ('0.9.0-feedback-to-reports', '0.9.0-sync-developer-roles')"));
   s = await startServer({ dataDir: dir }); await s.stop();
   assert.deepEqual(await snapshot(), one);
   const run = () => execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'syncDeveloperRoles.js')], { env: { ...process.env, NYXIE_DATA_DIR: dir }, cwd: ROOT }).toString();

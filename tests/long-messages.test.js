@@ -1,4 +1,4 @@
-// 0.10.0: long messages (> 2,000 characters) become an encrypted message.txt
+// 0.11.0: long messages (> 2,000 characters) become an encrypted message.txt
 // attachment; text-file cards + viewer; multi-line composer; attachment
 // validation; and permission-checked downloads of encrypted attachments.
 //
