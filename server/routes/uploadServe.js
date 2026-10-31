@@ -23,6 +23,49 @@ const path = require('path');
 const fs = require('fs');
 
 const { UPLOAD_DIR } = require('../config/paths');
+const { requireAuth } = require('../middleware/auth');
+const { getUserDb, get } = require('../database/userDb');
+const { getMessageDb, allMessages } = require('../database/messageDb');
+const { canViewRoom, canReadHistory } = require('../services/permissions');
+
+// Encrypted message attachments (every file attached in the app, including
+// long messages converted to .txt) are stored as ciphertext named
+// `<timestamp>-<32 hex>.nx`. They are NOT public: the request must carry a
+// valid session AND the user must currently be allowed to read the history of
+// a room that has a live message referencing the file. Unreferenced, deleted
+// and not-allowed all answer the same 404 so a file's existence can't be probed.
+// (The bytes are still useless without a key envelope for the requesting user;
+// this stops anyone else from even downloading them.)
+const ENCRYPTED_ATTACHMENT_RE = /^\d+-[a-f0-9]{32}\.nx$/;
+
+async function authorizeEncryptedAttachment(req, res, next) {
+  try {
+    const filename = path.basename(req.params.filename);
+    if (!ENCRYPTED_ATTACHMENT_RE.test(filename)) return res.status(404).json({ error: 'Not found' });
+    const msgDb = await getMessageDb();
+    const rooms = allMessages(
+      msgDb,
+      'SELECT DISTINCT room_id FROM messages WHERE deleted = 0 AND attachments IS NOT NULL AND attachments LIKE ?',
+      [`%"url":"/uploads/${filename}"%`]
+    );
+    if (rooms.length) {
+      const userDb = await getUserDb();
+      for (const { room_id } of rooms) {
+        const room = get(userDb, 'SELECT id, server_id, is_dm, is_group FROM rooms WHERE id = ?', [room_id]);
+        if (room && canViewRoom(userDb, room, req.user.id) && canReadHistory(userDb, room, req.user.id)) return next();
+      }
+    }
+    return res.status(404).json({ error: 'Not found' });
+  } catch (e) {
+    return res.status(500).json({ error: 'Could not load file' });
+  }
+}
+
+function gateEncryptedAttachments(req, res, next) {
+  if (path.extname(path.basename(req.params.filename)).toLowerCase() !== '.nx') return next();
+  req.gatedAttachment = true;
+  return requireAuth(req, res, () => authorizeEncryptedAttachment(req, res, next));
+}
 
 const INLINE_SAFE_TYPES = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -33,7 +76,7 @@ const INLINE_SAFE_TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-router.get('/:filename', (req, res) => {
+router.get('/:filename', gateEncryptedAttachments, (req, res) => {
   // path.basename strips any ../ path traversal attempt in the param.
   const filename = path.basename(req.params.filename);
   const filePath = path.join(UPLOAD_DIR, filename);
@@ -47,7 +90,9 @@ router.get('/:filename', (req, res) => {
 
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    // Gated files are re-authorised on every request; everything else is
+    // content-addressed by a random name and safe to cache.
+    res.setHeader('Cache-Control', req.gatedAttachment ? 'private, no-cache' : 'private, max-age=31536000, immutable');
     if (safeType) {
       res.setHeader('Content-Type', safeType);
       res.setHeader('Content-Disposition', `inline; filename="${encodedName}"`);

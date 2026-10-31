@@ -9,6 +9,14 @@ const {
   PERMISSIONS, getServerContext, hasPermission,
   canViewRoom, canSendToRoom, canReadHistory, canAttachInRoom
 } = require('../services/permissions');
+const fs = require('fs');
+const path = require('path');
+const { UPLOAD_DIR } = require('../config/paths');
+const { MESSAGE_MAX_CHARS, MESSAGE_MAX_CIPHERTEXT_B64, SECRETBOX_OVERHEAD, charLength } = require('../config/limits');
+
+// Uploaded files are named `<timestamp>-<32 hex>[ext]` by routes/uploads.js.
+// Anything else is not a file we stored, so it can never be attached.
+const UPLOAD_URL_RE = /^\/uploads\/\d{10,}-[a-f0-9]{32}[^/\\?#%]{0,20}$/;
 
 // Resolves a reply_to_id into the shape the client needs to render a
 // reply quote (author + content/nonce, so it decrypts exactly like any
@@ -284,17 +292,31 @@ async function postMessage(req, res) {
     if (attachments.length && !canAttachInRoom(userDb, room, req.user.id)) {
       return res.status(403).json({ error: 'You do not have permission to attach files here' });
     }
-    cleanAttachments = attachments.map(a => {
+    cleanAttachments = [];
+    for (const a of attachments) {
+      const url = String(a?.url || '');
+      // Only files this server stored, and only if they still exist.
+      if (!UPLOAD_URL_RE.test(url)) return res.status(400).json({ error: 'Invalid attachment' });
+      let stat = null;
+      try { stat = fs.statSync(path.join(UPLOAD_DIR, path.basename(url))); } catch (e) { /* missing */ }
+      if (!stat || !stat.isFile()) return res.status(400).json({ error: 'Attachment file not found' });
+
       const out = {
-        name: String(a?.name || 'file').slice(0, 255),
-        url: String(a?.url || ''),
+        // Control characters and path separators never belong in a display name.
+        name: String(a?.name || 'file').replace(/[\u0000-\u001f\u007f\\/]/g, '_').slice(0, 255) || 'file',
+        url,
         type: String(a?.type || '').slice(0, 100)
       };
-      // Display-only (shown on the file card). Clamped so a client can't
+      if (/\.txt$/i.test(out.name)) out.type = 'text/plain';
+      // Display-only size shown on the file card. Clamped so a client can't
       // store nonsense; the real limit is enforced by the upload endpoint.
       const size = Number(a?.size);
       if (Number.isFinite(size) && size >= 0) out.size = Math.min(Math.floor(size), 50 * 1024 * 1024);
       if (a?.encrypted) {
+        // The stored blob is ciphertext, so the true plaintext size is known
+        // exactly from the file on disk; never trust the client's number.
+        if (stat.size < SECRETBOX_OVERHEAD) return res.status(400).json({ error: 'Invalid attachment' });
+        out.size = stat.size - SECRETBOX_OVERHEAD;
         out.encrypted = true;
         out.nonce = String(a?.nonce || '').slice(0, 128);
         out.key_envelopes = {};
@@ -305,10 +327,10 @@ async function postMessage(req, res) {
             out.key_envelopes[uid] = { ciphertext: env.ciphertext, nonce: env.nonce };
           }
         }
-        if (!out.nonce || !Object.keys(out.key_envelopes).length) return null;
+        if (!out.nonce || !Object.keys(out.key_envelopes).length) return res.status(400).json({ error: 'Invalid attachment' });
       }
-      return out;
-    }).filter(a => a && a.url.startsWith('/uploads/'));
+      cleanAttachments.push(out);
+    }
     if (!cleanAttachments.length) cleanAttachments = null;
   }
 
@@ -391,7 +413,12 @@ async function postMessage(req, res) {
   const msgNonce = nonce || null;
 
   if (!msgContent && !cleanAttachments) return res.status(400).json({ error: 'Message content required' });
-  if (msgContent.length > 4000) return res.status(400).json({ error: 'Message too long' });
+  // Encrypted text: bound the ciphertext (the server can't count characters it
+  // can't read). Plaintext: the exact character cap. The client turns anything
+  // longer than MESSAGE_MAX_CHARS into a .txt attachment instead.
+  if (msgNonce ? msgContent.length > MESSAGE_MAX_CIPHERTEXT_B64 : charLength(msgContent) > MESSAGE_MAX_CHARS) {
+    return res.status(400).json({ error: `Message too long (max ${MESSAGE_MAX_CHARS} characters)` });
+  }
 
   const msgId = crypto.randomUUID();
   const now = Date.now();
@@ -462,7 +489,9 @@ async function editMessage(req, res) {
   }
 
   if (!nextContent) return res.status(400).json({ error: 'Content required' });
-  if (nextContent.length > 4000) return res.status(400).json({ error: 'Content too long' });
+  if (nextNonce ? nextContent.length > MESSAGE_MAX_CIPHERTEXT_B64 : charLength(nextContent) > MESSAGE_MAX_CHARS) {
+    return res.status(400).json({ error: `Content too long (max ${MESSAGE_MAX_CHARS} characters)` });
+  }
 
   const now = Date.now();
   runMessage(msgDb, 'UPDATE messages SET content = ?, nonce = ?, key_envelopes = ?, edited_at = ? WHERE id = ?', [nextContent, nextNonce, nextEnvelopes ? JSON.stringify(nextEnvelopes) : null, now, msg.id]);

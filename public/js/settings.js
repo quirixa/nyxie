@@ -1228,8 +1228,31 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Long messages & text files',
+      version: '0.10.0',
+      date: 'October 31, 2026',
+      sections: [
+        { heading: 'Added', items: [
+          'Messages longer than 2,000 characters are now sent automatically as a message.txt file. Nothing is cut: the file holds exactly what you wrote, with its line breaks and spacing. If the file cannot be sent, your text goes back into the message box.',
+          'Text files appear as a compact card with the file name, size, a short preview, and Open and Download buttons. Open shows the whole file in a readable viewer, with Copy and Download.',
+          'The message box now grows as you type. Press Shift+Enter for a new line and Enter to send. On touch screens, Enter makes a new line and the send button sends. Pasted text keeps its line breaks.',
+        ] },
+        { heading: 'Changed', items: [
+          'Messages of 2,000 characters or fewer are sent normally, with their line breaks and spacing kept. Edited messages can be at most 2,000 characters.',
+          'Attachments are checked more carefully when a message is sent.',
+        ] },
+        { heading: 'Security', items: [
+          'Encrypted attachments can now only be downloaded by signed-in people who can currently read the chat or channel they were sent in.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'Files sent before this version are still reachable by their link, as before.',
+          'People who join a chat later cannot open files sent before they joined.',
+        ] },
+      ],
+    },
+    {
       title: 'Developer workspace & report management',
-      version: '0.9.0',
+      version: '0.10.0',
       date: 'October 31, 2026',
       sections: [
         { heading: 'Added', items: [

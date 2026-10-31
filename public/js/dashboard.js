@@ -1845,6 +1845,37 @@ function initDashboardView() {
     return `<span class="file-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${ext ? `<b>${escapeHtml(ext)}</b>` : ''}</span>`;
   }
 
+  // ── Long messages ───────────────────────────────────────────────────
+  // Discord-style: up to MAX_MESSAGE_CHARS characters (Unicode code points, so
+  // an emoji counts once) is an ordinary message; anything longer is sent,
+  // in full, as an encrypted message.txt attachment through the normal
+  // attachment pipeline. Keep in step with server/config/limits.js.
+  const MAX_MESSAGE_CHARS = 2000;
+  const LONG_MESSAGE_FILENAME = 'message.txt';
+
+  function charCount(str) {
+    let n = 0;
+    for (const _ of String(str)) n++;
+    return n;
+  }
+
+  // The composer is a <textarea> that grows with its content (CSS caps it).
+  function autoGrowComposer() {
+    const el = document.getElementById('msg-input');
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }
+
+  // Decrypted text attachments keep their Blob here (keyed by blob: URL) so
+  // the viewer/preview can read them: the page's CSP does not allow fetch()
+  // on blob: URLs. Released with the row's object URLs.
+  const _txtBlobs = new Map();
+
+  function isTextAttachment(a) {
+    return fileExt(a && a.name) === 'txt';
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   //  ATTACHMENT PREVIEW TRAY & REMOVE
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2010,24 +2041,88 @@ function initDashboardView() {
     return _sendQueue;
   }
 
+  // Encrypts one file in the browser (random per-file key, wrapped for every
+  // current room member) and uploads only the ciphertext. Returns the
+  // attachment descriptor the message POST expects; throws on any failure.
+  async function encryptAndUploadFile(file, roomId) {
+    const raw = new Uint8Array(await file.arrayBuffer());
+    const fileKey = nacl.randomBytes(32);
+    const fileNonce = nacl.randomBytes(24);
+    const encryptedBytes = nacl.secretbox(raw, fileNonce, fileKey);
+    const key_envelopes = await createKeyEnvelopes(roomId, fileKey);
+    const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
+    const formData = new FormData();
+    formData.append('file', encryptedBlob, `${file.name}.nx`);
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: formData
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed');
+    return {
+      name: file.name,
+      url: data.url,
+      type: file.type || 'application/octet-stream',
+      size: file.size,
+      encrypted: true,
+      nonce: uint8ArrayToBase64(fileNonce),
+      key_envelopes
+    };
+  }
+
   async function sendMessageInner() {
     const input = document.getElementById('msg-input');
-    const plaintext = input.value.trim();
+    const rawText = input.value;
+    const plaintext = rawText.trim();
 
     // Allow send if there's text OR pending files
     if ((!plaintext && !pendingFiles.length) || !currentRoom) return;
 
+    // Over the limit: the whole message goes out as message.txt instead of
+    // text. Everything that can make that impossible is checked BEFORE the
+    // composer is cleared, so the text is never lost.
+    const convertToFile = charCount(plaintext) > MAX_MESSAGE_CHARS;
+    let longTextFile = null;
+    if (convertToFile) {
+      const bytes = new TextEncoder().encode(rawText);
+      if (bytes.length > MAX_FILE_BYTES) { toast('That message is too large to send (max 10 MB)'); return; }
+      if (pendingFiles.length >= MAX_ATTACHMENTS) {
+        toast(`Your message is over ${MAX_MESSAGE_CHARS} characters, so it needs one of the ${MAX_ATTACHMENTS} attachment slots. Remove an attachment first.`);
+        return;
+      }
+      longTextFile = new File([bytes], LONG_MESSAGE_FILENAME, { type: 'text/plain' });
+    }
+    const messageText = convertToFile ? '' : plaintext;
+
     input.value = '';
+    autoGrowComposer();
 
     // Encrypt the text first so a missing recipient key cannot leave
     // orphaned encrypted uploads on the server.
     let payload = {};
-    if (plaintext) {
+    if (messageText) {
       try {
-        payload = await encryptRoomText(plaintext, currentRoom.id);
+        payload = await encryptRoomText(messageText, currentRoom.id);
       } catch (e) {
         toast(`Encryption failed: ${e.message || 'recipient key unavailable'}`);
-        input.value = plaintext;
+        input.value = rawText;
+        autoGrowComposer();
+        return;
+      }
+    }
+
+    // The long-message file goes up first: if it fails, nothing else has been
+    // uploaded and the text goes straight back into the composer.
+    let longTextAttachment = null;
+    if (longTextFile) {
+      try {
+        longTextAttachment = await encryptAndUploadFile(longTextFile, currentRoom.id);
+      } catch (e) {
+        console.error('[Long message] upload failed:', e);
+        toast(`Could not send your long message: ${e.message || 'upload failed'}`);
+        input.value = rawText;
+        autoGrowComposer();
         return;
       }
     }
@@ -2040,30 +2135,7 @@ function initDashboardView() {
     const uploadedFiles = [];
     for (const file of pendingFiles) {
       try {
-        const raw = new Uint8Array(await file.arrayBuffer());
-        const fileKey = nacl.randomBytes(32);
-        const fileNonce = nacl.randomBytes(24);
-        const encryptedBytes = nacl.secretbox(raw, fileNonce, fileKey);
-        const key_envelopes = await createKeyEnvelopes(currentRoom.id, fileKey);
-        const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
-        const formData = new FormData();
-        formData.append('file', encryptedBlob, `${file.name}.nx`);
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer ' + token },
-          body: formData
-        });
-        const data = await res.json();
-        if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed');
-        uploadedFiles.push({
-          name: file.name,
-          url: data.url,
-          type: file.type || 'application/octet-stream',
-          size: file.size,
-          encrypted: true,
-          nonce: uint8ArrayToBase64(fileNonce),
-          key_envelopes
-        });
+        uploadedFiles.push(await encryptAndUploadFile(file, currentRoom.id));
       } catch (e) {
         console.error('[E2EE upload] Error:', e);
         toast(`Encrypted upload failed for ${file.name}: ${e.message || 'unknown error'}`);
@@ -2073,13 +2145,14 @@ function initDashboardView() {
     renderAttachmentPreviews();
 
     // ─── Build message payload ──────────────────────────────────
+    if (longTextAttachment) uploadedFiles.push(longTextAttachment);
     if (uploadedFiles.length) payload.attachments = uploadedFiles;
 
     // Resolved from the plaintext we just encrypted (or the plain content,
     // in an unencrypted room) — sent as its own field since the server
     // can't parse @mentions out of ciphertext itself. See resolveMentions().
-    if (plaintext) {
-      const mentionIds = resolveMentions(plaintext);
+    if (messageText) {
+      const mentionIds = resolveMentions(messageText);
       if (mentionIds.length) payload.mentions = mentionIds;
     }
 
@@ -2093,7 +2166,12 @@ function initDashboardView() {
 
     console.log('[Send] Payload:', payload);
     const res = await api('POST', `/rooms/${currentRoom.id}/messages`, payload);
-    if (res?.error) { toast(res.error); return; }
+    if (res?.error) {
+      toast(res.error);
+      // A long message that could not be delivered goes back into the box.
+      if (longTextFile && !input.value) { input.value = rawText; autoGrowComposer(); }
+      return;
+    }
     if (res.message?.id) sentMsgIds.add(res.message.id);
     // res.message already carries the server-resolved reply_to_id/reply_to
     // (see POST /rooms/:id/messages) — no client-side patching needed.
@@ -2106,7 +2184,7 @@ function initDashboardView() {
     scrollToBottom();
     const dmObj = dms.find(d => d.id === currentRoom.id);
     if (dmObj) {
-      dmObj.last_message = plaintext || 'Attachment';
+      dmObj.last_message = messageText || 'Attachment';
       dmObj.last_message_at = Date.now();
       dms = [dmObj, ...dms.filter(d => d.id !== dmObj.id)];
       renderDMList();
@@ -2227,8 +2305,110 @@ function initDashboardView() {
     if (kind === 'audio') {
       return `<div class="msg-file-card msg-audio-card"><div class="msg-audio-head">${fileIconHtml(nameRaw)}${info}${dl}</div><audio src="${u}" controls preload="metadata"></audio></div>`;
     }
+    if (isTextAttachment(a)) {
+      // Discord-style text file: icon, name, size, Open + Download, and (once
+      // the contents are available) a short preview of the first lines.
+      const open = `<button type="button" class="msg-txt-open" data-txt-open data-txt-url="${u}" data-txt-name="${name}" title="Open" aria-label="Open ${name}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><span>Open</span></button>`;
+      const preview = _txtBlobs.has(url) ? '<div class="msg-txt-preview" aria-hidden="true"></div>' : '';
+      return `<div class="msg-file-card msg-txt-card" data-txt-card><div class="msg-txt-head">${fileIconHtml(nameRaw)}${info}${open}${dl}</div>${preview}</div>`;
+    }
     return `<div class="msg-file-card">${fileIconHtml(nameRaw)}${info}${dl}</div>`;
   }
+
+  // Fills a text card's preview with the first few lines of the file.
+  async function hydrateTextPreview(card) {
+    const prev = card && card.querySelector('.msg-txt-preview');
+    const url = card && card.querySelector('[data-txt-open]')?.dataset.txtUrl;
+    const blob = url && _txtBlobs.get(url);
+    if (!prev || !blob) return;
+    try {
+      let head = (await blob.slice(0, 1200).text()).replace(/\uFFFD+$/, '');
+      const lines = head.split('\n');
+      const truncated = blob.size > 1200 || lines.length > 4;
+      head = lines.slice(0, 4).join('\n').slice(0, 320);
+      prev.textContent = head + (truncated ? '…' : '');
+      if (!head.trim()) prev.remove();
+    } catch { prev.remove(); }
+  }
+
+  // ── Text file viewer (Open) ─────────────────────────────────────────
+  let _textViewerReturnFocus = null;
+
+  function closeTextViewer() {
+    const modal = document.getElementById('nyxie-text-viewer');
+    if (!modal || !modal.classList.contains('open')) return;
+    modal.classList.remove('open');
+    document.body.classList.remove('text-viewer-open');
+    const body = modal.querySelector('.ntv-body');
+    if (body) body.textContent = '';
+    if (_textViewerReturnFocus && document.contains(_textViewerReturnFocus)) _textViewerReturnFocus.focus();
+    _textViewerReturnFocus = null;
+  }
+
+  async function openTextViewer(url, name) {
+    if (!url) return;
+    let modal = document.getElementById('nyxie-text-viewer');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'nyxie-text-viewer';
+      modal.className = 'nyxie-text-viewer';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'ntv-title');
+      modal.innerHTML = `
+        <div class="ntv-backdrop"></div>
+        <div class="ntv-panel">
+          <div class="ntv-header">
+            <div class="ntv-title-wrap"><div class="ntv-title" id="ntv-title"></div><div class="ntv-meta"></div></div>
+            <button type="button" class="ntv-btn ntv-copy" title="Copy text"><span>Copy</span></button>
+            <a class="ntv-btn ntv-download" title="Download"><span>Download</span></a>
+            <button type="button" class="ntv-close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+          <pre class="ntv-body" tabindex="0"></pre>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('.ntv-backdrop').addEventListener('click', closeTextViewer);
+      modal.querySelector('.ntv-close').addEventListener('click', closeTextViewer);
+      modal.querySelector('.ntv-copy').addEventListener('click', async () => {
+        const text = modal.querySelector('.ntv-body').textContent;
+        try { await navigator.clipboard.writeText(text); toast('Copied to clipboard'); }
+        catch { toast('Could not copy. Select the text and copy it instead.'); }
+      });
+    }
+    _textViewerReturnFocus = document.activeElement;
+    const bodyEl = modal.querySelector('.ntv-body');
+    modal.querySelector('.ntv-title').textContent = name || 'file.txt';
+    const meta = modal.querySelector('.ntv-meta');
+    meta.textContent = '';
+    const dlEl = modal.querySelector('.ntv-download');
+    dlEl.setAttribute('href', url);
+    dlEl.setAttribute('download', name || 'file.txt');
+    bodyEl.textContent = 'Loading…';
+    modal.classList.add('open');
+    document.body.classList.add('text-viewer-open');
+    modal.querySelector('.ntv-close').focus();
+    try {
+      const blob = _txtBlobs.get(url);
+      const text = blob ? await blob.text() : await (await fetch(url, { cache: 'no-store' })).text();
+      if (!modal.classList.contains('open')) return;
+      bodyEl.textContent = text;
+      const lineCount = text ? text.split('\n').length : 0;
+      const bytes = blob ? blob.size : new Blob([text]).size;
+      meta.textContent = `${formatFileSize(bytes)} · ${lineCount.toLocaleString()} line${lineCount === 1 ? '' : 's'}`;
+    } catch {
+      bodyEl.textContent = 'Could not load this file.';
+    }
+  }
+
+  document.addEventListener('click', e => {
+    const btn = e.target && e.target.closest ? e.target.closest('[data-txt-open]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    openTextViewer(btn.dataset.txtUrl, btn.dataset.txtName);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeTextViewer();
+  });
 
   function buildAttachmentsHtml(msg) {
     if (msg.deleted || !msg.attachments || !msg.attachments.length) return '';
@@ -2267,7 +2447,9 @@ function initDashboardView() {
         }
         const key = await unwrapRoomKey(msg.room_id, envelopes, msg.user_id || currentUser.id);
         if (!key) throw new Error('key unavailable');
-        const response = await fetch(a.url, { cache: 'no-store' });
+        // Encrypted attachments are only served to signed-in users who can
+        // currently read the room (see routes/uploadServe.js).
+        const response = await fetch(a.url, { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
         if (!response.ok) throw new Error('download failed');
         const ciphertext = new Uint8Array(await response.arrayBuffer());
         const fileNonce = base64ToUint8Array(a.nonce);
@@ -2281,8 +2463,11 @@ function initDashboardView() {
         const blob = new Blob([plaintext], { type: mime || 'application/octet-stream' });
         const objectUrl = URL.createObjectURL(blob);
         row._objectUrls.push(objectUrl);
+        if (isTextAttachment(a)) _txtBlobs.set(objectUrl, blob);
         slot.insertAdjacentHTML('afterend', attachmentHtml({ ...a, size: plaintext.length }, objectUrl));
+        const shown = slot.nextElementSibling;
         slot.remove();
+        if (shown && shown.matches('[data-txt-card]')) hydrateTextPreview(shown);
       } catch (e) {
         slot.textContent = 'Unable to decrypt attachment';
         slot.classList.remove('msg-attachment-loading');
@@ -2293,7 +2478,7 @@ function initDashboardView() {
 
   function revokeRowObjectUrls(row) {
     if (!row?._objectUrls) return;
-    for (const url of row._objectUrls) URL.revokeObjectURL(url);
+    for (const url of row._objectUrls) { URL.revokeObjectURL(url); _txtBlobs.delete(url); }
     row._objectUrls = [];
   }
 
@@ -2571,6 +2756,11 @@ function initDashboardView() {
     textarea.addEventListener('input', autoResize);
     const finish = async (save) => {
       const newContent = textarea.value.trim();
+      if (save && charCount(newContent) > MAX_MESSAGE_CHARS) {
+        // Edits stay text-only, so keep the editor open (nothing is lost).
+        toast(`Edited messages can be at most ${MAX_MESSAGE_CHARS} characters`);
+        return;
+      }
       if (save && newContent && newContent !== original) {
         let patchPayload = { content: newContent };
         try { patchPayload = await encryptRoomText(newContent, currentRoom.id); } catch (e) { toast(`Encryption failed: ${e.message || 'recipient key unavailable'}`); return; }
@@ -2915,6 +3105,7 @@ function initDashboardView() {
     // same line.
     handleMentionInput(e.target);
     if (mnActive) closeShortcodeSuggest();
+    autoGrowComposer();
   });
   document.getElementById('msg-input').addEventListener('keydown', e => {
     // While the mention popup is open, arrow keys move the highlighted
@@ -2974,7 +3165,13 @@ function initDashboardView() {
         return;
       }
     }
-    if (e.key === 'Enter') { e.preventDefault(); _lastTypingSent = 0; sendMessage(); return; }
+    // Enter sends; Shift+Enter inserts a line break. On touch devices there is
+    // no Shift key, so Enter inserts the line break and the send button sends
+    // (like Discord mobile). Ignored while an IME composition is confirming.
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
+      e.preventDefault(); _lastTypingSent = 0; sendMessage(); return;
+    }
     const nonTyping = e.ctrlKey || e.metaKey || e.altKey || e.key.length > 1 && !['Backspace', 'Delete', 'Space'].includes(e.key);
     const now = Date.now();
     if (!nonTyping && ws && ws.readyState === WebSocket.OPEN && currentRoom && now - _lastTypingSent > 2500) {

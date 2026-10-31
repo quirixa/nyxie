@@ -3,7 +3,30 @@
 All notable changes to Nyxie. The same release notes appear in the app under
 Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 
-## [0.9.0] - 2026-10-31
+## [0.10.0] - 2026-10-31
+
+### Added
+- **Long messages become a `message.txt` attachment.** The limit is exactly **2,000 characters** (Unicode code points, so an emoji counts as one). A message of 2,000 characters or fewer is sent as normal text. A message of 2,001 or more is sent, complete and unchanged, as an attached `message.txt` instead of text. Nothing is cut: the file contains exactly what was typed (line breaks, spacing and indentation included). If the conversion is impossible (the file would exceed the 10 MB upload limit, all 10 attachment slots are taken, the upload fails, or the room does not allow attachments) the text goes back into the message box and nothing is sent.
+- **Text-file attachments** (`message.txt` and any other `.txt`) are shown as a compact card in the existing dark style: file icon, file name, file size, a short preview of the first lines, an **Open** button and a **Download** button. **Open** shows the whole file in a readable viewer (monospace, wrapped, scrollable, with Copy and Download, closes with Escape or a click outside). On phones the viewer fills the screen.
+- **Multi-line message box.** The message box is now a growing text area. **Shift+Enter** inserts a line break and **Enter** sends. On touch devices Enter inserts a line break and the send button sends. Pasted multi-line text keeps its line breaks (the old single-line box removed them, which is what produced one long wall of text).
+- Shared limits module `server/config/limits.js`.
+
+### Changed
+- Messages keep their line breaks, blank lines and spacing when displayed (this was already how messages were drawn; the new message box is what lets you create them).
+- The server's message length check now matches the 2,000-character rule. Encrypted text is bounded by the largest ciphertext 2,000 characters can produce (10,688 base64 characters); before, a flat 4,000 characters of ciphertext rejected some messages well under 2,000 characters when they contained non-Latin text or emoji. Unencrypted text and edits use the same 2,000-character rule. Edited messages can be at most 2,000 characters (they cannot become attachments).
+- Attachments are validated when a message is posted: the file must be one this server stored and must still exist, the stored size of an encrypted attachment is taken from the file itself instead of the client's number, and file names are cleaned of control characters and path separators. An invalid attachment now returns 400 instead of being silently dropped.
+
+### Security
+- **Encrypted attachments are no longer downloadable by anyone with the link.** `/uploads/<name>.nx` now requires a signed-in session, and the user must currently be able to view and read the history of a room that has a message with that file. Everything else (not signed in, not in the room, lost access to the channel, message deleted, unknown file) answers the same 404. Files are still end-to-end encrypted in the browser; this only stops other people from fetching the encrypted bytes.
+
+### Known limitations
+- The server cannot read encrypted text, so the exact 2,000-character rule is applied by the app; the server enforces a ciphertext size bound that no message of 2,000 characters can exceed.
+- Files uploaded before this version (plain, not `.nx`) are still served as before, without a sign-in check, because images and media tags cannot send a login header.
+- Members who join a room later cannot read earlier attachments (each file's key is wrapped only for the people in the room when it was sent), the same as for every encrypted attachment.
+- Open shows a file in one piece; a `.txt` file near the 10 MB limit can take a moment to appear.
+- Not checked in a real browser: the UI was exercised in jsdom (no layout or CSS rendering).
+
+## [0.10.0] - 2026-10-31
 
 ### Added
 - **Developer role.** `users.role` gains `DEVELOPER`. It is derived from the official `developer` badge by one shared service (`server/services/staff.js`): granting or revoking the badge updates the role in the same transaction, the server re-derives all roles on every start, and `node scripts/syncDeveloperRoles.js` does it on demand. It is idempotent and never changes an `ADMIN`. Nothing a client sends (profile fields, headers, local storage, the badge shown in the UI) can grant it.
@@ -21,9 +44,9 @@ Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 - Optional `REPORT_REF_SECRET` (defaults to `JWT_SECRET`).
 
 ### Changed
-- **Feedback is now stored as reports.** Migration `0.9.0-feedback-to-reports` copies existing `user_feedback` rows into `reports` (bug → Bug, idea → Feature request, other → General), once and without duplicates; the old table is left untouched. `POST/GET /api/account/feedback` still work and use the same store and rules.
+- **Feedback is now stored as reports.** Migration `0.10.0-feedback-to-reports` copies existing `user_feedback` rows into `reports` (bug → Bug, idea → Feature request, other → General), once and without duplicates; the old table is left untouched. `POST/GET /api/account/feedback` still work and use the same store and rules.
 - **Diagnostics are opt-in.** The Feedback form used to have diagnostics ticked and sent the full browser user-agent string. They are now off by default, show the exact text before sending, and contain only the browser name, screen size, language and theme.
-- Migration `0.9.0-sync-developer-roles` brings existing databases in line with the developer badge.
+- Migration `0.10.0-sync-developer-roles` brings existing databases in line with the developer badge.
 - `scripts/setRole.js` explains that `DEVELOPER` follows the badge, and demoting an admin who still holds the badge leaves them a developer.
 - Test helper stops a leftover test server with `SIGKILL` after 4 s so a lingering test connection cannot hang the test run.
 

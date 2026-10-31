@@ -4,7 +4,7 @@ Chat, servers, marketplace and NX wallet. Node.js + Express backend, WebSocket
 messaging, SQLite (via `sql.js`) storage, and a vanilla-JS single-page frontend
 served from `public/`.
 
-**Current release: beta 0.9.0** (adds the Developer role and the Developer workspace for Feedback & Issues; 0.8.0 removed "Last seen" and tightened presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
+**Current release: beta 0.10.0** (long messages over 2,000 characters are sent as a message.txt attachment, with a multi-line composer and a text-file viewer; 0.10.0 added the Developer role and the Developer workspace for Feedback & Issues; 0.8.0 removed "Last seen" and tightened presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -182,6 +182,7 @@ npm run check # syntax check of the main files
 | `tests/developer.test.js` | Developer role derived from the badge, workspace API authorization (users / developers / admins), security-report isolation, notes never exposed, forged fields ignored, queues (filter/search/sort/pagination), workflow + history, attachments, migration of an existing database |
 | `tests/ui-developer.test.js` | Developer nav item visibility per role, workspace rendering from real data, report text escaped, Admin still works, feedback form opt-in |
 | `tests/privacy.test.js` | No last-seen data in any API response/event or the database, migration clears old values, Invisible produces no presence traffic and looks offline everywhere, normal presence still works |
+| `tests/long-messages.test.js` | The 2,000-character limit (code points, ciphertext bound, edits), attachment validation, permission-checked downloads of encrypted attachments (sign-in, DM/channel membership, Read Message History, Attach Files, leaving, deleting), and the real dashboard in jsdom: multi-line messages, conversion to `message.txt`, text-file card, viewer, another member decrypting it, text kept when it cannot be sent |
 | `tests/ui-settings.test.js` | The real settings panel code running in **jsdom** against a live server: navigation, dirty guards, forms, dialogs, lists, error/empty states, XSS escaping |
 
 Tests never touch `./data`; they use temporary directories via `NYXIE_DATA_DIR`.

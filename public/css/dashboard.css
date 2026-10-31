@@ -1346,6 +1346,13 @@ body.select-mode #view-app .dm-checkbox {
   font-size: 0.9rem;
   font-family: inherit;
   padding: 6px 0;
+  /* A growing textarea (Shift+Enter for a new line); one line tall until
+     the text needs more, then scrolls past ~8 lines. */
+  display: block;
+  resize: none;
+  line-height: 1.4;
+  max-height: min(11.5em, 40vh);
+  overflow-y: auto;
 }
 #view-app #msg-input::placeholder {
   color: var(--text-muted);
@@ -4002,4 +4009,109 @@ body.image-lightbox-open {
   .avatar-decoration,
   .avatar-decoration::before,
   .avatar-decoration::after { animation: none !important; }
+}
+
+
+/* ── Text-file attachments (message.txt and any .txt) ─────────────── */
+.msg-txt-card { flex-direction: column; align-items: stretch; gap: 8px; }
+.msg-txt-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.msg-txt-open {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.msg-txt-open:hover { background: var(--bg-hover, var(--bg-tertiary)); border-color: var(--accent); }
+.msg-txt-open:focus-visible, .msg-file-dl:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.msg-txt-preview {
+  margin: 0;
+  padding: 8px 10px;
+  /* Clamp by whole lines so the last visible line is never sliced in half. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .76rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@media (max-width: 480px) { .msg-txt-open span { display: none; } .msg-txt-open { width: 32px; padding: 0; justify-content: center; } }
+
+/* Full-text viewer opened from a text attachment */
+.nyxie-text-viewer { position: fixed; inset: 0; z-index: 10000; display: none; align-items: center; justify-content: center; padding: 24px; }
+.nyxie-text-viewer.open { display: flex; }
+body.text-viewer-open { overflow: hidden; }
+.ntv-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .72); }
+.ntv-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+}
+.ntv-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
+.ntv-title-wrap { flex: 1; min-width: 0; }
+.ntv-title { font-size: .92rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ntv-meta { font-size: .72rem; color: var(--text-muted); }
+.ntv-btn, .ntv-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: .8rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ntv-btn:hover, .ntv-close:hover { border-color: var(--accent); }
+.ntv-close { width: 30px; padding: 0; }
+.ntv-close svg { width: 16px; height: 16px; }
+.ntv-btn:focus-visible, .ntv-close:focus-visible, .ntv-body:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ntv-body {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  background: var(--bg-primary, var(--bg-secondary));
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 4;
+}
+@media (max-width: 600px) {
+  .nyxie-text-viewer { padding: 0; }
+  .ntv-panel { width: 100%; height: 100%; border-radius: 0; border: none; }
+  .ntv-btn span { font-size: .76rem; }
+  .ntv-btn { padding: 0 8px; }
 }

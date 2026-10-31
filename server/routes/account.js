@@ -166,7 +166,7 @@ router.delete('/settings-sync', async (req, res) => {
 });
 
 // ── Feedback (legacy endpoints) ────────────────────────────────────
-// Since 0.9.0 feedback is stored as a report (see services/reports.js and
+// Since 0.10.0 feedback is stored as a report (see services/reports.js and
 // routes/reports.js). These two endpoints are kept so older clients keep
 // working; they map onto the same table and the same rules and can only ever
 // read the caller's own submissions.

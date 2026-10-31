@@ -7,6 +7,7 @@ const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 
 const { UPLOAD_DIR } = require('../config/paths');
+const { MAX_UPLOAD_BYTES } = require('../config/limits');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // Any file extension is accepted here now — users can attach whatever
@@ -40,7 +41,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: MAX_UPLOAD_BYTES }
 });
 
 router.post('/', requireAuth, (req, res) => {
