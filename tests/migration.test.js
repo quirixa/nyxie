@@ -57,7 +57,7 @@ test('upgrading a pre-0.2.0 database preserves data and migrates safely', async 
   assert.equal(byName.Moderator.permissions & 4096, 4096, 'kick holders gained TIMEOUT');
   assert.equal(byName.CustomA.permissions & 2048, 2048, 'manage-server holders gained VIEW_AUDIT_LOG');
   assert.equal(q2("SELECT COUNT(*) AS c FROM server_member_roles WHERE user_id = 'ghost'")[0].c, 0, 'orphan role rows removed');
-  assert.equal(q2('SELECT COUNT(*) AS c FROM schema_migrations')[0].c, 4);
+  assert.equal(q2('SELECT COUNT(*) AS c FROM schema_migrations')[0].c, 6);
   assert.ok(fs.existsSync(file + '.pre-0.2.0.bak'), 'safety copy written before migrating');
   const stamp = q2('SELECT applied_at FROM schema_migrations ORDER BY id')[0].applied_at;
   db2.close();

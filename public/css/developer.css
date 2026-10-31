@@ -1,0 +1,116 @@
+/* developer.css — the Developer workspace (developer.js).
+   Panel/view chrome (.mp-view, .mp-header, .mp-tabs, .mp-tab, .mp-toolbar,
+   .mp-select, .mp-body, .mp-empty, .mp-pagination, .mp-row-status,
+   .admin-section-label, .admin-note-box, .btn-primary, .btn-cancel,
+   .icon-btn) comes from marketplace.css / admin.css / dashboard.css, so
+   the workspace follows whichever theme is active. This file only adds the
+   few things those don't cover, using the same CSS variables. */
+
+#view-app #developer-panel .mp-view { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+#view-app #developer-panel .mp-tabs { overflow-x: auto; }
+#view-app #developer-panel .mp-tab { flex: 0 0 auto; padding: 12px 14px; white-space: nowrap; }
+#view-app #developer-panel .dev-count {
+  font-weight: 600; font-size: 0.72rem; color: var(--text-muted);
+  background: var(--bg-hover); border-radius: 999px; padding: 1px 7px; margin-left: 4px;
+}
+#view-app #developer-panel .mp-tab.active .dev-count { color: var(--accent); }
+
+#view-app #developer-panel .dev-search,
+#view-app #developer-panel .dev-input {
+  background: var(--bg-input); color: var(--text-primary);
+  border: 1px solid var(--border-color); border-radius: var(--radius);
+  padding: 7px 10px; font: inherit; font-size: 0.85rem;
+}
+#view-app #developer-panel .dev-search { flex: 1 1 200px; min-width: 140px; }
+#view-app #developer-panel .dev-input { width: 100%; box-sizing: border-box; }
+#view-app #developer-panel .dev-input-sm { width: 120px; }
+#view-app #developer-panel .dev-textarea { min-height: 84px; resize: vertical; }
+#view-app #developer-panel .dev-search:focus,
+#view-app #developer-panel .dev-input:focus { outline: none; border-color: var(--accent); }
+
+#view-app #developer-panel .dev-muted { color: var(--text-muted); font-weight: 400; }
+#view-app #developer-panel .dev-pad { padding: 4px 2px 8px; font-size: 0.85rem; word-break: break-word; }
+#view-app #developer-panel code {
+  font-size: 0.78rem; background: var(--bg-hover); padding: 1px 5px; border-radius: 4px;
+}
+
+/* Overview */
+#view-app #developer-panel .dev-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 8px; }
+#view-app #developer-panel .dev-card {
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  border-radius: var(--radius); padding: 12px;
+}
+#view-app #developer-panel .dev-card-value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
+#view-app #developer-panel .dev-card-label { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+#view-app #developer-panel .dev-card-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 6px; }
+#view-app #developer-panel .dev-days {
+  background: var(--bg-input); color: var(--text-secondary); border: 1px solid var(--border-color);
+  border-radius: 6px; font-size: 0.7rem; padding: 2px 4px;
+}
+#view-app #developer-panel .dev-bars { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 8px; }
+#view-app #developer-panel .dev-bar-row { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; }
+#view-app #developer-panel .dev-bar-label { width: 130px; flex-shrink: 0; color: var(--text-secondary); }
+#view-app #developer-panel .dev-bar { flex: 1; height: 6px; background: var(--bg-hover); border-radius: 999px; overflow: hidden; }
+#view-app #developer-panel .dev-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+#view-app #developer-panel .dev-bar-n { width: 28px; text-align: right; color: var(--text-muted); }
+#view-app #developer-panel .dev-empty-sm { padding: 10px; }
+
+/* Report rows */
+#view-app #developer-panel .dev-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 6px;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  border-radius: var(--radius); cursor: pointer;
+}
+#view-app #developer-panel .dev-row:hover,
+#view-app #developer-panel .dev-row:focus-visible { background: var(--bg-hover); outline: none; border-color: var(--border-medium); }
+#view-app #developer-panel .dev-row-main { flex: 1; min-width: 0; }
+#view-app #developer-panel .dev-row-top { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+#view-app #developer-panel .dev-id { font-size: 0.74rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; letter-spacing: 0.02em; }
+#view-app #developer-panel .dev-title { font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-app #developer-panel .dev-row-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.74rem; color: var(--text-muted); margin-top: 3px; }
+#view-app #developer-panel .dev-row-pills { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+#view-app #developer-panel .dev-cat { font-size: 0.72rem; color: var(--text-muted); }
+
+/* Status + priority pills (mp-row-status supplies the shape) */
+#view-app #developer-panel .dev-st-open { color: var(--text-secondary); }
+#view-app #developer-panel .dev-st-under_review,
+#view-app #developer-panel .dev-st-planned { color: var(--accent); background: var(--accent-subtle); }
+#view-app #developer-panel .dev-st-in_progress { color: var(--warning); background: rgba(250, 166, 26, 0.12); }
+#view-app #developer-panel .dev-st-resolved { color: var(--online); background: rgba(59, 165, 92, 0.12); }
+#view-app #developer-panel .dev-st-closed,
+#view-app #developer-panel .dev-st-declined { color: var(--text-muted); }
+#view-app #developer-panel .dev-pr { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+#view-app #developer-panel .dev-pr i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+#view-app #developer-panel .dev-pr-high i { background: var(--warning); }
+#view-app #developer-panel .dev-pr-urgent i { background: var(--danger); }
+#view-app #developer-panel .dev-pr-urgent { color: var(--danger); }
+#view-app #developer-panel .dev-pr-low i { background: var(--border-medium); }
+
+/* Details */
+#view-app #developer-panel .dev-detail { max-width: 860px; }
+#view-app #developer-panel .dev-back { margin-bottom: 12px; }
+#view-app #developer-panel .dev-detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 12px; }
+#view-app #developer-panel .dev-detail-title { font-size: 1.1rem; font-weight: 700; word-break: break-word; }
+#view-app #developer-panel .dev-controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+#view-app #developer-panel .dev-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+#view-app #developer-panel .dev-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 16px; font-size: 0.85rem; }
+#view-app #developer-panel .dev-meta span { display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+#view-app #developer-panel .dev-atts { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 0 8px; }
+#view-app #developer-panel .dev-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 8px; }
+#view-app #developer-panel .dev-inline .dev-input:not(.dev-input-sm) { flex: 1 1 240px; width: auto; }
+#view-app #developer-panel .dev-rel { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; font-size: 0.85rem; flex-wrap: wrap; }
+#view-app #developer-panel .dev-rel a { color: var(--accent); font-weight: 700; text-decoration: none; }
+#view-app #developer-panel .dev-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; line-height: 1; }
+#view-app #developer-panel .dev-x:hover { color: var(--danger); }
+#view-app #developer-panel .dev-events { display: flex; flex-direction: column; gap: 6px; padding-bottom: 24px; }
+#view-app #developer-panel .dev-event { border-left: 2px solid var(--border-color); padding: 2px 0 2px 10px; font-size: 0.82rem; }
+#view-app #developer-panel .dev-event-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+#view-app #developer-panel .dev-event-note { border-left-color: var(--accent); }
+#view-app #developer-panel .dev-note-body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 8px 10px; }
+#view-app #developer-panel .dev-retry { margin-top: 10px; }
+#view-app #developer-panel .mp-pagination button:disabled { opacity: 0.4; cursor: default; }
+
+@media (max-width: 700px) {
+  #view-app #developer-panel .dev-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  #view-app #developer-panel .dev-row-pills { justify-content: flex-start; }
+}

@@ -1118,11 +1118,44 @@ function initSettingsView() {
   }
 
   // ---- Feedback ----
-  let feedbackCategory = 'bug';
+  // Sends a report to POST /api/reports. The form only ever submits what the
+  // person typed or explicitly chose: optional diagnostics (off by default,
+  // previewed in full before sending) and optional attachments. Status,
+  // priority and assignment are staff-side and cannot be set from here.
+  let feedbackCategory = 'BUG';
+  const FEEDBACK_STATUS = {
+    OPEN: 'Received', UNDER_REVIEW: 'Under review', PLANNED: 'Planned', IN_PROGRESS: 'In progress',
+    RESOLVED: 'Resolved', CLOSED: 'Closed', DECLINED: 'Declined',
+  };
+  const FEEDBACK_CATEGORY = { BUG: 'Bug', FEATURE: 'Feature request', GENERAL: 'General', SECURITY: 'Security' };
 
   function setFeedbackCategory(cat) {
     feedbackCategory = cat;
     document.querySelectorAll('#feedback-category .px-chip').forEach(c => c.classList.toggle('active', c.dataset.cat === cat));
+    byId('feedback-security-note').style.display = cat === 'SECURITY' ? '' : 'none';
+  }
+
+  // The exact text that would be sent if the box is ticked.
+  function feedbackDiagnosticsText() {
+    const ua = navigator.userAgent || '';
+    const browser = (/(Firefox|Edg|OPR|Chrome|Safari)\/[\d.]+/.exec(ua) || [])[0] || 'unknown browser';
+    return [
+      browser,
+      screen.width + 'x' + screen.height,
+      'lang ' + (localStorage.getItem('nyxie_language') || navigator.language),
+      'theme ' + (localStorage.getItem('theme') || 'dark'),
+    ].join(' | ');
+  }
+
+  function renderFeedbackDiagnosticsPreview() {
+    const box = byId('feedback-diagnostics-preview');
+    if (byId('feedback-diagnostics').checked) {
+      box.style.display = '';
+      box.textContent = 'Will be sent: ' + feedbackDiagnosticsText();
+    } else {
+      box.style.display = 'none';
+      box.textContent = '';
+    }
   }
 
   function loadFeedbackTab() {
@@ -1131,43 +1164,60 @@ function initSettingsView() {
       ta.dataset.bound = '1';
       ta.addEventListener('input', () => { byId('feedback-count').textContent = ta.value.length; });
     }
+    renderFeedbackDiagnosticsPreview();
     refreshFeedbackHistory();
   }
 
   async function sendFeedback() {
-    const message = byId('feedback-message').value.trim();
-    if (message.length < 10) { toast('Please write at least 10 characters'); return; }
-    let diagnostics;
-    if (byId('feedback-diagnostics').checked) {
-      diagnostics = [
-        navigator.userAgent,
-        screen.width + 'x' + screen.height,
-        'lang ' + (localStorage.getItem('nyxie_language') || navigator.language),
-        'theme ' + (localStorage.getItem('theme') || 'dark'),
-      ].join(' | ');
-    }
+    const title = byId('feedback-title').value.trim();
+    const description = byId('feedback-message').value.trim();
+    if (title.length < 5) { toast('Please add a short summary (at least 5 characters)'); return; }
+    if (description.length < 10) { toast('Please write at least 10 characters'); return; }
+    const files = Array.from(byId('feedback-files').files || []);
+    if (files.length > 3) { toast('You can attach up to 3 files'); return; }
+    if (files.some(f => f.size > 5 * 1024 * 1024)) { toast('Each file must be 5 MB or smaller'); return; }
+    const withDiagnostics = byId('feedback-diagnostics').checked;
     const btn = byId('feedback-send-btn');
     btn.disabled = true;
-    const res = await api('POST', '/account/feedback', { category: feedbackCategory, message, diagnostics });
+    const res = await api('POST', '/reports', {
+      category: feedbackCategory, title, description,
+      app_version: byId('feedback-version').value.trim() || undefined,
+      platform: byId('feedback-platform').value.trim() || undefined,
+      diagnostics_consent: withDiagnostics,
+      diagnostics: withDiagnostics ? feedbackDiagnosticsText() : undefined,
+    });
+    if (!res || res.error || !res.report) { btn.disabled = false; toast(res?.error || 'Could not send your report'); return; }
+
+    let uploadNote = '';
+    if (files.length) {
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f, f.name));
+      try {
+        const up = await fetch(API + '/api/reports/mine/' + res.report.number + '/attachments', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd });
+        if (!up.ok) { const err = await up.json().catch(() => ({})); uploadNote = ' (files not attached: ' + (err.error || 'upload failed') + ')'; }
+      } catch (_) { uploadNote = ' (files not attached: upload failed)'; }
+    }
     btn.disabled = false;
-    if (!res || res.error) { toast(res?.error || 'Could not send feedback'); return; }
-    byId('feedback-message').value = '';
+    for (const id of ['feedback-title', 'feedback-message', 'feedback-version', 'feedback-platform']) byId(id).value = '';
+    byId('feedback-files').value = '';
+    byId('feedback-diagnostics').checked = false;
+    renderFeedbackDiagnosticsPreview();
     byId('feedback-count').textContent = '0';
-    toast('Thanks — feedback sent');
+    toast('Thanks — report ' + res.report.display_id + ' received' + uploadNote);
     refreshFeedbackHistory();
   }
 
   async function refreshFeedbackHistory() {
     const list = byId('feedback-history');
-    const res = await api('GET', '/account/feedback');
-    if (!res || res.error || !res.feedback.length) { list.innerHTML = '<div class="px-empty">Nothing sent yet.</div>'; return; }
-    const label = { bug: 'Bug', idea: 'Idea', other: 'Other' };
-    list.innerHTML = res.feedback.map(f => `
+    const res = await api('GET', '/reports/mine');
+    if (!res || res.error || !res.reports || !res.reports.length) { list.innerHTML = '<div class="px-empty">Nothing sent yet.</div>'; return; }
+    // Only reporter-safe fields come back: no internal notes, priority or staff names.
+    list.innerHTML = res.reports.map(r => `
       <div class="px-card">
         <div class="px-card-body">
-          <div class="px-card-title"><span class="px-badge muted">${label[f.category] || 'Other'}</span> ${f.status === 'new' ? 'Received' : escapeHtml(f.status)}</div>
-          <div class="px-card-sub px-fb-msg">${escapeHtml(f.message.length > 240 ? f.message.slice(0, 240) + '…' : f.message)}</div>
-          <div class="px-card-sub">${new Date(f.createdAt).toLocaleString()}</div>
+          <div class="px-card-title"><span class="px-badge muted">${escapeHtml(FEEDBACK_CATEGORY[r.category] || 'Other')}</span> ${escapeHtml(r.display_id)} · ${escapeHtml(FEEDBACK_STATUS[r.status] || r.status)}</div>
+          <div class="px-card-sub px-fb-msg">${escapeHtml(r.title)}</div>
+          <div class="px-card-sub">${new Date(r.created_at).toLocaleString()}${r.attachment_count ? ` · ${r.attachment_count} file${r.attachment_count === 1 ? '' : 's'}` : ''}</div>
         </div>
       </div>`).join('');
   }
@@ -1177,6 +1227,25 @@ function initSettingsView() {
   // list (older entries) or grouped `sections` ({ heading, items }).
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
+    {
+      title: 'Developer workspace & report management',
+      version: '0.9.0',
+      date: 'October 31, 2026',
+      sections: [
+        { heading: 'Added', items: [
+          'A Developer role (given automatically with the official developer badge) and a Developer item in the Home navigation, with a workspace for reading, triaging, assigning, discussing and resolving user reports. Administrators can open it too. Developers do not get Admin powers.',
+          'Send a bug report, feature request, general feedback or security issue from Settings → Feedback, with an optional title, version, platform and screenshots. You can follow the status of your own reports.',
+          'Security reports are visible only to staff who are explicitly authorised for them.',
+        ] },
+        { heading: 'Changed', items: [
+          'Earlier feedback now appears in the Developer workspace as reports.',
+          'Diagnostics are off by default. If you turn them on, you see exactly what will be sent: your browser name, screen size, language and theme. Nothing from your chats is ever attached.',
+        ] },
+        { heading: 'Known limitations', items: [
+          'Staff can see the reports and attachments you send, and people who run the server can read anything stored on it. Reports are not end-to-end encrypted, so do not put passwords or private messages in them.',
+        ] },
+      ],
+    },
     {
       title: 'Privacy: “Last seen” removed',
       version: '0.8.0',
@@ -1513,7 +1582,7 @@ function initSettingsView() {
     syncUpload, syncDownload, syncDelete,
     resetExperiments,
     openBotModal, saveBot, resetBotToken, deleteBot, copyBotToken,
-    setFeedbackCategory, sendFeedback,
+    setFeedbackCategory, sendFeedback, renderFeedbackDiagnosticsPreview,
     copyInviteLink,
   });
 

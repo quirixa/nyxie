@@ -30,7 +30,14 @@ async function startServer({ dataDir } = {}) {
     dir, port, base, proc, log: () => out,
     async stop() {
       proc.kill('SIGTERM');
+      // The server's graceful shutdown flushes both databases synchronously
+      // and then waits for every open connection to close. A leftover
+      // keep-alive/WebSocket connection from a test client must not hang the
+      // whole test run, so escalate after a few seconds (nothing is lost:
+      // the flush has already happened by then).
+      const killer = setTimeout(() => proc.kill('SIGKILL'), 4000);
       await new Promise(r => proc.on('exit', r));
+      clearTimeout(killer);
     }
   };
 }

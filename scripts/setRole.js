@@ -15,12 +15,16 @@
 // in-memory DB copy will overwrite this on its next 5-second persist
 // tick and your change will appear to "disappear".
 //
+// DEVELOPER cannot be set here: it follows the official developer badge
+// (node scripts/badges.js grant <user> developer), see server/services/staff.js.
+//
 // Usage: node scripts/setRole.js <username> <ADMIN|USER>
 // Example: node scripts/setRole.js rose ADMIN
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const { getUserDb, get, run } = require('../server/database/userDb');
+const { syncDeveloperRole } = require('../server/services/staff');
 
 const VALID_ROLES = ['ADMIN', 'USER'];
 
@@ -47,8 +51,12 @@ if (!username || !VALID_ROLES.includes(role)) {
   }
 
   run(db, 'UPDATE users SET role = ? WHERE id = ?', [role, user.id]);
+  // DEVELOPER is never set by hand — it is derived from the developer badge.
+  // Demoting an admin who still holds that badge therefore lands on DEVELOPER.
+  const finalRole = role === 'USER' ? syncDeveloperRole(db, user.id) : role;
 
-  console.log(`@${user.username} is now ${role} (was ${currentRole}).`);
+  console.log(`@${user.username} is now ${finalRole} (was ${currentRole}).`);
+  if (finalRole === 'DEVELOPER') console.log('(They hold the developer badge, so they keep Developer-workspace access but no admin access.)');
   console.log('\nIMPORTANT: if the server is currently running, restart it now so it reloads this from disk.');
   process.exit(0);
 })().catch(err => {

@@ -165,31 +165,41 @@ router.delete('/settings-sync', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Feedback ───────────────────────────────────────────────────────
-const FEEDBACK_CATEGORIES = ['bug', 'idea', 'other'];
+// ── Feedback (legacy endpoints) ────────────────────────────────────
+// Since 0.9.0 feedback is stored as a report (see services/reports.js and
+// routes/reports.js). These two endpoints are kept so older clients keep
+// working; they map onto the same table and the same rules and can only ever
+// read the caller's own submissions.
+const reports = require('../services/reports');
+const LEGACY_TO_CATEGORY = { bug: 'BUG', idea: 'FEATURE', other: 'GENERAL' };
+const CATEGORY_TO_LEGACY = { BUG: 'bug', FEATURE: 'idea', GENERAL: 'other', SECURITY: 'other' };
 
 router.post('/feedback', async (req, res) => {
-  const { category, message, diagnostics } = req.body || {};
-  if (!FEEDBACK_CATEGORIES.includes(category)) return res.status(400).json({ error: 'Pick a category' });
-  const text = typeof message === 'string' ? message.trim() : '';
-  if (text.length < 10) return res.status(400).json({ error: 'Please write at least 10 characters' });
-  if (text.length > 2000) return res.status(400).json({ error: 'Feedback must be 2000 characters or fewer' });
-  const diag = typeof diagnostics === 'string' && diagnostics.trim() ? diagnostics.trim().slice(0, 500) : null;
-
-  const db = await getUserDb();
-  const recent = get(db, 'SELECT COUNT(*) AS n FROM user_feedback WHERE user_id = ? AND created_at > ?', [req.user.id, Date.now() - 60 * 60 * 1000]);
-  if (recent && recent.n >= 5) return res.status(429).json({ error: 'You\'ve sent a lot of feedback recently — try again in a bit.' });
-
-  const id = crypto.randomUUID();
-  run(db, 'INSERT INTO user_feedback (id, user_id, category, message, diagnostics, status, created_at) VALUES (?, ?, ?, ?, ?, \'new\', ?)',
-    [id, req.user.id, category, text, diag, Date.now()]);
-  res.status(201).json({ ok: true, id });
+  try {
+    const { category, message, diagnostics } = req.body || {};
+    if (!(category in LEGACY_TO_CATEGORY)) return res.status(400).json({ error: 'Pick a category' });
+    const text = typeof message === 'string' ? message.trim() : '';
+    const first = text.split('\n')[0].trim();
+    const db = await getUserDb();
+    const created = reports.createReport(db, req.user, {
+      category: LEGACY_TO_CATEGORY[category],
+      title: first.length > 80 ? first.slice(0, 77) + '...' : first,
+      description: text,
+      diagnostics_consent: typeof diagnostics === 'string' && !!diagnostics.trim(),
+      diagnostics,
+    });
+    res.status(201).json({ ok: true, id: created.id });
+  } catch (err) {
+    if (err instanceof reports.ReportError) return res.status(err.status).json({ error: err.message, code: err.code });
+    console.error('Feedback error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 router.get('/feedback', async (req, res) => {
   const db = await getUserDb();
-  const rows = all(db, 'SELECT id, category, message, status, created_at FROM user_feedback WHERE user_id = ? ORDER BY created_at DESC LIMIT 10', [req.user.id]);
-  res.json({ feedback: rows.map(r => ({ id: r.id, category: r.category, message: r.message, status: r.status, createdAt: r.created_at })) });
+  const rows = all(db, 'SELECT id, category, title, description, status, created_at FROM reports WHERE reporter_id = ? ORDER BY created_at DESC LIMIT 10', [req.user.id]);
+  res.json({ feedback: rows.map(r => ({ id: r.id, category: CATEGORY_TO_LEGACY[r.category], message: r.description, status: r.status === 'OPEN' ? 'new' : r.status.toLowerCase(), createdAt: r.created_at })) });
 });
 
 // ── Bots (management only) ─────────────────────────────────────────

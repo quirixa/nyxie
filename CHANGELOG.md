@@ -3,6 +3,41 @@
 All notable changes to Nyxie. The same release notes appear in the app under
 Settings → Changelogs (`public/js/settings.js`); keep the two in step.
 
+## [0.9.0] - 2026-10-31
+
+### Added
+- **Developer role.** `users.role` gains `DEVELOPER`. It is derived from the official `developer` badge by one shared service (`server/services/staff.js`): granting or revoking the badge updates the role in the same transaction, the server re-derives all roles on every start, and `node scripts/syncDeveloperRoles.js` does it on demand. It is idempotent and never changes an `ADMIN`. Nothing a client sends (profile fields, headers, local storage, the badge shown in the UI) can grant it.
+- **Developer navigation item** in the Home navigation, right after Admin, for developers and administrators only, opening the new workspace at `/developer`. Regular users never see it, never receive its data, and the `/developer` URL sends them back to the app. Administrators get access through their own role, not the badge, and developers do **not** get Admin.
+- **Developer workspace (Feedback & Issues).**
+  - Overview with metrics computed from the database (total, open, awaiting review, in progress, resolved in a chosen period, needs attention, by category, recent) and honest empty states.
+  - Queues for All, Bug, Feature requests, General feedback and Security, with search by ID or title, filters (status, priority, assignee), sorting (newest, oldest, priority, recently updated), pagination, per-queue counts, and loading/empty/error states.
+  - Report details: description, category, priority, status, opaque reporter reference, timestamps, app version and platform, opted-in diagnostics, attachments, assignee, related/duplicate reports, development link, internal notes and a full activity history with actor and time.
+  - Real actions: change status (transitions validated on the server) and priority, assign to a developer or administrator, add internal notes, link duplicates and related reports (duplicates are closed, never deleted), attach an `https://` issue/pull-request link. Stale edits are rejected with 409.
+  - Statuses: `OPEN`, `UNDER_REVIEW`, `PLANNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `DECLINED`.
+- **Report submission** in Settings → Feedback: bug report, feature request, general feedback or security issue, with title, description, optional app version and platform, optional screenshots / text log (up to 3 files, 5 MB each) and a confirmation with the report ID (`NYX-<n>`). Reporters see the status of their own reports only.
+- **Security reports** are restricted: invisible (404, and excluded from lists, counts, search and metrics) to developers unless an administrator grants `SECURITY_REPORTS`. A second explicit permission, `REPORTER_IDENTITY`, controls who can see who sent a report. Views, updates, notes and attachment downloads of security reports, and identity lookups, are written to `audit_logs`.
+- `/api/reports` (users), `/api/developer` (staff), `/api/admin/staff` (administrators); see the README.
+- New tables `reports`, `report_events`, `report_attachments`, `report_relations`, `staff_permissions` (all `CREATE TABLE IF NOT EXISTS`).
+- Optional `REPORT_REF_SECRET` (defaults to `JWT_SECRET`).
+
+### Changed
+- **Feedback is now stored as reports.** Migration `0.9.0-feedback-to-reports` copies existing `user_feedback` rows into `reports` (bug → Bug, idea → Feature request, other → General), once and without duplicates; the old table is left untouched. `POST/GET /api/account/feedback` still work and use the same store and rules.
+- **Diagnostics are opt-in.** The Feedback form used to have diagnostics ticked and sent the full browser user-agent string. They are now off by default, show the exact text before sending, and contain only the browser name, screen size, language and theme.
+- Migration `0.9.0-sync-developer-roles` brings existing databases in line with the developer badge.
+- `scripts/setRole.js` explains that `DEVELOPER` follows the badge, and demoting an admin who still holds the badge leaves them a developer.
+- Test helper stops a leftover test server with `SIGKILL` after 4 s so a lingering test connection cannot hang the test run.
+
+### Security
+- Every `/api/developer` route runs behind `requireAuth` + a server-side role check and object-level checks; there is no developer data on WebSocket messages. Report attachments are stored outside `/uploads` under random names, validated by content, and authorised on every download.
+- Report and note text is stored as plain text (control and bidi-override characters removed) and escaped on render. Reporters cannot set status, priority, assignee, notes or links; those fields in a submission are ignored. Submissions are rate limited per IP and per user.
+
+### Known limitations
+- A role change (badge granted or revoked) applies to API calls immediately, but an already-open page only updates its navigation after a reload.
+- Security-report permissions are managed through the admin API only (no UI yet). There is no export endpoint.
+- No GitHub integration: links are entered manually and are not verified.
+- The server operator and administrators can read everything stored in the database, including reports and attachments; reports are not end-to-end encrypted.
+- Not checked in a real browser: the UI was exercised in jsdom (no layout or CSS rendering).
+
 ## [0.8.0] - 2026-10-28
 
 ### Removed

@@ -4,7 +4,7 @@ Chat, servers, marketplace and NX wallet. Node.js + Express backend, WebSocket
 messaging, SQLite (via `sql.js`) storage, and a vanilla-JS single-page frontend
 served from `public/`.
 
-**Current release: beta 0.8.0** (removes "Last seen" and tightens presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
+**Current release: beta 0.9.0** (adds the Developer role and the Developer workspace for Feedback & Issues; 0.8.0 removed "Last seen" and tightened presence privacy; includes server ownership transfer from 0.7.0, the 0.2.0 Server Settings overhaul and 0.2.1 fixes) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -30,6 +30,7 @@ The entry point is `server/server.js`. `npm run dev` is currently identical to `
 | `NYXIE_DATA_DIR` | no | Where SQLite files and uploads/avatars/banners live. Default `./data`. |
 | `GROUP_MAX_MEMBERS` | no | Max members per group chat (default 50). |
 | `WALLET_MAX_TRANSFER_NX`, `WALLET_MAX_DAILY_TRANSFER_NX`, `WALLET_MAX_TRANSFERS_PER_MIN` | no | Wallet limits. |
+| `REPORT_REF_SECRET` | no | Key for the opaque reporter reference on reports (defaults to `JWT_SECRET`). |
 | `ENABLE_DEV_ROUTES` | no | `true` enables `/api/dev` test funding routes. Never in production. |
 | `PGHOST`, `PGUSER`, `PGPASSWORD` | no | Only read by `server/database/messageDbPg.js`, which the running server does not currently use. |
 
@@ -118,6 +119,33 @@ Detail objects are sanitized (secret-like and content-like keys are dropped,
 strings truncated). Visible to `VIEW_AUDIT_LOG` holders only. Entries are kept
 until the server is deleted.
 
+## Developer workspace (Feedback & Issues)
+
+Roles: `USER`, `DEVELOPER`, `ADMIN` (`users.role`).
+
+- **ADMIN** is set only with `node scripts/setRole.js <user> ADMIN` (unchanged).
+- **DEVELOPER** is never set by hand or by any client request: it is *derived* from the official `developer` badge. Granting/revoking that badge (Admin → Badges, or `scripts/badges.js`) updates the role in the same database transaction (`server/services/staff.js`). The server also re-derives every account on each start; run `node scripts/syncDeveloperRoles.js` to do it on demand. Both are idempotent and never touch an ADMIN.
+- A developer can use the workspace and nothing else: no admin endpoints, accounts, servers, wallets or messages. Administrators can open the workspace through their own role, without the badge.
+- Two explicit permissions can be granted by an admin to developers (`PUT /api/admin/staff/permissions`): `SECURITY_REPORTS` (see/handle security reports) and `REPORTER_IDENTITY` (see who sent a report). Admins have both implicitly. They stop working the moment the developer role is lost.
+
+Users send reports from **Settings → Feedback** (bug, feature request, general feedback, security issue; optional version, platform, screenshots/text log, and diagnostics that are **off by default** and shown in full before sending). Staff work them in **Developer** in the Home navigation.
+
+Statuses: `OPEN`, `UNDER_REVIEW`, `PLANNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `DECLINED` (transitions validated server-side; `CLOSED`/`DECLINED` can only be reopened to `OPEN`). Priorities: `LOW`, `NORMAL`, `HIGH`, `URGENT`. Nothing is ever deleted: duplicates are closed and linked.
+
+| Endpoint | Who |
+|---|---|
+| `POST /api/reports`, `GET /api/reports/mine`, `POST /api/reports/mine/:n/attachments` | any signed-in user (own reports only; reporter-safe fields) |
+| `GET /api/reports/attachments/:id/download` | the reporter, or staff who may see that report (checked on every request) |
+| `GET /api/developer/overview`, `/staff`, `/reports`, `/reports/:n` | DEVELOPER or ADMIN; security reports only with `SECURITY_REPORTS` (otherwise 404, and excluded from lists, counts, search and metrics) |
+| `PATCH /api/developer/reports/:n`, `POST …/notes`, `POST …/duplicates`, `POST …/related`, `DELETE …/relations/:other`, `PUT …/link` | same rules; `expected_version` rejects stale edits (409) |
+| `GET/PUT/DELETE /api/admin/staff/permissions`, `POST /api/admin/staff/developers/sync` | ADMIN only |
+
+Attachments live in `<data dir>/report-attachments/` under random names (never under the public `/uploads`), are validated by content (PNG/JPEG/GIF/WebP or plain text, 5 MB, 3 per report) and are only served through the authorised endpoint with `Content-Disposition: attachment` and `nosniff`.
+
+Hosting: reports are stored in the SQLite database and attachments on disk, both under `NYXIE_DATA_DIR`. On a host with an ephemeral filesystem (many PaaS containers) mount a persistent volume there, otherwise reports and attachments disappear on redeploy, like everything else Nyxie stores. Nothing here relies on background jobs.
+
+Privacy: a report contains only what the person typed or explicitly chose to attach. Message contents, keys, tokens, presence and browsing activity are never collected for a report. Staff see an opaque reporter reference unless they hold `REPORTER_IDENTITY`; access to security reports, attachments and identities is written to `audit_logs`. The server operator can still read everything in the database; this does not change the end-to-end encryption of messages.
+
 ## Privacy: presence and "last seen"
 
 Nyxie does **not** record or show when a user was last online. `users.last_seen`
@@ -151,6 +179,8 @@ npm run check # syntax check of the main files
 | `tests/regression.test.js` | Login/registration, DMs with live delivery, server messaging, uploads, SPA shell, wallet route still guarded, JWT_SECRET enforcement, version consistency |
 | `tests/ui-dashboard.test.js` | The real `index.html` + all frontend scripts in jsdom against a live server: member list, toggle, live updates, categories, opening Server Settings, no placeholder usernames |
 | `tests/ownership.test.js` | Ownership transfer: authorization, validation, consequences for old/new owner, audit entry, live event |
+| `tests/developer.test.js` | Developer role derived from the badge, workspace API authorization (users / developers / admins), security-report isolation, notes never exposed, forged fields ignored, queues (filter/search/sort/pagination), workflow + history, attachments, migration of an existing database |
+| `tests/ui-developer.test.js` | Developer nav item visibility per role, workspace rendering from real data, report text escaped, Admin still works, feedback form opt-in |
 | `tests/privacy.test.js` | No last-seen data in any API response/event or the database, migration clears old values, Invisible produces no presence traffic and looks offline everywhere, normal presence still works |
 | `tests/ui-settings.test.js` | The real settings panel code running in **jsdom** against a live server: navigation, dirty guards, forms, dialogs, lists, error/empty states, XSS escaping |
 
@@ -166,7 +196,7 @@ pre-existing features were not modified apart from what `tests/regression.test.j
 server/            Express app, routes/, services/, database/, websocket/, config/
 public/            SPA (index.html, js/, css/)
   js/serverSettings.js, serverSettingsPanels.js, css/serverSettings.css   ← Server Settings
-scripts/           CLI helpers (setRole, grantFunds, checkUser, badges)
+scripts/           CLI helpers (setRole, grantFunds, checkUser, badges, syncDeveloperRoles)
 tests/             Automated tests
 ```
 

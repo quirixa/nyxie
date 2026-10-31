@@ -24,6 +24,7 @@ const path = require('path');
 const { all, get, run } = require('../database/userDb');
 const { ensureWalletTables } = require('../database/walletDb');
 const { audit } = require('./walletService');
+const { DEVELOPER_BADGE, syncDeveloperRole } = require('./staff');
 
 const DEFINITIONS_PATH = path.join(__dirname, '..', 'config', 'badge_definitions.json');
 
@@ -264,6 +265,14 @@ function mutate(db, actor, targetUserId, badgeId, kind) {
         [target.id, def.id, actor.id, Date.now()]);
     } else {
       run(db, 'DELETE FROM user_badges WHERE user_id = ? AND badge_id = ?', [target.id, def.id]);
+    }
+    // The Developer role is derived from the developer badge. Do it in the
+    // same transaction so the badge and the role can never disagree.
+    if (def.id === DEVELOPER_BADGE) {
+      const resultingRole = syncDeveloperRole(db, target.id);
+      audit(db, actor.id, 'staff.developer_role_synced', target.id, {
+        badge: def.id, change: kind, resultingRole, actorName: actor.username, targetName: target.username,
+      });
     }
     audit(db, actor.id, kind === 'add' ? ACTION_ADDED : ACTION_REMOVED, target.id, {
       badge: def.id,

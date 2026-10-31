@@ -56,6 +56,7 @@ const router = (() => {
     // server/middleware/auth.js); this guard can't be trusted on its
     // own since currentUser.role is just whatever the last /auth/login
     // or /auth/me response said.
+    { path: '/developer', template: 'tpl-app', auth: 'developer', init: () => { window._initialSection = 'developer'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     { path: '/admin/disputes', template: 'tpl-app', auth: 'admin', init: () => { window._initialSection = 'admin'; initDashboardView(); }, destroy: () => { if (typeof destroyDashboardView === 'function') destroyDashboardView(); } },
     // One real URL per open conversation (mirrors the /wallets pattern
     // above): opening a DM pushes '/app/rooms/<id>' so refreshing,
@@ -114,6 +115,12 @@ const router = (() => {
       // (see state.js) — a non-admin who navigates here directly just
       // bounces back to the app, same as any other 404-ish redirect.
       if (!currentUser || currentUser.role !== 'ADMIN') return '/app';
+    }
+    if (route.auth === 'developer') {
+      if (!isLoggedIn()) return '/login';
+      // Cosmetic, like 'admin' above: the workspace API itself refuses
+      // anyone whose role in the database is not DEVELOPER or ADMIN.
+      if (!currentUser || (currentUser.role !== 'DEVELOPER' && currentUser.role !== 'ADMIN')) return '/app';
     }
     return null; // no redirect needed
   }

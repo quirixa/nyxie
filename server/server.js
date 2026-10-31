@@ -28,6 +28,10 @@ const shopRoutes = require('./routes/shop');
 const adminMarketplaceRoutes = require('./routes/adminMarketplace');
 const badgeRoutes = require('./routes/badges');
 const adminBadgeRoutes = require('./routes/adminBadges');
+const reportRoutes = require('./routes/reports');
+const developerRoutes = require('./routes/developer');
+const adminStaffRoutes = require('./routes/adminStaff');
+const { reconcileDeveloperRoles } = require('./services/staff');
 const adminWalletRoutes = require('./routes/adminWallet');
 const { getUserDb, flush: flushUserDb } = require('./database/userDb');
 const { flush: flushMessageDb } = require('./database/messageDb');
@@ -245,6 +249,25 @@ app.use('/api/admin/marketplace', adminMarketplaceRoutes);
 app.use('/api/badges', badgeRoutes);
 // Badge ownership changes: requireAuth + requireAdmin inside the router.
 app.use('/api/admin/badges', adminBadgeRoutes);
+
+// ── Feedback & Issues ────────────────────────────────────────────
+// Submitting is cheap to spam and attachments are large, so both get a
+// tighter limit than the general API (on top of a per-user hourly cap in
+// services/reports.js). Reads and the staff API use the global limiter.
+const reportSubmitLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reports from this connection. Please try again later.' }
+});
+app.use('/api/reports', (req, res, next) => (req.method === 'POST' ? reportSubmitLimiter(req, res, next) : next()));
+app.use('/api/reports', reportRoutes);
+// Developer workspace: requireAuth + requireDeveloper inside the router,
+// object-level checks inside services/reports.js.
+app.use('/api/developer', developerRoutes);
+// Admin-only: grant SECURITY_REPORTS / REPORTER_IDENTITY, re-run role sync.
+app.use('/api/admin/staff', adminStaffRoutes);
 // Admin fund grants: requireAuth + requireAdmin inside the router.
 // Unlike the dev faucet below, this works in production.
 app.use('/api/admin/wallet', adminWalletRoutes);
@@ -315,7 +338,14 @@ app.locals.broadcastPresenceChange = broadcastPresenceChange;
 
 // ── Start server ─────────────────────────────────────────────────
 getUserDb()
-  .then(() => {
+  .then(db => {
+    // Re-derive the Developer role from the developer badge on every start
+    // (idempotent; never touches ADMIN). Covers badges granted by older
+    // versions, manual DB edits, or a crash between a badge change and its sync.
+    try {
+      const r = reconcileDeveloperRoles(db);
+      if (r.promoted || r.demoted) console.log(`Developer roles reconciled: +${r.promoted} / -${r.demoted}`);
+    } catch (e) { console.error('Developer role reconciliation failed:', e.message); }
     server.listen(PORT, () => {
       console.log(
         `Server running on http://localhost:${PORT}`

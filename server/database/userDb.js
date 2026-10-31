@@ -393,6 +393,96 @@ async function getUserDb() {
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_user_feedback_user ON user_feedback (user_id, created_at)');
 
+  // ── Feedback & Issues (0.9.0) ────────────────────────────────────────
+  // `reports` supersedes `user_feedback` (that table is kept, read-only, as
+  // the source for migration 0.9.0-feedback-to-reports). Nothing here stores
+  // message contents, keys or tokens: only what the reporter typed in the
+  // report form (and, only if they ticked the box, a short diagnostics line).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      number INTEGER NOT NULL UNIQUE,         -- shown as NYX-<number>
+      reporter_id TEXT NOT NULL,
+      reporter_ref TEXT NOT NULL,             -- opaque, stable per reporter (HMAC), shown instead of identity
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL,                 -- BUG | FEATURE | GENERAL | SECURITY
+      status TEXT NOT NULL DEFAULT 'OPEN',    -- OPEN | UNDER_REVIEW | PLANNED | IN_PROGRESS | RESOLVED | CLOSED | DECLINED
+      priority TEXT NOT NULL DEFAULT 'NORMAL',-- LOW | NORMAL | HIGH | URGENT
+      assignee_id TEXT,
+      app_version TEXT,
+      platform TEXT,
+      diagnostics TEXT,                       -- only when the reporter opted in
+      linked_url TEXT,                        -- https link to an issue / pull request
+      linked_kind TEXT,                       -- ISSUE | PULL_REQUEST | LINK
+      version INTEGER NOT NULL DEFAULT 1,     -- bumped on every staff change (optimistic concurrency)
+      legacy_feedback_id TEXT UNIQUE,         -- set for rows migrated from user_feedback
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      resolved_at INTEGER
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_reports_status ON reports (status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_reports_category ON reports (category, status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_reports_assignee ON reports (assignee_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_reports_created ON reports (created_at)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_reports_updated ON reports (updated_at)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_reports_reporter ON reports (reporter_id, created_at)');
+
+  // History + internal notes in one append-only table. type NOTE rows are
+  // internal discussion; they are only ever read by the staff endpoints.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS report_events (
+      id TEXT PRIMARY KEY,
+      report_id TEXT NOT NULL,
+      actor_id TEXT,                          -- NULL = system / the reporter's own submission
+      type TEXT NOT NULL,                     -- CREATED | STATUS | PRIORITY | ASSIGNEE | NOTE | DUPLICATE | RELATED | LINK | ATTACHMENT
+      from_value TEXT,
+      to_value TEXT,
+      body TEXT,                              -- NOTE text
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_report_events_report ON report_events (report_id, created_at)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS report_attachments (
+      id TEXT PRIMARY KEY,
+      report_id TEXT NOT NULL,
+      uploader_id TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL UNIQUE,       -- random name inside <data>/report-attachments (never under /uploads)
+      mime TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_report_attachments_report ON report_attachments (report_id)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS report_relations (
+      report_id TEXT NOT NULL,
+      related_id TEXT NOT NULL,
+      kind TEXT NOT NULL,                     -- DUPLICATE (report_id is a duplicate of related_id) | RELATED
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (report_id, related_id)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_report_relations_related ON report_relations (related_id)');
+
+  // Explicit, admin-granted staff permissions on top of the role
+  // (SECURITY_REPORTS, REPORTER_IDENTITY). Never client-controlled.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS staff_permissions (
+      user_id TEXT NOT NULL,
+      permission TEXT NOT NULL,
+      granted_by TEXT NOT NULL,
+      granted_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, permission)
+    )
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS user_bots (
       id TEXT PRIMARY KEY,

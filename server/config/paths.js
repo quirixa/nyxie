@@ -14,5 +14,9 @@ const DATA_DIR = process.env.NYXIE_DATA_DIR
 module.exports = {
   PROJECT_ROOT,
   DATA_DIR,
-  UPLOAD_DIR: path.join(DATA_DIR, 'uploads')
+  UPLOAD_DIR: path.join(DATA_DIR, 'uploads'),
+  // Report attachments are NOT under /uploads (that folder is served to
+  // anyone with the URL). They are only reachable through the authorised
+  // download endpoint in routes/reports.js.
+  REPORT_ATTACH_DIR: path.join(DATA_DIR, 'report-attachments')
 };

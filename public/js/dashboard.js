@@ -547,6 +547,7 @@ function initDashboardView() {
     document.getElementById('wallet-panel').style.display = 'none';
     document.getElementById('marketplace-panel').style.display = 'none';
     document.getElementById('admin-panel').style.display = 'none';
+    document.getElementById('developer-panel').style.display = 'none';
     document.getElementById('chat-view').style.display = 'none';
     renderServerRail();
     if (section === 'home') {
@@ -579,6 +580,17 @@ function initDashboardView() {
       document.getElementById('admin-panel').style.display = 'flex';
       if (typeof initAdminPanel === 'function') initAdminPanel();
       showMobileDetail();
+    } else if (section === 'developer') {
+      // Cosmetic gate (router.js has the same check). Administrators may
+      // open it too; the role comes from the server, never from the badge
+      // shown in the UI. Every /api/developer call is re-checked server-side.
+      if (!currentUser || (currentUser.role !== 'DEVELOPER' && currentUser.role !== 'ADMIN')) {
+        toast('Developer access required', true);
+        return navigateTo('home');
+      }
+      document.getElementById('developer-panel').style.display = 'flex';
+      if (typeof initDeveloperPanel === 'function') initDeveloperPanel();
+      showMobileDetail();
     }
     // Keep the address bar in sync with the wallet section specifically
     // (it's the one section with its own real route — see '/wallets' in
@@ -595,6 +607,7 @@ function initDashboardView() {
     const onWalletUrl = path === '/wallets';
     const onMarketplaceUrl = path === '/marketplace';
     const onAdminUrl = path === '/admin/disputes';
+    const onDeveloperUrl = path === '/developer';
     const onRoomUrl = path.startsWith('/app/rooms/');
     const onServerUrl = path.startsWith('/servers/');
     const onDiscoverUrl = path.startsWith('/discover');
@@ -604,7 +617,9 @@ function initDashboardView() {
       window.history.replaceState({}, '', '/marketplace');
     } else if (section === 'admin' && !onAdminUrl) {
       window.history.replaceState({}, '', '/admin/disputes');
-    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onRoomUrl || onServerUrl || onDiscoverUrl)) {
+    } else if (section === 'developer' && !onDeveloperUrl) {
+      window.history.replaceState({}, '', '/developer');
+    } else if (section !== 'wallet' && section !== 'marketplace' && section !== 'admin' && section !== 'developer' && (onWalletUrl || onMarketplaceUrl || onAdminUrl || onDeveloperUrl || onRoomUrl || onServerUrl || onDiscoverUrl)) {
       window.history.replaceState({}, '', '/app');
     }
   }
@@ -4045,6 +4060,8 @@ function initDashboardView() {
       // invite clicks that just bounce back (see router.js's 'admin'
       // auth guard and navigateTo('admin') above for the actual gate).
       document.getElementById('nav-admin').style.display = currentUser.role === 'ADMIN' ? 'flex' : 'none';
+      // Same idea for the Developer workspace (DEVELOPER role or ADMIN).
+      document.getElementById('nav-developer').style.display = (currentUser.role === 'DEVELOPER' || currentUser.role === 'ADMIN') ? 'flex' : 'none';
       try { await ensureE2EEKeys(); } catch (e) { console.error('E2EE key setup failed:', e); toast('⚠️ Encryption setup failed — messages will send unencrypted'); }
       connectWS();
       if (typeof initVoiceFeatures === 'function') { try { initVoiceFeatures(); } catch (e) { console.error('Voice feature init failed:', e); } }

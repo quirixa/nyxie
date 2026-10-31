@@ -93,6 +93,48 @@ const MIGRATIONS = [
     up({ run }) {
       run('UPDATE users SET last_seen = NULL WHERE last_seen IS NOT NULL');
     }
+  },
+  {
+    id: '0.9.0-feedback-to-reports',
+    // The old Settings → Feedback form wrote to `user_feedback`, which nothing
+    // could read. Copy those rows into `reports` so the Developer workspace
+    // sees them. `user_feedback` is left untouched (nothing is deleted), and
+    // legacy_feedback_id is UNIQUE + INSERT OR IGNORE so a re-run can never
+    // duplicate a report. The reporter reference is a plain per-user hash
+    // here; new reports use the keyed one from services/reports.js.
+    up({ all, run }) {
+      const crypto = require('crypto');
+      const map = { bug: 'BUG', idea: 'FEATURE', other: 'GENERAL' };
+      const rows = all('SELECT id, user_id, category, message, diagnostics, created_at FROM user_feedback ORDER BY created_at ASC, id ASC');
+      let n = (all('SELECT COALESCE(MAX(number), 0) AS n FROM reports')[0] || { n: 0 }).n;
+      for (const r of rows) {
+        if (all('SELECT 1 AS x FROM reports WHERE legacy_feedback_id = ?', [r.id]).length) continue;
+        n += 1;
+        const message = String(r.message || '');
+        const firstLine = message.split('\n')[0].trim();
+        const title = (firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine) || 'Feedback';
+        const ref = crypto.createHash('sha256').update('legacy:' + r.user_id).digest('hex').slice(0, 10);
+        run(`INSERT OR IGNORE INTO reports
+               (id, number, reporter_id, reporter_ref, title, description, category, status, priority, diagnostics,
+                version, legacy_feedback_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', 'NORMAL', ?, 1, ?, ?, ?)`,
+          [crypto.randomUUID(), n, r.user_id, ref, title, message, map[r.category] || 'GENERAL',
+           r.diagnostics || null, r.id, r.created_at, r.created_at]);
+      }
+    }
+  },
+  {
+    id: '0.9.0-sync-developer-roles',
+    // The Developer role is derived from the developer badge (see
+    // services/staff.js). Bring existing databases in line once; the same
+    // reconciliation also runs on every start and via
+    // scripts/syncDeveloperRoles.js, and is idempotent. ADMIN is never touched.
+    up({ run }) {
+      run(`UPDATE users SET role = 'DEVELOPER'
+           WHERE role = 'USER' AND id IN (SELECT user_id FROM user_badges WHERE badge_id = 'developer')`);
+      run(`UPDATE users SET role = 'USER'
+           WHERE role = 'DEVELOPER' AND id NOT IN (SELECT user_id FROM user_badges WHERE badge_id = 'developer')`);
+    }
   }
 ];
 
