@@ -5,6 +5,10 @@ const { getUserDb, all, get, run } = require('../database/userDb');
 const { requireAuth } = require('../middleware/auth');
 const { ensureBlocksTable, isBlocked, listBlocked } = require('../services/blocks');
 const { effectiveStatus } = require('../services/presence');
+const { cancelOpenBetween } = require('./messageRequests');
+const { charLength } = require('../config/limits');
+
+const FRIEND_NOTE_MAX = 120;
 
 // GET /api/friends — list accepted friends (with avatars)
 // Blocked users are excluded defensively even though blocking already
@@ -35,7 +39,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/requests', requireAuth, async (req, res) => {
   const db = await getUserDb();
   const incoming = all(db, `
-    SELECT fr.id, fr.from_id, fr.created_at,
+    SELECT fr.id, fr.from_id, fr.created_at, fr.message,
            u.username AS from_username, u.display_name AS from_name, u.avatar AS from_avatar, u.avatar_decoration AS from_avatar_decoration
     FROM friend_requests fr
     JOIN users u ON u.id = fr.from_id
@@ -43,7 +47,7 @@ router.get('/requests', requireAuth, async (req, res) => {
     ORDER BY fr.created_at DESC
   `, [req.user.id]);
   const outgoing = all(db, `
-    SELECT fr.id, fr.to_id, fr.created_at,
+    SELECT fr.id, fr.to_id, fr.created_at, fr.message,
            u.username AS to_username, u.display_name AS to_name, u.avatar AS to_avatar, u.avatar_decoration AS to_avatar_decoration
     FROM friend_requests fr
     JOIN users u ON u.id = fr.to_id
@@ -83,6 +87,9 @@ router.post('/block/:id', requireAuth, async (req, res) => {
     WHERE status = 'pending' AND ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))
   `, [req.user.id, targetId, targetId, req.user.id]);
 
+  // A block also removes any open message request between the two of you.
+  cancelOpenBetween(db, req.user.id, targetId);
+
   const blockId = crypto.randomUUID();
   run(db, `
     INSERT OR IGNORE INTO blocks (id, blocker_id, blocked_id, created_at) VALUES (?, ?, ?, ?)
@@ -104,25 +111,44 @@ router.delete('/block/:id', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/friends/request — send a friend request
+// POST /api/friends/request — send a friend request.
+// Accepts either `to_id` (existing callers: profile popout, member list) or
+// `username` (the Add Friend form), plus an optional personal `message` of at
+// most 120 characters.
 router.post('/request', requireAuth, async (req, res) => {
   const db = await getUserDb();
-  const { to_id } = req.body;
-  if (!to_id) return res.status(400).json({ error: 'to_id required' });
-  if (to_id === req.user.id) return res.status(400).json({ error: 'Cannot friend yourself' });
+  let { to_id, username, message } = req.body || {};
+
+  let note = null;
+  if (message !== undefined && message !== null && message !== '') {
+    if (typeof message !== 'string') return res.status(400).json({ error: 'Invalid message' });
+    note = message.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+    if (charLength(note) > FRIEND_NOTE_MAX) return res.status(400).json({ error: `Personal message can be at most ${FRIEND_NOTE_MAX} characters` });
+    if (!note) note = null;
+  }
+
+  if (!to_id && typeof username === 'string' && username.trim()) {
+    const uname = username.trim().replace(/^@/, '');
+    if (uname.length > 64) return res.status(404).json({ error: 'No user with that username' });
+    const found = get(db, 'SELECT id FROM users WHERE lower(username) = lower(?) AND COALESCE(disabled, 0) = 0', [uname]);
+    if (!found) return res.status(404).json({ error: 'No user with that username', code: 'USER_NOT_FOUND' });
+    to_id = found.id;
+  }
+  if (!to_id) return res.status(400).json({ error: 'Enter a username' });
+  if (to_id === req.user.id) return res.status(400).json({ error: 'You cannot send a friend request to yourself', code: 'SELF' });
 
   const target = get(db, 'SELECT id, username, display_name, avatar FROM users WHERE id = ?', [to_id]);
-  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (!target) return res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
 
   if (isBlocked(db, req.user.id, to_id)) {
-    return res.status(403).json({ error: 'Unable to send a friend request to this user' });
+    return res.status(403).json({ error: 'Unable to send a friend request to this user', code: 'UNAVAILABLE' });
   }
 
   const already = get(db, `
     SELECT 1 FROM friends
     WHERE ((user_a = ? AND user_b = ?) OR (user_a = ? AND user_b = ?)) AND status = 'accepted'
   `, [req.user.id, to_id, to_id, req.user.id]);
-  if (already) return res.status(409).json({ error: 'Already friends' });
+  if (already) return res.status(409).json({ error: `You are already friends with ${target.display_name || target.username}`, code: 'ALREADY_FRIENDS' });
 
   const pending = get(db, `
     SELECT id, from_id FROM friend_requests
@@ -140,12 +166,16 @@ router.post('/request', requireAuth, async (req, res) => {
       req.app.locals.broadcastToUser(to_id, { type: 'friend_accepted', request_id: pending.id, friend: me });
       return res.json({ ok: true, auto_accepted: true });
     }
-    return res.status(409).json({ error: 'Request already sent' });
+    return res.status(409).json({ error: `You already sent ${target.display_name || target.username} a friend request`, code: 'REQUEST_PENDING', request_id: pending.id });
   }
 
   const reqId = crypto.randomUUID();
-  run(db, 'INSERT INTO friend_requests (id, from_id, to_id, status, created_at) VALUES (?, ?, ?, \'pending\', ?)',
-      [reqId, req.user.id, to_id, Date.now()]);
+  try {
+    run(db, 'INSERT INTO friend_requests (id, from_id, to_id, status, created_at, message) VALUES (?, ?, ?, \'pending\', ?, ?)',
+        [reqId, req.user.id, to_id, Date.now(), note]);
+  } catch (e) {
+    return res.status(409).json({ error: 'A friend request is already pending', code: 'REQUEST_PENDING' });
+  }
 
   // Send the request notification with avatar
   const fromUser = get(db, 'SELECT id, username, display_name, avatar, avatar_decoration FROM users WHERE id = ?', [req.user.id]);
@@ -155,13 +185,14 @@ router.post('/request', requireAuth, async (req, res) => {
       id: reqId,
       from_id: req.user.id,
       created_at: Date.now(),
+      message: note,
       from_username: fromUser.username,
       from_name: fromUser.display_name,
       from_avatar: fromUser.avatar,
       from_avatar_decoration: fromUser.avatar_decoration || 'none'
     }
   });
-  res.status(201).json({ ok: true, request_id: reqId });
+  res.status(201).json({ ok: true, request_id: reqId, to: { id: target.id, username: target.username, display_name: target.display_name || target.username } });
 });
 
 // POST /api/friends/requests/:id/accept

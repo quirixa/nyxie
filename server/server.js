@@ -21,6 +21,8 @@ const channelRoutes = require('./routes/channels');
 const inviteRoutes = require('./routes/invites');
 const groupRoutes = require('./routes/groups');
 const friendRoutes = require('./routes/friends');
+const messageRequestRoutes = require('./routes/messageRequests');
+const keyRoutes = require('./routes/keys');
 const walletRoutes = require('./routes/wallet');
 const accountRoutes = require('./routes/account');
 const marketplaceRoutes = require('./routes/marketplace');
@@ -240,6 +242,15 @@ app.use('/api/channels', channelRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/friends', friendRoutes);
+// Message requests: creating one is rate-limited per IP on top of the
+// per-user cap enforced in the route (anti-spam for unsolicited messages).
+const messageRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many message requests, please try again later.' }
+});
+app.use('/api/message-requests', (req, res, next) => (req.method === 'POST' && req.path === '/' ? messageRequestLimiter(req, res, next) : next()));
+app.use('/api/message-requests', messageRequestRoutes);
+app.use('/api/keys', keyRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/marketplace', marketplaceRoutes);

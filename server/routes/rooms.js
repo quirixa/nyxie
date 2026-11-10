@@ -5,6 +5,7 @@ const { getUserDb, all, get, run } = require('../database/userDb');
 const { getMessageDb, allMessages, getMessage, runMessage } = require('../database/messageDb');
 const { requireAuth } = require('../middleware/auth');
 const { isBlocked } = require('../services/blocks');
+const { areFriends, findDirectRoom, createDirectRoom } = require('../services/dms');
 const {
   PERMISSIONS, getServerContext, hasPermission,
   canViewRoom, canSendToRoom, canReadHistory, canAttachInRoom
@@ -152,23 +153,21 @@ router.post('/dm', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Unable to start a conversation with this user' });
   }
 
-  const existing = get(db, `
-    SELECT r.id FROM rooms r
-    JOIN room_members rm1 ON rm1.room_id = r.id AND rm1.user_id = ?
-    JOIN room_members rm2 ON rm2.room_id = r.id AND rm2.user_id = ?
-    WHERE r.is_dm = 1 AND (r.is_group IS NULL OR r.is_group = 0)
-    AND (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) = 2
-    LIMIT 1
-  `, [req.user.id, target_user_id]);
+  // An existing conversation is always reachable (nothing existing is taken
+  // away), but a NEW one-to-one DM can only be created between friends.
+  // Anyone else must use Add Friend or a Message Request, which the
+  // recipient has to accept first. Accepting a request creates its DM
+  // through services/dms.js, never through this endpoint.
+  const existing = findDirectRoom(db, req.user.id, target_user_id);
+  if (existing) return res.json({ room_id: existing });
+  if (!areFriends(db, req.user.id, target_user_id)) {
+    return res.status(403).json({
+      error: 'You can only start a direct message with a friend. Send a friend request or a message request instead.',
+      code: 'NOT_FRIENDS'
+    });
+  }
 
-  if (existing) return res.json({ room_id: existing.id });
-
-  const roomId = crypto.randomUUID();
-  const now = Date.now();
-  run(db, 'INSERT INTO rooms (id, name, description, created_by, created_at, is_dm) VALUES (?, ?, ?, ?, ?, 1)',
-    [roomId, `dm-${req.user.id}-${target_user_id}`, '', req.user.id, now]);
-  run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, req.user.id, now]);
-  run(db, 'INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)', [roomId, target_user_id, now]);
+  const roomId = createDirectRoom(db, req.user.id, target_user_id);
 
   const initiator = { id: req.user.id, username: req.user.username, display_name: req.user.display_name };
   const target    = { id: targetUser.id, username: targetUser.username, display_name: targetUser.display_name || targetUser.username };
@@ -281,6 +280,23 @@ async function postMessage(req, res) {
     }
   }
 
+  // 0.12.0: one-to-one DMs are E2EE-only too. Before this, a client could
+  // (and on an encryption-setup failure, did) fall back to sending plaintext
+  // `content` into a DM, which the server then stored and relayed. Now the
+  // server refuses any private-conversation message that is not ciphertext
+  // with a wrapped key for the sender AND the other participant. It cannot
+  // verify the ciphertext is genuine (it cannot decrypt, by design), but it
+  // can and does refuse anything that is structurally not encrypted.
+  if (room.is_dm) {
+    if (content) return res.status(400).json({ error: 'Direct messages must be end-to-end encrypted', code: 'E2EE_REQUIRED' });
+    if (!room.is_group && (ciphertext || type === 'voice')) {
+      const other = get(userDb, 'SELECT user_id FROM room_members WHERE room_id = ? AND user_id != ?', [req.params.id, req.user.id]);
+      if (!ciphertext || !nonce || !cleanKeyEnvelopes || !cleanKeyEnvelopes[req.user.id] || (other && !cleanKeyEnvelopes[other.user_id])) {
+        return res.status(400).json({ error: 'Direct messages must be end-to-end encrypted for every participant', code: 'E2EE_REQUIRED' });
+      }
+    }
+  }
+
   // Attachments come from POST /api/upload as [{ name, url, type }, ...].
   // Validate shape defensively since this is client-controlled JSON that
   // gets stored and later re-rendered (as a link/img src) for other users.
@@ -294,6 +310,9 @@ async function postMessage(req, res) {
     }
     cleanAttachments = [];
     for (const a of attachments) {
+      // Files in private conversations must already be encrypted on the
+      // sender's device; the server will not store a readable file there.
+      if (room.is_dm && !a?.encrypted) return res.status(400).json({ error: 'Attachments in direct messages must be end-to-end encrypted', code: 'E2EE_REQUIRED' });
       const url = String(a?.url || '');
       // Only files this server stored, and only if they still exist.
       if (!UPLOAD_URL_RE.test(url)) return res.status(400).json({ error: 'Invalid attachment' });
@@ -464,7 +483,7 @@ async function postMessage(req, res) {
 
 async function editMessage(req, res) {
   const userDb = await getUserDb();
-  const room = get(userDb, 'SELECT id, is_group FROM rooms WHERE id = ?', [req.params.id]);
+  const room = get(userDb, 'SELECT id, is_dm, is_group FROM rooms WHERE id = ?', [req.params.id]);
   if (!room) return res.status(404).json({ error: 'Not found' });
   if (!canViewRoom(userDb, room, req.user.id)) return res.status(403).json({ error: 'Not a member' });
   const msgDb = await getMessageDb();
@@ -474,6 +493,9 @@ async function editMessage(req, res) {
   if (msg.deleted) return res.status(400).json({ error: 'Cannot edit deleted message' });
 
   const { content, ciphertext, nonce, key_envelopes } = req.body;
+  if (room.is_dm && !ciphertext) {
+    return res.status(400).json({ error: 'Direct messages must remain end-to-end encrypted', code: 'E2EE_REQUIRED' });
+  }
   let nextContent = content ? String(content).trim() : '';
   let nextNonce = nonce || null;
   let nextEnvelopes = null;

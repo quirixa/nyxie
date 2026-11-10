@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const initSqlJs = require('sql.js');
 const helpers = require('./helpers');
-const { startServer, registerUser, sleep, client, ROOT } = helpers;
+const { startServer, registerUser, sleep, client, ROOT, dmBetween } = helpers;
 
 // Every socket a test opens is terminated when the server stops, so a failing
 // assertion fails the test promptly instead of leaving sockets open and
@@ -155,8 +155,9 @@ async function fixture() {
   assert.equal((await b.post(`/friends/requests/${reqId}/accept`)).status, 200);
   // rooms
   const dmAB = (await a.post('/rooms/dm', { target_user_id: b.id })).body.room_id;
-  const dmAC = (await a.post('/rooms/dm', { target_user_id: c.id })).body.room_id;
-  const dmBC = (await b.post('/rooms/dm', { target_user_id: c.id })).body.room_id;
+  // c is not anyone's friend, but conversations that outlive a friendship still exist
+  const dmAC = await dmBetween(a, c);
+  const dmBC = await dmBetween(b, c);
   const group = (await a.post('/groups', { name: 'privgroup', member_ids: [b.id, c.id] })).body.group.id;
   // a server with everyone in it
   const sid = (await a.post('/servers', { name: 'PrivServer' })).body.server.id;

@@ -43,10 +43,38 @@ body.exp-strong-borders #view-settings .settings-section { border-color: var(--b
 .px-kv code, .px-secret-row code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
 
 /* Chips */
-.px-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
-.px-chip { background: var(--bg-input); color: var(--text-secondary); border: 1px solid var(--border-medium); border-radius: 10px; padding: 6px 16px; font-size: 0.85rem; cursor: pointer; }
-.px-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.px-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 14px 0 12px;
+}
 
+.px-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 8px 18px;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: 7px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.px-chip:hover {
+    border-color: var(--accent);
+}
+
+.px-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
 /* Cards (sessions, bots, feedback history) */
 .px-card { display: flex; align-items: center; gap: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; }
 .px-card-icon { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--accent-subtle, rgba(128,128,128,.15)); color: var(--accent); }

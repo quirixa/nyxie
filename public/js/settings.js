@@ -1228,6 +1228,32 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Friends, message requests & stronger privacy',
+      version: '0.12.0',
+      date: 'November 10, 2026',
+      sections: [
+        { heading: 'Added', items: [
+          'Add Friend is now its own page under Friends. Enter an exact username, add an optional personal message of up to 120 characters, and see clearly whether the request was sent, is already waiting, or you are already friends. A Discover Servers card links to server discovery.',
+          'Message Requests. When you message someone who is not your friend from their profile, they receive a request instead of a direct message. They can Accept, Ignore or Deny it. Until it is accepted there is no conversation, you cannot send more messages, and they get no message notification.',
+          'Ignore hides a request quietly and the sender is not told. Deny ends it and the sender only sees that it was declined. Accepting opens a normal conversation and your first message stays encrypted.',
+          'Safety numbers. Open Verify encryption to compare a number with a contact and mark them as verified. If a contact’s encryption key ever changes, Nyxie stops you sending to the new key until you have reviewed it.',
+          'Key rotation. You can replace your encryption key from the verification screen. Older messages stay readable, and your contacts are told your key changed.',
+          'Report message. A message you were sent in a private chat can be reported. You see exactly what will be shared before anything is sent, and nothing else from the conversation is disclosed.',
+        ] },
+        { heading: 'Changed', items: [
+          'The conversation search box now only filters conversations you already have, by name or username. It never lists other people and never starts a conversation.',
+          'The New Message button now lists your friends. To reach someone new, add them as a friend or send a message request.',
+          'Direct messages and their files must now be end-to-end encrypted. The server refuses plain text in a direct message instead of storing it.',
+          'Changing an existing encryption key now requires key rotation with your password.',
+        ] },
+        { heading: 'Privacy notes', items: [
+          'Server channels are not end-to-end encrypted yet; roles, moderation and history depend on the server being able to read them. Voice and video calls are not covered by this release.',
+          'Message requests are removed from the server’s storage as soon as they are denied, cancelled or accepted.',
+          'See SECURITY.md for exactly what the server, administrators and a stolen database can and cannot see.',
+        ] },
+      ],
+    },
+    {
       title: 'Navigation fixes',
       version: '0.11.0',
       date: 'October 31, 2026',

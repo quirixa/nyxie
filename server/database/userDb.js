@@ -326,6 +326,71 @@ async function getUserDb() {
     )
   `);
 
+  // ── 0.12.0: personal note on friend requests (max 120 chars, enforced in the route)
+  try { db.run('ALTER TABLE friend_requests ADD COLUMN message TEXT'); } catch (e) {}
+  // One open friend request per direction. Created with IF NOT EXISTS and
+  // only over pending rows, so existing databases (which may contain old
+  // duplicate non-pending rows) are never rejected by it.
+  try {
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_friend_requests_pending
+            ON friend_requests (from_id, to_id) WHERE status = 'pending'`);
+  } catch (e) { console.warn('friend_requests pending index not created (legacy duplicates):', e.message); }
+
+  // ── 0.12.0: Message Requests ──────────────────────────────────────────
+  // A message from a non-friend is NOT a direct message. It is stored here,
+  // end-to-end encrypted by the sender's device for the recipient (and for
+  // the sender, so the sender can still read their own request). The server
+  // only ever holds ciphertext + wrapped keys; it never has a room, so the
+  // sender cannot reach the recipient's DM inbox until the recipient accepts.
+  //   status: pending | ignored | denied | accepted | cancelled
+  // Ciphertext columns are erased (set NULL) the moment a request ends
+  // without being accepted (denied / cancelled), so nothing lingers.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS message_requests (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      ciphertext TEXT,
+      nonce TEXT,
+      key_envelopes TEXT,           -- JSON {userId: {ciphertext, nonce}} for sender + recipient only
+      sender_public_key TEXT,       -- keys the message was encrypted with, so a later key
+      recipient_public_key TEXT,    -- change can never silently re-point an old request
+      room_id TEXT,                 -- set only when accepted
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      accepted_at INTEGER,
+      ignored_at INTEGER,
+      denied_at INTEGER
+    )
+  `);
+  // Duplicate prevention at the database level: a sender can have only ONE
+  // open (pending or ignored) request to a given recipient. "Ignored" counts
+  // as open on purpose so ignoring can never be used to make the sender
+  // re-send, and the sender can never tell it was ignored.
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_message_requests_open
+          ON message_requests (sender_id, recipient_id) WHERE status IN ('pending', 'ignored')`);
+  db.run('CREATE INDEX IF NOT EXISTS idx_message_requests_recipient ON message_requests (recipient_id, status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_message_requests_sender ON message_requests (sender_id, status)');
+
+  // ── 0.12.0: public key history (key rotation / substitution detection) ─
+  // Only PUBLIC keys. Lets clients verify that a contact's key changed via a
+  // deliberate rotation and decrypt older messages sent under a retired key.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS key_history (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      retired_at INTEGER,
+      reason TEXT,
+      UNIQUE(user_id, public_key)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_key_history_user ON key_history (user_id, created_at)');
+  try { db.run('ALTER TABLE users ADD COLUMN encrypted_key_history TEXT'); } catch (e) {}
+  try { db.run('ALTER TABLE users ADD COLUMN key_history_nonce TEXT'); } catch (e) {}
+
   // Badge OWNERSHIP (which user has which badge). Badge DEFINITIONS (name,
   // icon, colour, order…) are not in the database — they live in
   // server/config/badge_definitions.json; see services/badges.js. The

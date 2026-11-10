@@ -260,6 +260,7 @@ test('ownership transfer is reflected live in the real dashboard: crown moves, o
 });
 
 test('DM header shows plain presence and never a "last seen" time, for offline, online and Invisible users', async () => {
+  await require('./helpers').befriend(alice, bob);
   const dm = (await alice.post('/rooms/dm', { target_user_id: bob.id })).body.room_id;
   // Bob has been connected before and is now gone: under 0.7.0 the header would read "last seen Xm ago".
   const past = await openWs(s.base, bob.token); await past.waitFor(m => m.type === 'connected'); past.close();

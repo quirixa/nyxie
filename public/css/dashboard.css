@@ -4148,3 +4148,58 @@ body.text-viewer-open { overflow: hidden; }
 #view-app .msg-text .md-link { color: var(--accent); text-decoration: none; }
 #view-app .msg-text .md-link:hover { text-decoration: underline; }
 #view-app .msg-text {white-space: pre-wrap;}
+
+
+/* ── 0.12.0: Add Friend, Message Requests, key verification ───────────── */
+#view-app #add-friend-view { flex: 1; overflow-y: auto; padding: 8px 20px 24px; max-width: 760px; }
+#view-app .af-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 8px 0 6px; }
+#view-app .af-text { color: var(--text-muted); font-size: 0.85rem; margin: 0 0 14px; }
+#view-app .af-label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 8px; }
+#view-app .af-note-wrap { margin-top: 14px; position: relative; }
+#view-app .af-note { width: 100%; box-sizing: border-box; resize: none; border: 1px solid var(--border-medium); background: var(--bg-input); border-radius: var(--radius); padding: 9px 12px; color: var(--text-primary); font: inherit; font-size: 0.85rem; outline: none; }
+#view-app .af-count { text-align: right; font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; }
+#view-app .af-status { margin-top: 12px; padding: 9px 12px; border-radius: var(--radius); font-size: 0.85rem; border: 1px solid var(--border-color); }
+#view-app .af-status.success { color: #43b581; border-color: rgba(67,181,129,.5); }
+#view-app .af-status.error { color: var(--danger); border-color: rgba(237,66,69,.5); }
+#view-app .af-status.pending { color: var(--text-primary); }
+#view-app .af-other { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border-color); }
+#view-app .af-card { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 14px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); border-radius: var(--radius); cursor: pointer; font: inherit; }
+#view-app .af-card:hover { background: var(--bg-hover); }
+#view-app .af-card svg { width: 28px; height: 28px; flex-shrink: 0; color: var(--accent); }
+#view-app .af-card-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+#view-app .af-card-text small { color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }
+#view-app .af-chevron { color: var(--text-muted); font-size: 1.4rem; }
+#view-app .ftab-add { margin-left: auto; }
+#view-app #add-friend-view .add-friend-row { flex-wrap: wrap; }
+#view-app #requests-panel { flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+#view-app .req-card { border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: var(--radius); padding: 12px; margin: 0 8px 10px; }
+#view-app .req-head { display: flex; gap: 12px; align-items: center; }
+#view-app .req-who { min-width: 0; }
+#view-app .req-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+#view-app .req-preview { margin: 10px 0 0; padding: 9px 12px; background: var(--bg-input); border-radius: var(--radius); font-size: 0.88rem; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+#view-app .req-locked { color: var(--text-muted); font-style: italic; }
+#view-app .req-warn { margin-top: 8px; font-size: 0.78rem; color: var(--danger); }
+#view-app .req-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+#view-app .req-btn { border: 1px solid var(--border-medium); background: transparent; color: var(--text-primary); border-radius: var(--radius); padding: 7px 14px; font-size: 0.82rem; cursor: pointer; }
+#view-app .req-btn:hover { background: var(--bg-hover); }
+#view-app .req-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+#view-app .req-btn.danger { color: var(--danger); }
+#view-app .req-empty-sub { margin-top: 6px; font-size: 0.8rem; max-width: 340px; margin-left: auto; margin-right: auto; }
+#view-app .up-message-hint { padding: 0 14px 10px; font-size: 0.74rem; color: var(--text-muted); }
+.kv-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.kv-modal { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 22px; width: 420px; max-width: 92vw; max-height: 90vh; overflow-y: auto; }
+.kv-modal h3 { margin: 0 0 10px; font-size: 1.05rem; }
+.kv-text { color: var(--text-muted); font-size: 0.84rem; line-height: 1.5; margin: 0 0 12px; display: block; }
+.kv-number { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1rem; letter-spacing: .06em; line-height: 1.7; padding: 12px; background: var(--bg-input); border-radius: var(--radius); text-align: center; word-spacing: .4em; }
+.kv-status { font-size: 0.8rem; color: var(--text-muted); margin: 10px 0; }
+.kv-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.kv-btn { border: 1px solid var(--border-medium); background: transparent; color: var(--text-primary); border-radius: var(--radius); padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
+.kv-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.kv-foot { margin-top: 14px; font-size: 0.78rem; }
+.kv-foot a { color: var(--text-muted); }
+.rm-reason { width: 100%; box-sizing: border-box; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-medium); border-radius: var(--radius); padding: 8px 10px; font: inherit; resize: vertical; }
+@media (max-width: 700px) {
+  #view-app #add-friend-view { padding: 8px 14px 24px; }
+  #view-app #add-friend-view .add-friend-btn { width: 100%; padding: 10px; }
+  #view-app .ftab-add { margin-left: 0; }
+}

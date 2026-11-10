@@ -68,7 +68,7 @@
 #view-app #developer-panel .dev-id { font-size: 0.74rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; letter-spacing: 0.02em; }
 #view-app #developer-panel .dev-title { font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #view-app #developer-panel .dev-row-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.74rem; color: var(--text-muted); margin-top: 3px; }
-#view-app #developer-panel .dev-row-pills { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+#view-app #developer-panel .dev-row-pills { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; hight: 100%; }
 #view-app #developer-panel .dev-cat { font-size: 0.72rem; color: var(--text-muted); }
 
 /* Status + priority pills (mp-row-status supplies the shape) */

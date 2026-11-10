@@ -95,6 +95,7 @@ test('attachments: only files this server stored; encrypted size comes from the 
 
 // ─── Server: permissions on download ─────────────────────────────
 test('encrypted attachments: sign-in + current access to the room are required on every download', async () => {
+  await require('./helpers').befriend(owner, alice);
   const dm = (await owner.post('/rooms/dm', { target_user_id: alice.id })).body;
   const roomId = dm.room_id || dm.room?.id;
   const bytes = Buffer.from(nacl.randomBytes(300));

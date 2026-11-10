@@ -658,6 +658,7 @@ function initDashboardView() {
     developer: 'developer-panel',
     discover: 'discover-panel',
     notifications: 'notifications-panel',
+    requests: 'requests-panel',
     chat: 'chat-view'
   };
   let activeMainView = null;
@@ -691,6 +692,11 @@ function initDashboardView() {
       showMainView('friends');
       await loadFriendsData();
       renderFriendsList();
+      showMobileDetail();
+    } else if (section === 'requests') {
+      showMainView('requests');
+      await loadMessageRequests();
+      renderMessageRequests();
       showMobileDetail();
     } else if (section === 'wallet') {
       showMainView('wallet');
@@ -1089,6 +1095,11 @@ function initDashboardView() {
           break;
         }
 
+        case 'message_request': handleMessageRequestEvent(msg); break;
+        case 'message_request_sent': handleMessageRequestSentEvent(msg); break;
+        case 'message_request_updated': handleMessageRequestUpdatedEvent(msg); break;
+        case 'key_changed': handleKeyChangedEvent(msg); break;
+
         case 'dm_created': {
           if (!dms.find(d => d.id === msg.room_id)) {
             const other = msg.with_user;
@@ -1109,6 +1120,7 @@ function initDashboardView() {
             api('GET', `/users/${other.id}`).then(u => {
               newDm._status = u?.user?.status || 'offline';
               newDm._avatar = u?.user?.avatar || null;
+              newDm._username = u?.user?.username || other.username || '';
               newDm._profileEffect = !!u?.user?.profile_effect;
               newDm._avatarDecoration = cosmeticId(u?.user?.avatar_decoration);
               renderDMList();
@@ -1437,6 +1449,7 @@ function initDashboardView() {
     const envelopes = {};
     for (const member of members) {
       if (!member.public_key) throw new Error(`Encryption key unavailable for ${member.display_name || member.username || 'a group member'}`);
+      if (member.id !== currentUser.id) enforceKeyPin(member);
       const pub = base64ToUint8Array(member.public_key);
       if (!pub) throw new Error('A recipient has an invalid encryption key');
       const shared = nacl.box.before(pub, myPriv);
@@ -1447,7 +1460,7 @@ function initDashboardView() {
     return envelopes;
   }
 
-  async function unwrapRoomKey(roomId, envelopes, senderId = currentUser.id) {
+  async function _unwrapRoomKeyCurrent(roomId, envelopes, senderId = currentUser.id) {
     const env = getEnvelopeForUser(envelopes, currentUser.id);
     if (!env) return null;
     const myPrivB64 = localStorage.getItem('nyxie_private_key_' + currentUser.id);
@@ -1482,6 +1495,35 @@ function initDashboardView() {
     const wrapNonce = base64ToUint8Array(env.nonce);
     if (!wrapped || !wrapNonce || wrapNonce.length !== 24) return null;
     return nacl.secretbox.open(wrapped, wrapNonce, shared) || null;
+  }
+
+  // Tries the current keys first; only if that fails does it try retired keys
+  // (own keys kept after a rotation, and the sender's earlier public keys), so
+  // messages sent before either side rotated stay readable.
+  async function unwrapRoomKey(roomId, envelopes, senderId = currentUser.id) {
+    const direct = await _unwrapRoomKeyCurrent(roomId, envelopes, senderId);
+    if (direct) return direct;
+    try { return await _unwrapWithHistory(envelopes, senderId); } catch { return null; }
+  }
+  const _senderKeyHistoryCache = new Map();
+  async function _unwrapWithHistory(envelopes, senderId) {
+    const env = getEnvelopeForUser(envelopes, currentUser.id);
+    if (!env) return null;
+    const wrapped = base64ToUint8Array(env.ciphertext), wn = base64ToUint8Array(env.nonce);
+    if (!wrapped || !wn || wn.length !== 24) return null;
+    const mine = [localStorage.getItem('nyxie_private_key_' + currentUser.id), ...myRetiredSecrets()].filter(Boolean);
+    let hist = _senderKeyHistoryCache.get(senderId);
+    if (!hist || Date.now() - hist.at > 300000) {
+      const r = await api('GET', `/keys/${encodeURIComponent(senderId)}`);
+      hist = { at: Date.now(), keys: [r?.public_key, ...(r?.history || []).map(h => h.public_key)].filter(Boolean) };
+      _senderKeyHistoryCache.set(senderId, hist);
+    }
+    for (const priv of mine) for (const pub of hist.keys) {
+      const shared = deriveSharedKey(pub, priv);
+      const k = shared && nacl.secretbox.open(wrapped, wn, shared);
+      if (k) return k;
+    }
+    return null;
   }
 
   async function encryptRoomText(plaintext, roomId) {
@@ -1600,8 +1642,11 @@ function initDashboardView() {
 
         const me = await api('GET', '/auth/me');
         const serverUser = me?.user;
-        if (serverUser && serverUser.public_key !== publicKeyB64) {
+        if (serverUser && !serverUser.public_key) {
           await api('PATCH', '/users/me', { public_key: publicKeyB64 });
+        } else if (serverUser && serverUser.public_key !== publicKeyB64) {
+          // The account's key was rotated on another device: this device's key is now a retired one.
+          await adoptRotatedKey(serverUser, privateKeyB64Local);
         }
         if (serverUser && !serverUser.encrypted_private_key) {
           const password = await consumePendingPassword() ??
@@ -1629,7 +1674,7 @@ function initDashboardView() {
         if (!password) {
           password = await promptForPassword(
             'Unlock your messages',
-            'This device doesn\'t have your encryption key yet. Enter your account password to restore it — your password is never sent to the server.'
+            'This device doesn\'t have your encryption key yet. Enter your account password to restore it. The key backup stored on your account is decrypted on this device.'
           );
           if (!password) return;
         }
@@ -1641,6 +1686,7 @@ function initDashboardView() {
             if (uint8ArrayToBase64(keyPair.publicKey) === serverUser.public_key) {
               localStorage.setItem(privKeyKey, uint8ArrayToBase64(secret));
               localStorage.setItem(pubKeyKey, serverUser.public_key);
+              restoreKeyHistory(serverUser, kek);
               unlocked = true;
               toast('🔓 Encryption key restored');
               break;
@@ -1705,6 +1751,7 @@ function initDashboardView() {
         const udata = await api('GET', `/users/${dm._otherId}`);
         dm._status = udata?.user?.status || 'offline';
         dm._avatar = udata?.user?.avatar || null;
+        dm._username = udata?.user?.username || '';
         dm._profileEffect = !!udata?.user?.profile_effect;
         dm._avatarDecoration = cosmeticId(udata?.user?.avatar_decoration);
         otherPublicKey = udata?.user?.public_key || null;
@@ -1793,6 +1840,7 @@ function initDashboardView() {
   // pill with three animated dots inside it (Discord style) instead of the
   // status icon. Group DMs have no pip, so they only get one while typing.
   const PIP_TYPING_DOTS = '<span class="pip-typing"><i></i><i></i><i></i></span>';
+  function renderDMList() { _renderDMListRaw(); applySidebarFilter(); }
   function dmPipHtml(dm, status, typing) {
     if (dm.is_group && !typing) return '';
     return `<div class="status-pip ${pipClass(status)}${typing ? ' is-typing' : ''}" data-uid-pip="${dm._otherId||''}">${typing ? PIP_TYPING_DOTS : ''}</div>`;
@@ -1815,7 +1863,7 @@ function initDashboardView() {
     }
   }
 
-  function renderDMList() {
+  function _renderDMListRaw() {
     const list = document.getElementById('dm-list');
     if (!dms.length) {
       list.innerHTML = `<div class="dm-empty">No conversations yet</div>`;
@@ -3110,6 +3158,12 @@ function initDashboardView() {
         <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
         Delete
       </button>` : ''}
+      ${!isOwn && currentRoom?.is_dm ? `
+      <div class="mm-divider"></div>
+      <button class="mm-item danger" onclick="closeMoreMenu();reportDmMessage('${escapeJs(msgId)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        Report message
+      </button>` : ''}
     `;
     popup.classList.add('open');
     const btn = event.currentTarget;
@@ -3587,29 +3641,474 @@ function initDashboardView() {
     if (!_profileUserId) return;
     const userId = _profileUserId;
     const text = String(messageText || '').trim();
-    closeUserProfilePopout();
     const existing = dms.find(d => d._otherId === userId);
-    if (existing) {
-      await openRoom(existing.id);
-    } else {
-      const data = await api('GET', `/users/${userId}`);
-      if (!data?.user) { toast('User not found'); return; }
-      const name = data.user.display_name || data.user.username;
-      await startDM(userId, name);
-    }
-    if (text) {
-      const input = document.getElementById('msg-input');
-      if (input) {
-        input.value = text;
-        sendMessage();
+    const isFriend = friends.some(f => f.id === userId);
+    if (existing || isFriend) {
+      // Friends (and anyone you already have a conversation with): unchanged normal DM flow.
+      closeUserProfilePopout();
+      if (existing) await openRoom(existing.id);
+      else {
+        const data = await api('GET', `/users/${userId}`);
+        if (!data?.user) { toast('User not found'); return; }
+        await startDM(userId, data.user.display_name || data.user.username);
       }
+      if (text) {
+        const input = document.getElementById('msg-input');
+        if (input) { input.value = text; sendMessage(); }
+      }
+      return;
     }
+    // Not friends: this is a Message Request, never a DM.
+    if (!text) { toast('Write a message to send as a request'); return; }
+    await sendMessageRequest(userId, text);
   }
   function sendMessageFromProfile() {
     const input = document.getElementById('up-message-input');
-    const text = input?.value.trim();
-    if (!text) { input?.focus(); return; }
+    if (!input || input.disabled) return;
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
     startDMFromProfile(text);
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  KEY PINNING, SAFETY NUMBERS, KEY ROTATION (0.12.0)
+  //  The server hands out public keys, so on its own it could hand out a
+  //  substituted one. Each device therefore remembers the first key it saw for
+  //  a contact ("pin"), refuses to encrypt to a different one until the person
+  //  reviews it, and lets two people compare a safety number out-of-band.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  function _readPins() {
+    try { return JSON.parse(localStorage.getItem('nyxie_key_pins_' + currentUser.id) || '{}') || {}; } catch { return {}; }
+  }
+  function _writePins(p) { try { localStorage.setItem('nyxie_key_pins_' + currentUser.id, JSON.stringify(p)); } catch {} }
+  function keyPinStatus(userId, pub) {
+    const pin = _readPins()[userId];
+    if (!pin) return 'new';
+    return pin.pub === pub ? (pin.verified ? 'verified' : 'match') : 'changed';
+  }
+  function pinKey(userId, pub, verified) {
+    const pins = _readPins();
+    const prev = pins[userId];
+    pins[userId] = { pub, verified: !!verified, first_seen: prev && prev.pub === pub ? prev.first_seen : Date.now() };
+    _writePins(pins);
+  }
+  // Called for every recipient before a key is wrapped for them.
+  function enforceKeyPin(member) {
+    const st = keyPinStatus(member.id, member.public_key);
+    if (st === 'new') { pinKey(member.id, member.public_key, false); return; }
+    if (st !== 'changed') return;
+    const name = member.display_name || member.username || 'A contact';
+    setTimeout(() => openKeyVerification(member.id, { changed: true }), 0);
+    const err = new Error(`${name}'s encryption key has changed. Review it before sending.`);
+    err.code = 'KEY_CHANGED';
+    throw err;
+  }
+  function _clearKeyCaches() { _roomMembersCache.clear(); _sharedKeyCache.clear(); _senderKeyHistoryCache.clear(); }
+
+  // 60-digit safety number (12 groups of 5) over both public keys, the same for both people.
+  function safetyNumber(pubA, pubB) {
+    const a = base64ToUint8Array(pubA), b = base64ToUint8Array(pubB);
+    if (!a || !b) return '';
+    const [x, y] = pubA < pubB ? [a, b] : [b, a];
+    const buf = new Uint8Array(x.length + y.length); buf.set(x, 0); buf.set(y, x.length);
+    const h = nacl.hash(buf);
+    const groups = [];
+    for (let i = 0; i < 12; i++) {
+      const v = ((h[i * 4] << 24) | (h[i * 4 + 1] << 16) | (h[i * 4 + 2] << 8) | h[i * 4 + 3]) >>> 0;
+      groups.push(String(v % 100000).padStart(5, '0'));
+    }
+    return groups.join(' ');
+  }
+
+  async function openKeyVerification(userId, { changed = false } = {}) {
+    document.getElementById('key-verify-modal')?.remove();
+    const data = await api('GET', `/users/${encodeURIComponent(userId)}`);
+    const u = data?.user;
+    const myPub = localStorage.getItem('nyxie_public_key_' + currentUser.id);
+    if (!u?.public_key || !myPub) return toast('Encryption keys are not available for this conversation');
+    const name = u.display_name || u.username;
+    const st = keyPinStatus(userId, u.public_key);
+    const isChanged = changed || st === 'changed';
+    const host = document.getElementById('view-app') || document.body;
+    const overlay = document.createElement('div');
+    overlay.id = 'key-verify-modal';
+    overlay.className = 'kv-overlay';
+    overlay.innerHTML = `
+      <div class="kv-modal" role="dialog" aria-modal="true" aria-label="Verify encryption">
+        <h3>${isChanged ? 'Encryption key changed' : 'Verify encryption'}</h3>
+        <p class="kv-text">${isChanged
+          ? `${escapeHtml(name)}'s encryption key is different from the one this device first saw. They may have rotated their key, or someone may be interfering. Compare the number below with ${escapeHtml(name)} using another channel (in person, a call) before trusting it.`
+          : `To confirm your messages with ${escapeHtml(name)} are private, compare this number with theirs using another channel. If it matches on both devices, nobody in the middle swapped a key.`}</p>
+        <div class="kv-number">${escapeHtml(safetyNumber(myPub, u.public_key))}</div>
+        <p class="kv-status">${st === 'verified' ? 'You marked this contact as verified.' : (isChanged ? 'Not trusted until you confirm.' : 'Not verified yet.')}</p>
+        <div class="kv-actions">
+          <button class="kv-btn" onclick="document.getElementById('key-verify-modal').remove()">Close</button>
+          <button class="kv-btn primary" id="kv-confirm">${isChanged ? 'Trust new key & mark verified' : 'Mark as verified'}</button>
+        </div>
+        <div class="kv-foot"><a href="#" id="kv-rotate">Rotate my own encryption key…</a></div>
+      </div>`;
+    host.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#kv-confirm').onclick = () => {
+      pinKey(userId, u.public_key, true); _clearKeyCaches(); overlay.remove(); toast('Marked as verified');
+    };
+    overlay.querySelector('#kv-rotate').onclick = (e) => { e.preventDefault(); overlay.remove(); rotateMyKey(); };
+  }
+
+  function myRetiredSecrets() {
+    try { return JSON.parse(localStorage.getItem('nyxie_key_history_' + currentUser.id) || '[]') || []; } catch { return []; }
+  }
+  function restoreKeyHistory(serverUser, kek) {
+    try {
+      if (!serverUser.encrypted_key_history || !serverUser.key_history_nonce) return;
+      const raw = nacl.secretbox.open(base64ToUint8Array(serverUser.encrypted_key_history), base64ToUint8Array(serverUser.key_history_nonce), kek);
+      if (raw) localStorage.setItem('nyxie_key_history_' + currentUser.id, nacl.util.encodeUTF8(raw));
+    } catch (e) { console.warn('key history restore failed', e); }
+  }
+  // This device still holds a key that another device has since rotated away.
+  async function adoptRotatedKey(serverUser, oldSecretB64) {
+    if (!serverUser.encrypted_private_key || !serverUser.key_salt || !serverUser.key_nonce) return;
+    const pw = await promptForPassword('Your encryption key was rotated', 'Enter your account password to load your new encryption key on this device. Older messages stay readable.');
+    if (!pw) return;
+    const { kek } = await deriveKEK(pw, serverUser.key_salt);
+    const secret = unwrapPrivateKey(serverUser.encrypted_private_key, serverUser.key_nonce, kek);
+    if (!secret || uint8ArrayToBase64(nacl.box.keyPair.fromSecretKey(secret).publicKey) !== serverUser.public_key) { toast('❌ Incorrect password'); return; }
+    const hist = new Set(myRetiredSecrets()); hist.add(oldSecretB64);
+    localStorage.setItem('nyxie_key_history_' + currentUser.id, JSON.stringify([...hist]));
+    restoreKeyHistory(serverUser, kek);
+    localStorage.setItem('nyxie_private_key_' + currentUser.id, uint8ArrayToBase64(secret));
+    localStorage.setItem('nyxie_public_key_' + currentUser.id, serverUser.public_key);
+    _clearKeyCaches();
+    toast('🔑 New encryption key loaded');
+  }
+
+  async function rotateMyKey() {
+    const pw = await promptForPassword('Rotate your encryption key', 'A new key will protect new messages. Your old key is kept so earlier messages stay readable, and your contacts will be told your key changed. Enter your password to continue.');
+    if (!pw) return;
+    try {
+      const oldSecret = localStorage.getItem('nyxie_private_key_' + currentUser.id);
+      const kp = nacl.box.keyPair();
+      const { kek, saltB64 } = await deriveKEK(pw);
+      const wrapped = wrapPrivateKey(kp.secretKey, kek);
+      const hist = new Set(myRetiredSecrets()); if (oldSecret) hist.add(oldSecret);
+      const histNonce = nacl.randomBytes(24);
+      const histBox = nacl.secretbox(nacl.util.decodeUTF8(JSON.stringify([...hist])), histNonce, kek);
+      const res = await api('POST', '/keys/rotate', {
+        new_public_key: uint8ArrayToBase64(kp.publicKey),
+        encrypted_private_key: wrapped.encrypted_private_key, key_salt: saltB64, key_nonce: wrapped.key_nonce,
+        encrypted_key_history: uint8ArrayToBase64(histBox), key_history_nonce: uint8ArrayToBase64(histNonce),
+        current_password: pw
+      });
+      if (!res || res.error) return toast(res?.error || 'Key rotation failed');
+      localStorage.setItem('nyxie_key_history_' + currentUser.id, JSON.stringify([...hist]));
+      localStorage.setItem('nyxie_private_key_' + currentUser.id, uint8ArrayToBase64(kp.secretKey));
+      localStorage.setItem('nyxie_public_key_' + currentUser.id, uint8ArrayToBase64(kp.publicKey));
+      _clearKeyCaches();
+      toast('🔑 Encryption key rotated');
+    } catch (e) { console.error(e); toast('Key rotation failed'); }
+  }
+
+  async function handleKeyChangedEvent(msg) {
+    _clearKeyCaches();
+    if (!msg.user_id || msg.user_id === currentUser.id) return;
+    const data = await api('GET', `/users/${encodeURIComponent(msg.user_id)}`);
+    const u = data?.user;
+    if (u?.public_key && keyPinStatus(msg.user_id, u.public_key) === 'changed') {
+      toast(`🔐 ${u.display_name || u.username}'s encryption key changed — verify it before sending`);
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  MESSAGE REQUESTS (0.12.0)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  let msgRequests = { incoming: [], ignored: [], outgoing: [], pending: 0 };
+  let _requestsTab = 'incoming';
+  let _requestSending = false;
+
+  function updateRequestsBadge() {
+    const badge = document.getElementById('nav-requests-badge');
+    if (!badge) return;
+    badge.style.display = msgRequests.pending > 0 ? 'inline' : 'none';
+    badge.textContent = msgRequests.pending > 99 ? '99+' : String(msgRequests.pending);
+  }
+
+  // Decrypts a request's initial message locally. The server only ever holds ciphertext.
+  function decryptMessageRequest(r) {
+    try {
+      const env = r.key_envelopes && r.key_envelopes[currentUser.id];
+      const myPriv = localStorage.getItem('nyxie_private_key_' + currentUser.id);
+      if (!env || !r.ciphertext || !myPriv) return null;
+      const otherPub = r.direction === 'incoming' ? r.sender_public_key : localStorage.getItem('nyxie_public_key_' + currentUser.id);
+      const shared = deriveSharedKey(otherPub, myPriv);
+      if (!shared) return null;
+      const key = nacl.secretbox.open(base64ToUint8Array(env.ciphertext), base64ToUint8Array(env.nonce), shared);
+      if (!key) return null;
+      const pt = nacl.secretbox.open(base64ToUint8Array(r.ciphertext), base64ToUint8Array(r.nonce), key);
+      return pt ? nacl.util.encodeUTF8(pt) : null;
+    } catch { return null; }
+  }
+  function _prepRequest(r) {
+    r._text = decryptMessageRequest(r);
+    if (r.direction === 'incoming' && r.sender) r._keyStatus = keyPinStatus(r.sender.id, r.sender_public_key);
+    return r;
+  }
+
+  async function loadMessageRequests() {
+    const [inc, out] = await Promise.all([api('GET', '/message-requests?box=incoming'), api('GET', '/message-requests?box=outgoing')]);
+    msgRequests.incoming = (inc?.requests || []).map(_prepRequest);
+    msgRequests.outgoing = (out?.requests || []).map(_prepRequest);
+    msgRequests.pending = inc?.pending_count ?? msgRequests.incoming.length;
+    updateRequestsBadge();
+    if (document.getElementById('requests-panel')?.style.display === 'flex') renderMessageRequests();
+  }
+  async function loadIgnoredRequests() {
+    const res = await api('GET', '/message-requests?box=ignored');
+    msgRequests.ignored = (res?.requests || []).map(_prepRequest);
+  }
+
+  async function switchRequestsTab(tab) {
+    _requestsTab = tab;
+    if (tab === 'ignored') await loadIgnoredRequests();
+    renderMessageRequests();
+  }
+
+  function renderMessageRequests() {
+    const el = document.getElementById('requests-list');
+    if (!el) return;
+    document.querySelectorAll('#requests-panel .ftab').forEach(b => b.classList.toggle('active', b.id === 'rtab-' + _requestsTab));
+    const countEl = document.getElementById('rtab-incoming-count');
+    if (countEl) countEl.textContent = msgRequests.pending ? `(${msgRequests.pending})` : '';
+    const list = msgRequests[_requestsTab] || [];
+    if (!list.length) {
+      const msg = { incoming: 'No message requests', ignored: 'No ignored requests', outgoing: 'You have no requests waiting' }[_requestsTab];
+      const sub = _requestsTab === 'incoming' ? 'When someone who isn\u2019t your friend messages you, it shows up here first. Nothing reaches your conversations until you accept.' : '';
+      el.innerHTML = `<div class="friends-empty">${msg}${sub ? `<div class="req-empty-sub">${sub}</div>` : ''}</div>`;
+      return;
+    }
+    el.innerHTML = list.map(r => {
+      const outgoing = r.direction === 'outgoing';
+      const p = outgoing ? r.recipient : r.sender;
+      if (!p) return '';
+      const name = p.display_name || p.username;
+      const avatar = p.avatar ? `<img src="${versionedMediaUrl(p.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(p.id);
+      const mutual = outgoing ? '' : (r.mutual_servers?.length
+        ? `<div class="req-meta">Mutual servers: ${r.mutual_servers.map(s => escapeHtml(s.name)).join(', ')}</div>`
+        : `<div class="req-meta">No mutual servers</div>`);
+      const preview = r._text == null
+        ? `<div class="req-preview req-locked">This message could not be decrypted on this device.</div>`
+        : `<div class="req-preview">${escapeHtml(r._text.length > 280 ? r._text.slice(0, 280) + '…' : r._text)}</div>`;
+      const keyNote = r._keyStatus === 'changed' ? `<div class="req-warn">This sender's encryption key differs from the one this device first saw. Verify before accepting.</div>` : '';
+      const status = outgoing ? 'Waiting for a reply' : (_requestsTab === 'ignored' ? 'Ignored' : 'Pending');
+      const actions = outgoing
+        ? `<button class="req-btn" onclick="cancelMessageRequest('${r.id}')">Cancel request</button>`
+        : `<button class="req-btn primary" onclick="acceptMessageRequest('${r.id}')">Accept</button>
+           ${_requestsTab === 'ignored' ? '' : `<button class="req-btn" onclick="ignoreMessageRequest('${r.id}')">Ignore</button>`}
+           <button class="req-btn danger" data-deny="${r.id}" onclick="denyMessageRequest('${r.id}', this)">Deny</button>`;
+      return `<div class="req-card" data-request-id="${r.id}">
+        <div class="req-head">
+          <div class="fr-avatar" style="background:${hashColor(name)}">${avatar}</div>
+          <div class="req-who">
+            <div class="fr-name">${escapeHtml(name)}</div>
+            <div class="fr-sub">@${escapeHtml(p.username)} · ${status}</div>
+            ${mutual}
+          </div>
+        </div>
+        ${preview}${keyNote}
+        <div class="req-actions">${actions}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function _dropRequest(id) {
+    for (const k of ['incoming', 'ignored', 'outgoing']) msgRequests[k] = msgRequests[k].filter(r => r.id !== id);
+  }
+  async function acceptMessageRequest(id) {
+    const r = [...msgRequests.incoming, ...msgRequests.ignored].find(x => x.id === id);
+    if (r?.sender && r.sender_public_key && keyPinStatus(r.sender.id, r.sender_public_key) === 'new') pinKey(r.sender.id, r.sender_public_key, false);
+    const res = await api('POST', `/message-requests/${encodeURIComponent(id)}/accept`);
+    if (!res || res.error) return toast(res?.error || 'Could not accept the request');
+    _dropRequest(id);
+    if (msgRequests.pending > 0 && r && !r._wasIgnored) msgRequests.pending = Math.max(0, msgRequests.incoming.length);
+    updateRequestsBadge();
+    await loadDMs();
+    await openRoom(res.room_id);
+  }
+  async function ignoreMessageRequest(id) {
+    const res = await api('POST', `/message-requests/${encodeURIComponent(id)}/ignore`);
+    if (!res || res.error) return toast(res?.error || 'Could not ignore the request');
+    _dropRequest(id);
+    msgRequests.pending = msgRequests.incoming.length;
+    updateRequestsBadge(); renderMessageRequests();
+  }
+  // Deny is permanent and the sender is blocked from re-sending for a while, so it
+  // takes two clicks (inline — no browser confirm popup).
+  async function denyMessageRequest(id, btn) {
+    if (btn && btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1'; btn.textContent = 'Confirm deny';
+      setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = 'Deny'; } }, 3500);
+      return;
+    }
+    const res = await api('POST', `/message-requests/${encodeURIComponent(id)}/deny`);
+    if (!res || res.error) return toast(res?.error || 'Could not deny the request');
+    _dropRequest(id);
+    msgRequests.pending = msgRequests.incoming.length;
+    updateRequestsBadge(); renderMessageRequests();
+  }
+  async function cancelMessageRequest(id) {
+    const res = await api('DELETE', `/message-requests/${encodeURIComponent(id)}`);
+    if (!res || res.error) return toast(res?.error || 'Could not cancel the request');
+    _dropRequest(id); renderMessageRequests(); refreshOpenProfileMessageBox();
+  }
+
+  // Encrypts the one initial message on THIS device for the recipient (and for
+  // me, so I can see what I sent) and submits it. No room is created.
+  async function sendMessageRequest(userId, text) {
+    if (_requestSending) return;
+    if (msgRequests.outgoing.some(r => r.recipient?.id === userId)) { toast('You already have a message request waiting for this person'); return; }
+    _requestSending = true;
+    const input = document.getElementById('up-message-input');
+    if (input) input.disabled = true;
+    try {
+      if (typeof nacl === 'undefined' || !nacl.box) throw new Error('Encryption is unavailable on this device');
+      const data = await api('GET', `/users/${encodeURIComponent(userId)}`);
+      const u = data?.user;
+      if (!u) throw new Error('User not found');
+      if (!u.public_key) throw new Error(`${u.display_name || u.username} has not set up encryption yet`);
+      const myPriv = localStorage.getItem('nyxie_private_key_' + currentUser.id);
+      const myPub = localStorage.getItem('nyxie_public_key_' + currentUser.id);
+      if (!myPriv || !myPub) throw new Error('Your encryption key is unavailable on this device');
+      enforceKeyPin({ id: u.id, public_key: u.public_key, display_name: u.display_name, username: u.username });
+      const key = nacl.randomBytes(32), nonce = nacl.randomBytes(24);
+      const ct = nacl.secretbox(nacl.util.decodeUTF8(text), nonce, key);
+      const envelopes = {};
+      for (const [id, pub] of [[currentUser.id, myPub], [u.id, u.public_key]]) {
+        const n = nacl.randomBytes(24);
+        envelopes[id] = { ciphertext: uint8ArrayToBase64(nacl.secretbox(key, n, deriveSharedKey(pub, myPriv))), nonce: uint8ArrayToBase64(n) };
+      }
+      const res = await api('POST', '/message-requests', {
+        recipient_id: u.id, ciphertext: uint8ArrayToBase64(ct), nonce: uint8ArrayToBase64(nonce), key_envelopes: envelopes,
+        sender_public_key: myPub, recipient_public_key: u.public_key
+      });
+      if (res?.code === 'ALREADY_FRIENDS' || res?.code === 'DM_EXISTS') {
+        toast(res.error); closeUserProfilePopout();
+        if (res.room_id) { await loadDMs(); await openRoom(res.room_id); }
+        return;
+      }
+      if (!res || res.error) throw new Error(res?.error || 'Could not send the request');
+      if (!msgRequests.outgoing.some(r => r.id === res.request.id)) msgRequests.outgoing.unshift(_prepRequest(res.request));
+      if (input) input.value = '';
+      closeUserProfilePopout();
+      toast(`Message request sent to ${u.display_name || u.username}. They'll see it once they accept.`);
+    } catch (e) {
+      if (e.code !== 'KEY_CHANGED') toast(e.message || 'Could not send the request');
+    } finally {
+      _requestSending = false;
+      if (input && input.isConnected) input.disabled = false;
+    }
+  }
+
+  // The composer in a profile popout: a message to a non-friend is labelled as a request.
+  function applyProfileMessageMode(user, isFriend) {
+    const input = document.getElementById('up-message-input');
+    const hint = document.getElementById('up-message-hint');
+    if (!input) return;
+    const name = user.display_name || user.username;
+    const hasDm = dms.some(d => d._otherId === user.id);
+    const waiting = msgRequests.outgoing.some(r => r.recipient?.id === user.id);
+    input.disabled = false;
+    if (isFriend || hasDm) { input.placeholder = `Message @${user.username}`; if (hint) hint.style.display = 'none'; return; }
+    if (waiting) {
+      input.disabled = true; input.value = '';
+      input.placeholder = 'Message request sent';
+      if (hint) { hint.textContent = `Waiting for ${name} to respond.`; hint.style.display = 'block'; }
+      return;
+    }
+    input.placeholder = `Send a message request to @${user.username}`;
+    if (hint) { hint.textContent = `You aren't friends, so this is sent as a message request. ${name} chooses whether to accept it.`; hint.style.display = 'block'; }
+  }
+  function refreshOpenProfileMessageBox() {
+    if (!_profileUserId || document.getElementById('user-profile-popout')?.style.display === 'none') return;
+    const dm = dms.find(d => d._otherId === _profileUserId);
+    applyProfileMessageMode({ id: _profileUserId, username: '', display_name: '' , ...(dm ? { username: dm._username || '' } : {}) }, friends.some(f => f.id === _profileUserId));
+  }
+
+  function handleMessageRequestEvent(msg) {
+    const r = msg.request;
+    if (!r || msgRequests.incoming.some(x => x.id === r.id)) return;
+    msgRequests.incoming.unshift(_prepRequest(r));
+    msgRequests.pending = msg.pending_count ?? msgRequests.incoming.length;
+    updateRequestsBadge();
+    if (document.getElementById('requests-panel')?.style.display === 'flex') renderMessageRequests();
+    // Deliberately a quiet toast with no sender text, and no DM sound or unread badge:
+    // a request is not a conversation.
+    toast('New message request');
+  }
+  function handleMessageRequestSentEvent(msg) {
+    const r = msg.request;
+    if (r && !msgRequests.outgoing.some(x => x.id === r.id)) { msgRequests.outgoing.unshift(_prepRequest(r)); }
+  }
+  function handleMessageRequestUpdatedEvent(msg) {
+    const prev = [...msgRequests.outgoing, ...msgRequests.incoming, ...msgRequests.ignored].find(x => x.id === msg.request_id);
+    if (msg.status === 'ignored') {
+      // my own other session ignored it
+      msgRequests.incoming = msgRequests.incoming.filter(x => x.id !== msg.request_id);
+      if (_requestsTab === 'ignored') loadIgnoredRequests().then(renderMessageRequests);
+    } else {
+      _dropRequest(msg.request_id);
+    }
+    if (typeof msg.pending_count === 'number') msgRequests.pending = msg.pending_count;
+    else msgRequests.pending = msgRequests.incoming.length;
+    updateRequestsBadge();
+    if (prev && prev.direction === 'outgoing') {
+      const who = prev.recipient?.display_name || prev.recipient?.username || 'They';
+      if (msg.status === 'accepted') toast(`${who} accepted your message request`);
+      else if (msg.status === 'declined') toast('Your message request was declined');
+    }
+    if (document.getElementById('requests-panel')?.style.display === 'flex') renderMessageRequests();
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //  REPORTING A PRIVATE MESSAGE — only ever by the reader's own deliberate action
+  //  The server cannot read the message; the reporter decrypts it on their own
+  //  device, sees exactly what will be sent, and chooses whether to send it.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  async function reportDmMessage(msgId) {
+    const m = window._messagesById.get(msgId);
+    const text = String(m?.content || '').trim();   // already decrypted on this device
+    if (!text) return toast('Only text messages can be reported from here');
+    const senderName = m.display_name || m.username || 'unknown';
+    document.getElementById('report-msg-modal')?.remove();
+    const host = document.getElementById('view-app') || document.body;
+    const overlay = document.createElement('div');
+    overlay.id = 'report-msg-modal'; overlay.className = 'kv-overlay';
+    overlay.innerHTML = `
+      <div class="kv-modal" role="dialog" aria-modal="true" aria-label="Report message">
+        <h3>Report this message</h3>
+        <p class="kv-text">This conversation is end-to-end encrypted, so Nyxie staff cannot see it. Reporting sends <b>only what is shown below</b> to the Nyxie team, decrypted on your device. Nothing else from this conversation is shared.</p>
+        <div class="req-preview" id="rm-preview"></div>
+        <p class="kv-status">From: ${escapeHtml(senderName)}</p>
+        <label class="kv-text" for="rm-reason">What is wrong with it? (required)</label>
+        <textarea id="rm-reason" class="rm-reason" maxlength="500" rows="3"></textarea>
+        <div class="kv-actions">
+          <button class="kv-btn" id="rm-cancel">Cancel</button>
+          <button class="kv-btn primary" id="rm-send">Send this report</button>
+        </div>
+      </div>`;
+    host.appendChild(overlay);
+    overlay.querySelector('#rm-preview').textContent = text.slice(0, 1500);
+    overlay.querySelector('#rm-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#rm-send').onclick = async () => {
+      const reason = overlay.querySelector('#rm-reason').value.trim();
+      if (reason.length < 5) return toast('Please say what is wrong (at least 5 characters)');
+      const res = await api('POST', '/reports', {
+        category: 'GENERAL', title: 'Reported message',
+        description: `Reason: ${reason}\n\nMessage content submitted by the reporter (from ${senderName}, sent ${new Date().toISOString().slice(0, 10)}):\n${text.slice(0, 1500)}`
+      });
+      if (!res || res.error) return toast(res?.error || 'Could not send the report');
+      overlay.remove(); toast('Report sent. Only the content you reviewed was shared.');
+    };
   }
 
   // ─── USER SETTINGS POPOUT ───────────────────────────────
@@ -3802,6 +4301,7 @@ function initDashboardView() {
       friendRequests = { incoming: rRes?.incoming || [], outgoing: rRes?.outgoing || [] };
     } catch (_) {}
     const isFriend = friends.some(f => f.id === user.id);
+    applyProfileMessageMode(user, isFriend);
     const hasOutgoing = friendRequests.outgoing.some(r => r.to_id === user.id);
     const hasIncoming = friendRequests.incoming.some(r => r.from_id === user.id);
     friendBtn.disabled = false;
@@ -4032,32 +4532,37 @@ function initDashboardView() {
     renderDMList();
     toast('Conversation removed');
   }
-  function showNewDmModal() {
+  async function showNewDmModal() {
     document.getElementById('new-dm-modal').style.display = 'flex';
-    setTimeout(() => document.getElementById('dm-search-input').focus(), 50);
-    document.getElementById('dm-search-input').value = '';
+    const input = document.getElementById('dm-search-input');
+    input.value = '';
     document.getElementById('dm-search-results').innerHTML = '';
+    setTimeout(() => input.focus(), 50);
+    if (!friends.length) { try { await loadFriendsData(); } catch (_) {} }
+    searchUsers('');
   }
-  async function searchUsers(q) {
-    clearTimeout(_searchTimer);
+  // Lists YOUR FRIENDS (filtered locally; no user search request). A new
+  // one-to-one conversation can only start with a friend — anyone else needs
+  // a friend request or a message request.
+  function searchUsers(q) {
     const results = document.getElementById('dm-search-results');
-    if (q.length < 2) { results.innerHTML = ''; return; }
-    _searchTimer = setTimeout(async () => {
-      const res = await api('GET', `/users/search?q=${encodeURIComponent(q)}`);
-      if (!res?.users?.length) { results.innerHTML = `<div style="color:var(--text-muted);padding:10px;font-size:.85rem;text-align:center">No users found</div>`; return; }
-      results.innerHTML = res.users.map(u => {
-        const name = u.display_name || u.username;
-        const letter = name[0].toUpperCase();
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(u.id);
-        return `<div class="search-result-item" onclick="startDM('${u.id}','${escapeJs(name)}')">
-          <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
-          <div>
-            <div style="font-size:.88rem;font-weight:600">${escapeHtml(name)}</div>
-            <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
-          </div>
-        </div>`;
-      }).join('');
-    }, 280);
+    const lq = String(q || '').trim().toLowerCase().replace(/^@/, '');
+    const list = friends.filter(f => !lq || (f.display_name || '').toLowerCase().includes(lq) || (f.username || '').toLowerCase().includes(lq));
+    if (!list.length) {
+      results.innerHTML = `<div style="color:var(--text-muted);padding:10px;font-size:.85rem;text-align:center">${friends.length ? 'No friends match' : 'You have no friends yet'}</div>`;
+      return;
+    }
+    results.innerHTML = list.map(u => {
+      const name = u.display_name || u.username;
+      const avatarHtml = u.avatar ? `<img src="${versionedMediaUrl(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(u.id);
+      return `<div class="search-result-item" onclick="startDM('${u.id}','${escapeJs(name)}')">
+        <div class="mini-avatar" style="background:${hashColor(name)}">${avatarHtml}</div>
+        <div>
+          <div style="font-size:.88rem;font-weight:600">${escapeHtml(name)}</div>
+          <div style="font-size:.75rem;color:var(--text-muted)">@${escapeHtml(u.username)}</div>
+        </div>
+      </div>`;
+    }).join('');
   }
   async function startDM(targetUserId, targetName) {
     const res = await api('POST', '/rooms/dm', { target_user_id: targetUserId });
@@ -4093,9 +4598,34 @@ function initDashboardView() {
     currentFriendsTab = tab;
     document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
     document.getElementById('ftab-' + tab)?.classList.add('active');
+    const addView = document.getElementById('add-friend-view');
+    const listEl = document.getElementById('friends-list');
+    if (addView) addView.style.display = tab === 'add' ? 'block' : 'none';
+    if (listEl) listEl.style.display = tab === 'add' ? 'none' : '';
+    if (tab === 'add') { setTimeout(() => document.getElementById('add-friend-input')?.focus(), 30); return; }
     renderFriendsList();
   }
+  async function openAddFriend() {
+    await navigateTo('friends');
+    switchFriendsTab('add');
+  }
+  function focusAddFriend() { switchFriendsTab('add'); }
+  function updateFriendNoteCount() {
+    const ta = document.getElementById('add-friend-note');
+    const c = document.getElementById('add-friend-note-count');
+    if (ta && c) { c.textContent = `${[...ta.value].length}/120`; }
+  }
+  function setAddFriendStatus(kind, text) {
+    const el = document.getElementById('add-friend-status');
+    if (!el) return;
+    el.className = 'af-status' + (kind ? ' ' + kind : '');
+    el.textContent = text || '';
+    el.style.display = text ? 'block' : 'none';
+  }
+  function goDiscoverServers() { if (typeof showDiscoverView === 'function') showDiscoverView(); }
+  let _friendSending = false;
   function renderFriendsList() {
+    if (currentFriendsTab === 'add') return;   // the Add Friend view has its own content
     const el = document.getElementById('friends-list');
     const { incoming, outgoing } = friendRequests;
     const pendingTab = document.getElementById('ftab-pending');
@@ -4122,7 +4652,7 @@ function initDashboardView() {
             </div>
             <div class="fr-info">
               <div class="fr-name">${escapeHtml(name)}</div>
-              <div class="fr-sub">@${escapeHtml(r.from_username)} · Incoming</div>
+              <div class="fr-sub">@${escapeHtml(r.from_username)} · Incoming${r.message ? ' · “' + escapeHtml(r.message) + '”' : ''}</div>
             </div>
             <div class="fr-actions">
               <button class="fr-btn accept" onclick="acceptFriendRequest('${r.id}','${escapeJs(name)}')">
@@ -4210,14 +4740,26 @@ function initDashboardView() {
     }).join('');
   }
   async function sendFriendRequest() {
+    if (_friendSending) return;
     const input = document.getElementById('add-friend-input');
-    const q = input.value.trim();
-    if (q.length < 2) return toast('Enter a username to search');
-    const res = await api('GET', `/users/search?q=${encodeURIComponent(q)}`);
-    if (!res?.users?.length) return toast('User not found');
-    const u = res.users[0];
-    if (u.id === currentUser.id) return toast("That's you!");
-    await sendFriendRequestTo(u.id, u.display_name || u.username);
+    const note = document.getElementById('add-friend-note');
+    const btn = document.getElementById('add-friend-send');
+    const uname = input.value.trim().replace(/^@/, '');
+    if (!uname) { setAddFriendStatus('error', 'Enter a username.'); return; }
+    if (uname.toLowerCase() === (currentUser.username || '').toLowerCase()) { setAddFriendStatus('error', 'You cannot send a friend request to yourself.'); return; }
+    if ([...note.value].length > 120) { setAddFriendStatus('error', 'Personal messages are limited to 120 characters.'); return; }
+    _friendSending = true; btn.disabled = true;
+    try {
+      const res = await api('POST', '/friends/request', { username: uname, message: note.value.trim() || undefined });
+      if (res?.error) {
+        const pending = res.code === 'REQUEST_PENDING' || res.code === 'ALREADY_FRIENDS';
+        setAddFriendStatus(pending ? 'pending' : 'error', res.code === 'USER_NOT_FOUND' ? `No user named "${uname}". Check the spelling.` : res.error);
+        return;
+      }
+      input.value = ''; note.value = ''; updateFriendNoteCount();
+      setAddFriendStatus('success', res.auto_accepted ? `You and ${uname} are now friends!` : `Friend request sent to ${res.to?.display_name || uname}.`);
+      await loadFriendsData();
+    } finally { _friendSending = false; btn.disabled = false; }
   }
   async function sendFriendRequestTo(userId, displayName) {
     const res = await api('POST', '/friends/request', { to_id: userId });
@@ -4229,10 +4771,6 @@ function initDashboardView() {
       else await startDM(userId, displayName);
     } else {
       toast(`Friend request sent to ${displayName}`);
-      const friendInput = document.getElementById('add-friend-input');
-      const friendResults = document.getElementById('add-friend-results');
-      if (friendInput) friendInput.value = '';
-      if (friendResults) friendResults.innerHTML = '';
       await loadFriendsData();
       if (document.getElementById('friends-panel').style.display === 'flex') renderFriendsList();
     }
@@ -4331,12 +4869,30 @@ function initDashboardView() {
     renderDMList();
     toast(`${ids.length} conversation${ids.length>1?'s':''} removed`);
   }
+  // #search-inner / #search-input: filters ONLY the conversations already in
+  // the list (by display name, @username or group name), in memory — no API
+  // request, never shows arbitrary users, never creates a conversation.
+  let _sidebarQuery = '';
   function filterSidebar(q) {
-    const lq = q.toLowerCase();
-    document.querySelectorAll('.dm-item').forEach(el => {
-      const name = el.querySelector('.dm-name')?.textContent?.toLowerCase() || '';
-      el.style.display = name.includes(lq) ? '' : 'none';
+    _sidebarQuery = String(q || '').trim().toLowerCase().replace(/^@/, '');
+    applySidebarFilter();
+  }
+  function applySidebarFilter() {
+    const list = document.getElementById('dm-list');
+    if (!list) return;
+    const q = _sidebarQuery;
+    let shown = 0;
+    list.querySelectorAll('.dm-item').forEach(el => {
+      const dm = dms.find(d => d.id === el.dataset.roomId);
+      const hay = [dm?.display_name, dm?.name, dm?._username, el.querySelector('.dm-name')?.textContent].filter(Boolean).join(' ').toLowerCase();
+      const match = !q || hay.includes(q);
+      el.style.display = match ? '' : 'none';
+      if (match) shown++;
     });
+    let empty = list.querySelector('.dm-filter-empty');
+    if (q && !shown && dms.length) {
+      if (!empty) { empty = document.createElement('div'); empty.className = 'dm-empty dm-filter-empty'; empty.textContent = 'No matching conversations'; list.appendChild(empty); }
+    } else if (empty) empty.remove();
   }
   // NOTE: the real startCall() lives in voice.js's initVoiceFeatures()
   // (window.startCall = async function... — actual WebRTC call logic).
@@ -4383,11 +4939,12 @@ function initDashboardView() {
       document.getElementById('nav-admin').style.display = currentUser.role === 'ADMIN' ? 'flex' : 'none';
       // Same idea for the Developer workspace (DEVELOPER role or ADMIN).
       document.getElementById('nav-developer').style.display = (currentUser.role === 'DEVELOPER' || currentUser.role === 'ADMIN') ? 'flex' : 'none';
-      try { await ensureE2EEKeys(); } catch (e) { console.error('E2EE key setup failed:', e); toast('⚠️ Encryption setup failed — messages will send unencrypted'); }
+      try { await ensureE2EEKeys(); } catch (e) { console.error('E2EE key setup failed:', e); toast('⚠️ Encryption setup failed — private messages cannot be sent until it works'); }
       connectWS();
       if (typeof initVoiceFeatures === 'function') { try { initVoiceFeatures(); } catch (e) { console.error('Voice feature init failed:', e); } }
       await loadDMs();
       await loadFriendsData();
+      try { await loadMessageRequests(); } catch (e) { console.warn('message requests load failed', e); }
       await loadServers();
       // Set by router.js's '/wallets' or '/app/rooms/:roomId' route
       // before calling initDashboardView() — lets a direct navigation,
@@ -4539,6 +5096,18 @@ function initDashboardView() {
   window.searchUsers = searchUsers;
   window.startDM = startDM;
   window.switchFriendsTab = switchFriendsTab;
+  window.openAddFriend = openAddFriend;
+  window.focusAddFriend = focusAddFriend;
+  window.updateFriendNoteCount = updateFriendNoteCount;
+  window.goDiscoverServers = goDiscoverServers;
+  window.switchRequestsTab = switchRequestsTab;
+  window.acceptMessageRequest = acceptMessageRequest;
+  window.ignoreMessageRequest = ignoreMessageRequest;
+  window.denyMessageRequest = denyMessageRequest;
+  window.cancelMessageRequest = cancelMessageRequest;
+  window.openKeyVerification = openKeyVerification;
+  window.rotateMyKey = rotateMyKey;
+  window.reportDmMessage = reportDmMessage;
   // Used by the Refresh button's inline onclick in index.html.
   window.loadFriendsData = loadFriendsData;
   window.renderFriendsList = renderFriendsList;

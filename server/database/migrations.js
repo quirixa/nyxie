@@ -135,6 +135,20 @@ const MIGRATIONS = [
       run(`UPDATE users SET role = 'USER'
            WHERE role = 'DEVELOPER' AND id NOT IN (SELECT user_id FROM user_badges WHERE badge_id = 'developer')`);
     }
+  },
+  {
+    id: '0.12.0-seed-key-history',
+    // Record every account's CURRENT public key as its first key_history
+    // entry so key-change detection and rotation have a starting point.
+    // Public keys only; nothing is removed or changed. INSERT OR IGNORE +
+    // UNIQUE(user_id, public_key) make a re-run harmless.
+    up({ all, run }) {
+      const crypto = require('crypto');
+      for (const u of all(`SELECT id, public_key, created_at FROM users WHERE public_key IS NOT NULL AND public_key != ''`)) {
+        run('INSERT OR IGNORE INTO key_history (id, user_id, public_key, created_at, reason) VALUES (?, ?, ?, ?, ?)',
+          [crypto.randomUUID(), u.id, u.public_key, u.created_at || Date.now(), 'initial']);
+      }
+    }
   }
 ];
 

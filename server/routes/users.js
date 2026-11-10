@@ -289,6 +289,23 @@ router.patch('/me', requireAuth, async (req, res) => {
     if (typeof public_key !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(public_key)) {
       return res.status(400).json({ error: 'Invalid public key format' });
     }
+    // A public key is 32 raw bytes. Anything else can never work as an E2EE
+    // key and would only break the sender's encryption for this user.
+    if (Buffer.from(public_key, 'base64').length !== 32) {
+      return res.status(400).json({ error: 'Invalid public key length' });
+    }
+    // 0.12.0: the first key is set freely; CHANGING an existing key is only
+    // possible through POST /api/keys/rotate (password-confirmed, recorded in
+    // the key history so contacts are warned). This stops a stolen session
+    // token from quietly swapping someone's key.
+    const existingKey = get(db, 'SELECT public_key FROM users WHERE id = ?', [userId]);
+    if (existingKey && existingKey.public_key && existingKey.public_key !== public_key) {
+      return res.status(409).json({ error: 'Your encryption key can only be changed with key rotation', code: 'KEY_CHANGE_USE_ROTATE' });
+    }
+    if (!existingKey || !existingKey.public_key) {
+      run(db, 'INSERT OR IGNORE INTO key_history (id, user_id, public_key, created_at, reason) VALUES (?, ?, ?, ?, ?)',
+        [require('crypto').randomUUID(), userId, public_key, Date.now(), 'initial']);
+    }
     updates.push('public_key = ?');
     params.push(public_key);
   }
@@ -444,6 +461,9 @@ router.delete('/me', requireAuth, async (req, res) => {
   run(db, 'DELETE FROM friends WHERE user_a = ? OR user_b = ?', [userId, userId]);
   run(db, 'DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?', [userId, userId]);
   run(db, 'DELETE FROM user_badges WHERE user_id = ?', [userId]);
+  // 0.12.0: pending message requests (their encrypted payloads) and the key history go with the account
+  run(db, 'DELETE FROM message_requests WHERE sender_id = ? OR recipient_id = ?', [userId, userId]);
+  run(db, 'DELETE FROM key_history WHERE user_id = ?', [userId]);
 
   // Finally delete the user
   run(db, 'DELETE FROM users WHERE id = ?', [userId]);

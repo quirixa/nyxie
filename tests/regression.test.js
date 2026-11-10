@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { startServer, registerUser, openWs, client } = require('./helpers');
+const { startServer, registerUser, openWs, client, befriend, encryptFor } = require('./helpers');
 const ROOT = path.join(__dirname, '..');
 
 test('startup refuses a missing/weak JWT_SECRET', async () => {
@@ -26,13 +26,14 @@ test('auth, DMs, live messaging, servers listing and static app still work', asy
     assert.equal((await fetch(s.base + '/api/auth/me', { headers: { Authorization: 'Bearer ' + a.token } })).status, 200);
     assert.equal((await client(s.base).get('/servers')).status, 401);
     // DM + live message over WS
+    await befriend(a, b);
     const dmRes = (await a.post('/rooms/dm', { target_user_id: b.id })).body;
     const dm = { id: dmRes.room_id || (dmRes.room && dmRes.room.id) };
     assert.ok(dm.id, JSON.stringify(dmRes));
     const wsB = await openWs(s.base, b.token);
     wsB.send({ type: 'join_room', room_id: dm.id });
     await wsB.waitFor(m => m.type === 'joined_room');
-    const sent = await a.post(`/rooms/${dm.id}/messages`, { content: 'hello bob' });
+    const sent = await a.post(`/rooms/${dm.id}/messages`, await encryptFor(a, [b], 'hello bob'));
     assert.equal(sent.status, 201);
     await wsB.waitFor(m => m.type === 'new_message' && m.message.room_id === dm.id);
     assert.equal((await b.get(`/rooms/${dm.id}/messages`)).body.messages.length, 1);

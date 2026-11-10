@@ -130,6 +130,7 @@ test.before(async () => {
     assert.equal((await U.uirep.post('/reports', { title, description: 'It does not work the way I expect it to.', category })).status, 201);
   }
   // A DM for the developer and for the admin, and a server (with its default channel) the developer owns.
+  await require('./helpers').befriend(U.uidev, U.uiuser); await require('./helpers').befriend(U.uiadmin, U.uiuser);
   DM.dev = (await U.uidev.post('/rooms/dm', { target_user_id: U.uiuser.id })).body.room_id;
   DM.admin = (await U.uiadmin.post('/rooms/dm', { target_user_id: U.uiuser.id })).body.room_id;
   const sv = await U.uidev.post('/servers', { name: 'Nav Server' });

@@ -164,6 +164,8 @@ router.post('/login', async (req, res) => {
         encrypted_private_key: user.encrypted_private_key || null,
         key_salt: user.key_salt || null,
         key_nonce: user.key_nonce || null,
+        encrypted_key_history: user.encrypted_key_history || null,
+        key_history_nonce: user.key_history_nonce || null,
         // Included so the frontend can cosmetically show/hide admin-only
         // UI (e.g. the admin nav link/route) without a separate request —
         // this is display-only; every admin endpoint re-checks the real
@@ -192,7 +194,7 @@ router.get('/me', async (req, res) => {
     // response above) — dashboard.js refreshes currentUser from this
     // endpoint on every app load, so it's the other place the client's
     // cached role can go stale without this.
-    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, created_at, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
+    const user = get(db, 'SELECT id, username, email, display_name, avatar, banner, banner_color, bio, pronouns, avatar_decoration, card_decoration, profile_effect, status, public_key, encrypted_private_key, key_salt, key_nonce, encrypted_key_history, key_history_nonce, created_at, role, totp_enabled, tokens_invalid_before FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
     if (!tokenIsLive(db, payload, user.tokens_invalid_before)) {
       return res.status(401).json({ error: 'Session expired or revoked' });
