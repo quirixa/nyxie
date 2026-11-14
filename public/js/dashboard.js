@@ -4645,38 +4645,56 @@ function initDashboardView() {
   function closeInbox() { const p = document.getElementById('inbox-panel'); if (p) p.style.display = 'none'; document.getElementById('inbox-btn')?.setAttribute('aria-expanded', 'false'); }
   document.addEventListener('click', e => { if (!e.target.closest?.('.inbox-wrap')) closeInbox(); });
   function setInboxTab(t) { _inboxTab = t; renderInbox(); }
+  function inboxMarkAllRead() {
+    unreadCounts = {}; mentionInbox = [];
+    renderDMList(); updateInboxBadge();
+  }
+  function inboxMarkRead(roomId) { clearUnread(roomId); }
+  function inboxDismissIntro() { try { localStorage.setItem('nyxie_inbox_intro_seen', '1'); } catch (_) {} renderInbox(); }
+  function _inboxAvatar(dm) {
+    const name = dm.display_name || dm.name || 'Unknown';
+    const inner = dm._avatar ? `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (dm._otherId ? identiconImg(dm._otherId) : escapeHtml(name[0].toUpperCase()));
+    return `<div class="fr-avatar" style="background:${hashColor(name)}">${inner}</div>`;
+  }
   function renderInbox() {
     const tabsEl = document.getElementById('inbox-tabs'), body = document.getElementById('inbox-body');
     if (!tabsEl || !body) return;
+    const unreadList = _inboxUnreadList();
     // The Message Requests section only exists while someone has sent one.
-    const tabs = [];
+    const tabs = [['unread', 'Unread', unreadList.length], ['mentions', 'Mentions', mentionInbox.length]];
     if (msgRequests.incoming.length) tabs.push(['requests', 'Message Requests', msgRequests.incoming.length]);
-    tabs.push(['mentions', 'Mentions', mentionInbox.length], ['unreads', 'Unreads', _inboxUnreadList().length]);
-    if (!tabs.some(t => t[0] === _inboxTab)) _inboxTab = tabs[0][0];
+    if (!tabs.some(t => t[0] === _inboxTab)) _inboxTab = msgRequests.incoming.length ? 'requests' : 'unread';
     tabsEl.innerHTML = tabs.map(([k, label, n]) => `<button class="inbox-tab${k === _inboxTab ? ' active' : ''}" onclick="setInboxTab('${k}')">${label}${n ? ` <span class="inbox-count">${n}</span>` : ''}</button>`).join('');
-    const row = (avatar, name, sub, actions, click) => `<div class="inbox-row"${click ? ` onclick="${click}"` : ''}><div class="fr-avatar" style="background:${hashColor(name)}">${avatar}</div><div class="inbox-info"><div class="fr-name">${escapeHtml(name)}</div><div class="fr-sub">${sub}</div></div>${actions || ''}</div>`;
+    const card = (dm, av, title, sub, bodyHtml, actions, jump) => `<div class="inbox-card">
+        <div class="inbox-card-head">${av}<div class="inbox-card-who"><div class="inbox-card-title">${escapeHtml(title)}</div><div class="inbox-card-sub">${sub}</div></div><div class="inbox-card-actions">${actions}</div></div>
+        ${bodyHtml ? `<div class="inbox-card-body"${jump ? ` onclick="${jump}"` : ''}>${bodyHtml}</div>` : ''}</div>`;
+    let intro = '';
+    try { if (_inboxTab !== 'requests' && !localStorage.getItem('nyxie_inbox_intro_seen')) intro = `<div class="inbox-intro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><div><b>Stay up to date with the latest messages!</b><p>Unread messages and mentions from your conversations show up here. Time to get to that zero inbox!</p><button class="inbox-gotit" onclick="inboxDismissIntro()">Got it!</button></div></div>`; } catch (_) {}
+    const check = id => `<button class="inbox-icon-btn" title="Mark as read" aria-label="Mark as read" onclick="event.stopPropagation();inboxMarkRead('${id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>`;
     if (_inboxTab === 'requests') {
       body.innerHTML = msgRequests.incoming.map(r => {
         const p = r.sender; if (!p) return '';
         const name = p.display_name || p.username;
-        const av = p.avatar ? `<img src="${versionedMediaUrl(p.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(p.id);
-        const preview = r._text == null ? 'Message can’t be decrypted on this device' : escapeHtml(r._text.length > 60 ? r._text.slice(0, 60) + '…' : r._text);
-        const mutual = r.mutual_servers?.length ? ` · ${r.mutual_servers.length} mutual server${r.mutual_servers.length > 1 ? 's' : ''}` : '';
-        return row(av, name, `@${escapeHtml(p.username)}${mutual}<br>${preview}`, `<div class="inbox-actions"><button class="req-btn primary" onclick="event.stopPropagation();closeInbox();acceptMessageRequest('${r.id}')">Accept</button><button class="req-btn" onclick="event.stopPropagation();ignoreMessageRequest('${r.id}')">Ignore</button></div>`);
+        const av = `<div class="fr-avatar" style="background:${hashColor(name)}">${p.avatar ? `<img src="${versionedMediaUrl(p.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(p.id)}</div>`;
+        const mutual = r.mutual_servers?.length ? `${r.mutual_servers.length} mutual server${r.mutual_servers.length > 1 ? 's' : ''}` : 'No mutual servers';
+        const text = r._text == null ? '<i>This message can’t be decrypted on this device.</i>' : escapeHtml(r._text.length > 200 ? r._text.slice(0, 200) + '…' : r._text);
+        return card(null, av, name, `@${escapeHtml(p.username)} · ${mutual}`, text,
+          `<button class="req-btn primary" onclick="closeInbox();acceptMessageRequest('${r.id}')">Accept</button><button class="req-btn" onclick="ignoreMessageRequest('${r.id}')">Ignore</button>`);
       }).join('') + `<button class="inbox-more" onclick="closeInbox();navigateTo('requests')">View all requests</button>`;
     } else if (_inboxTab === 'mentions') {
-      body.innerHTML = mentionInbox.length ? mentionInbox.map(m => {
-        const name = m.from?.display_name || m.from?.username || 'Someone';
-        return row(identiconImg(m.from?.id || m.room_id), name, 'mentioned you', '', `closeInbox();openRoom('${escapeJs(m.room_id)}')`);
-      }).join('') : `<div class="friends-empty">No mentions</div>`;
+      body.innerHTML = intro + (mentionInbox.length ? mentionInbox.map(m => {
+        const dm = dms.find(x => x.id === m.room_id);
+        const who = m.from?.display_name || m.from?.username || 'Someone';
+        const av = dm ? _inboxAvatar(dm) : `<div class="fr-avatar" style="background:${hashColor(who)}">${identiconImg(m.from?.id || m.room_id)}</div>`;
+        const where = dm ? (dm.is_group ? 'Group chat' : 'Direct message') : 'Conversation';
+        return card(dm, av, dm ? (dm.display_name || dm.name || who) : who, where, `<b>${escapeHtml(who)}</b> mentioned you`, check(m.room_id), `closeInbox();openRoom('${escapeJs(m.room_id)}')`);
+      }).join('') : `<div class="friends-empty">No mentions</div>`);
     } else {
-      const list = _inboxUnreadList();
-      body.innerHTML = list.length ? list.map(dm => {
+      body.innerHTML = intro + (unreadList.length ? unreadList.map(dm => {
         const name = dm.display_name || dm.name || 'Unknown';
-        const av = dm._avatar ? `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (dm._otherId ? identiconImg(dm._otherId) : escapeHtml(name[0].toUpperCase()));
         const n = unreadCounts[dm.id];
-        return row(av, name, `${n} unread message${n > 1 ? 's' : ''}`, '', `closeInbox();openRoom('${dm.id}')`);
-      }).join('') : `<div class="friends-empty">You’re all caught up</div>`;
+        return card(dm, _inboxAvatar(dm), name, `${dm.is_group ? 'Group chat' : 'Direct message'} · ${n} unread`, dmPreviewHtml(dm), check(dm.id), `closeInbox();openRoom('${dm.id}')`);
+      }).join('') : `<div class="friends-empty">You’re all caught up</div>`);
     }
   }
   async function openAddFriend() {
@@ -5193,6 +5211,9 @@ function initDashboardView() {
   window.toggleInbox = toggleInbox;
   window.closeInbox = closeInbox;
   window.setInboxTab = setInboxTab;
+  window.inboxMarkAllRead = inboxMarkAllRead;
+  window.inboxMarkRead = inboxMarkRead;
+  window.inboxDismissIntro = inboxDismissIntro;
   window.unblockUser = unblockUser;
   window.acceptMessageRequest = acceptMessageRequest;
   window.ignoreMessageRequest = ignoreMessageRequest;

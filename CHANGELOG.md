@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.3] - 2026-11-14
+
+### Changed
+- Inbox restyled after Discord's: header with Mark all as read, underlined tabs (Unread, Mentions, Message Requests only while there are incoming requests), dismissible "Got it" intro card, and per-conversation cards with preview, mark-as-read and click-to-open. Full-width panel on mobile. Bookmarks, Reminders and Scheduled were not added because Nyxie has no such features.
+
+### Database
+- No migrations or schema changes in 0.12.3.
+
 ## [0.12.2] - 2026-11-14
 
 ### Changed

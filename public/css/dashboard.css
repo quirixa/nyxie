@@ -4242,25 +4242,40 @@ body #view-app #add-friend-view .add-friend-btn { background: #248046 !important
   #view-app .af-form .add-friend-btn { width: 100%; }
 }
 
-/* ── Friends header inbox (0.12.2) ── */
+/* ── Friends header inbox (0.12.3): Discord-style Inbox panel ── */
 #view-app .inbox-wrap { position: relative; display: inline-flex; }
 #view-app #inbox-btn { position: relative; }
 #view-app .inbox-badge { position: absolute; top: -3px; right: -3px; min-width: 15px; padding: 0 4px; border-radius: 8px; background: var(--danger); color: #fff; font-size: .62rem; font-weight: 700; line-height: 15px; text-align: center; }
-#view-app .inbox-pop { position: absolute; top: calc(100% + 8px); right: 0; width: 380px; max-width: calc(100vw - 24px); max-height: 70vh; display: flex; flex-direction: column; background: var(--bg-secondary, var(--bg-input)); border: 1px solid var(--border-medium); border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,.5); z-index: 50; overflow: hidden; }
+#view-app .inbox-pop { position: absolute; top: calc(100% + 8px); right: 0; width: 440px; max-width: calc(100vw - 16px); height: min(640px, 80vh); display: flex; flex-direction: column; background: var(--bg-secondary, #0b0b0b); border: 1px solid var(--border-medium); border-radius: 10px; box-shadow: 0 12px 36px rgba(0,0,0,.6); z-index: 50; overflow: hidden; }
 #view-app .inbox-pop[style*="none"] { display: none !important; }
-#view-app .inbox-tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border-medium); flex-wrap: wrap; }
-#view-app .inbox-tab { background: transparent; border: 0; color: var(--text-muted); padding: 6px 10px; border-radius: 6px; font-size: .8rem; font-weight: 600; cursor: pointer; }
-#view-app .inbox-tab:hover { background: var(--bg-hover, rgba(255,255,255,.06)); color: var(--text-primary); }
-#view-app .inbox-tab.active { background: var(--bg-active, rgba(255,255,255,.1)); color: var(--text-primary); }
-#view-app .inbox-count { display: inline-block; margin-left: 3px; padding: 0 5px; border-radius: 8px; background: var(--danger); color: #fff; font-size: .62rem; line-height: 15px; }
-#view-app .inbox-body { overflow-y: auto; padding: 4px; }
-#view-app .inbox-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px; cursor: default; }
-#view-app .inbox-row[onclick] { cursor: pointer; }
-#view-app .inbox-row:hover { background: var(--bg-hover, rgba(255,255,255,.05)); }
-#view-app .inbox-row .fr-avatar { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-#view-app .inbox-info { flex: 1; min-width: 0; }
-#view-app .inbox-info .fr-sub { white-space: normal; overflow-wrap: anywhere; }
-#view-app .inbox-actions { display: flex; gap: 6px; flex-shrink: 0; }
-#view-app .inbox-more { width: 100%; margin-top: 4px; padding: 8px; background: transparent; border: 0; border-top: 1px solid var(--border-medium); color: var(--text-muted); font-size: .8rem; cursor: pointer; }
+#view-app .inbox-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 8px; }
+#view-app .inbox-head-icon { width: 20px; height: 20px; color: var(--text-primary); }
+#view-app .inbox-title { flex: 1; font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+#view-app .inbox-head-btn, #view-app .inbox-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border-medium); background: transparent; color: var(--text-secondary, var(--text-muted)); cursor: pointer; }
+#view-app .inbox-head-btn:hover, #view-app .inbox-icon-btn:hover { background: var(--bg-hover, rgba(255,255,255,.06)); color: var(--text-primary); }
+#view-app .inbox-head-btn svg, #view-app .inbox-icon-btn svg { width: 16px; height: 16px; }
+#view-app .inbox-tabs { display: flex; gap: 0; padding: 0 8px; border-bottom: 1px solid var(--border-medium); overflow-x: auto; }
+#view-app .inbox-tab { flex: 1 0 auto; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--text-muted); padding: 10px 12px; font-size: .85rem; font-weight: 600; cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+#view-app .inbox-tab:hover { color: var(--text-primary); }
+#view-app .inbox-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+#view-app .inbox-count { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--danger); color: #fff; font-size: .62rem; line-height: 15px; }
+#view-app .inbox-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+#view-app .inbox-intro { display: flex; gap: 14px; padding: 14px 16px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border-medium); }
+#view-app .inbox-intro > svg { width: 32px; height: 32px; flex-shrink: 0; color: var(--text-muted); margin-top: 2px; }
+#view-app .inbox-intro b { color: var(--text-primary); font-size: .92rem; }
+#view-app .inbox-intro p { margin: 4px 0 10px; font-size: .82rem; color: var(--text-muted); line-height: 1.4; }
+#view-app .inbox-gotit { border: 0; border-radius: 6px; padding: 7px 14px; background: var(--accent); color: #fff; font-weight: 600; font-size: .82rem; cursor: pointer; }
+#view-app .inbox-gotit:hover { background: var(--accent-hover); }
+#view-app .inbox-card { border: 1px solid var(--border-medium); border-radius: 10px; background: var(--bg-input); overflow: hidden; flex-shrink: 0; }
+#view-app .inbox-card-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+#view-app .inbox-card-head .fr-avatar { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#view-app .inbox-card-who { flex: 1; min-width: 0; }
+#view-app .inbox-card-title { font-weight: 600; color: var(--text-primary); font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#view-app .inbox-card-sub { font-size: .75rem; color: var(--text-muted); text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#view-app .inbox-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+#view-app .inbox-card-body { padding: 10px 14px 12px; border-top: 1px solid var(--border-medium); font-size: .88rem; color: var(--text-secondary, var(--text-primary)); overflow-wrap: anywhere; line-height: 1.45; text-transform: none; }
+#view-app .inbox-card-body[onclick] { cursor: pointer; }
+#view-app .inbox-card-body[onclick]:hover { background: var(--bg-hover, rgba(255,255,255,.04)); }
+#view-app .inbox-more { width: 100%; padding: 8px; background: transparent; border: 0; color: var(--text-muted); font-size: .8rem; cursor: pointer; }
 #view-app .inbox-more:hover { color: var(--text-primary); }
-#view-app .inbox-info .fr-sub { text-transform: none; }
+@media (max-width: 700px) { #view-app .inbox-pop { position: fixed; top: 56px; left: 8px; right: 8px; width: auto; height: calc(100vh - 72px); } }

@@ -1,6 +1,6 @@
 {
   "name": "nyxie",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "Nyxie — Discord-style chat",
   "main": "server/server.js",
   "directories": {

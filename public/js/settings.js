@@ -1228,6 +1228,16 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Discord-style Inbox',
+      version: '0.12.3',
+      date: 'November 14, 2026',
+      sections: [
+        { heading: 'Changed', items: [
+          'The Inbox now has a header with Mark all as read, underlined tabs (Unread, Mentions, and Message Requests while you have any), a dismissible intro card, and a card for each conversation with a preview, a mark-as-read button and click-to-open.'
+        ] }
+      ]
+    },
+    {
       title: 'Inbox in the Friends header',
       version: '0.12.2',
       date: 'November 14, 2026',
