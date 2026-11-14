@@ -682,7 +682,8 @@ function initDashboardView() {
     currentNav = section;
     inDiscoverView = false;
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    document.getElementById('nav-' + section)?.classList.add('active');
+    // Message Requests live inside the Friends page, so the existing Friends item stays highlighted.
+    document.getElementById('nav-' + (section === 'requests' ? 'friends' : section))?.classList.add('active');
     showMainView(null);
     renderServerRail();
     if (section === 'home') {
@@ -3828,10 +3829,12 @@ function initDashboardView() {
   let _requestSending = false;
 
   function updateRequestsBadge() {
-    const badge = document.getElementById('nav-requests-badge');
-    if (!badge) return;
-    badge.style.display = msgRequests.pending > 0 ? 'inline' : 'none';
-    badge.textContent = msgRequests.pending > 99 ? '99+' : String(msgRequests.pending);
+    const badge = document.getElementById('ftab-requests-badge');
+    if (badge) {
+      badge.style.display = msgRequests.pending > 0 ? 'inline-block' : 'none';
+      badge.textContent = msgRequests.pending > 99 ? '99+' : String(msgRequests.pending);
+    }
+    if (typeof updateFriendsBadge === 'function' && typeof friendRequests !== 'undefined') updateFriendsBadge();
   }
 
   // Decrypts a request's initial message locally. The server only ever holds ciphertext.
@@ -4587,8 +4590,10 @@ function initDashboardView() {
   }
   function updateFriendsBadge() {
     const pending = friendRequests.incoming.length;
+    // The one badge on the existing Friends item covers friend requests AND message requests.
+    const total = pending + (msgRequests && msgRequests.pending || 0);
     const badge = document.getElementById('nav-friends-badge');
-    if (pending > 0) { badge.style.display = 'inline'; badge.textContent = pending; } else badge.style.display = 'none';
+    if (badge) { if (total > 0) { badge.style.display = 'inline'; badge.textContent = total > 99 ? '99+' : total; } else badge.style.display = 'none'; }
     document.getElementById('ftab-pending-count').textContent = pending ? `(${pending})` : '';
     // The Pending tab only exists while there's at least one request (in or out).
     const pTab = document.getElementById('ftab-pending');
@@ -4748,7 +4753,7 @@ function initDashboardView() {
     if (!uname) { setAddFriendStatus('error', 'Enter a username.'); return; }
     if (uname.toLowerCase() === (currentUser.username || '').toLowerCase()) { setAddFriendStatus('error', 'You cannot send a friend request to yourself.'); return; }
     if ([...note.value].length > 120) { setAddFriendStatus('error', 'Personal messages are limited to 120 characters.'); return; }
-    _friendSending = true; btn.disabled = true;
+    _friendSending = true; btn.disabled = true; btn.classList.add('loading'); const _lbl = btn.textContent; btn.textContent = 'Sending…';
     try {
       const res = await api('POST', '/friends/request', { username: uname, message: note.value.trim() || undefined });
       if (res?.error) {
@@ -4759,7 +4764,7 @@ function initDashboardView() {
       input.value = ''; note.value = ''; updateFriendNoteCount();
       setAddFriendStatus('success', res.auto_accepted ? `You and ${uname} are now friends!` : `Friend request sent to ${res.to?.display_name || uname}.`);
       await loadFriendsData();
-    } finally { _friendSending = false; btn.disabled = false; }
+    } finally { _friendSending = false; btn.disabled = false; btn.classList.remove('loading'); btn.textContent = _lbl; }
   }
   async function sendFriendRequestTo(userId, displayName) {
     const res = await api('POST', '/friends/request', { to_id: userId });

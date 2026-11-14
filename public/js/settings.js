@@ -1143,7 +1143,7 @@ function initSettingsView() {
       browser,
       screen.width + 'x' + screen.height,
       'lang ' + (localStorage.getItem('nyxie_language') || navigator.language),
-      'theme ' + (localStorage.getItem('theme') || 'dark'),
+      'theme ' + (typeof resolveTheme === 'function' ? resolveTheme() : 'esc'),
     ].join(' | ');
   }
 
@@ -1227,6 +1227,18 @@ function initSettingsView() {
   // list (older entries) or grouped `sections` ({ heading, items }).
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
+    {
+      title: 'Friends layout, ESC by default',
+      version: '0.12.1',
+      date: 'November 12, 2026',
+      sections: [
+        { heading: 'Changed', items: [
+          'Add Friend and Message Requests are no longer separate items in the main sidebar. Both now live inside the Friends page: Add Friend is a green tab, and Message Requests is a tab with a pending count. The Friends item in the sidebar carries the combined badge.',
+          'Add Friend now matches the familiar layout: one bordered form with the username and Send Friend Request button, a divider, and the optional 120-character message with its counter, plus an Explore Discoverable Servers card.',
+          'ESC is now the default theme for new accounts, new devices and anyone without a saved choice, and it is applied before the first paint. Light, Dark and Retro still work and your explicit choice is kept.'
+        ] }
+      ]
+    },
     {
       title: 'Friends, message requests & stronger privacy',
       version: '0.12.0',

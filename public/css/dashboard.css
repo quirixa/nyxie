@@ -4203,3 +4203,41 @@ body.text-viewer-open { overflow: hidden; }
   #view-app #add-friend-view .add-friend-btn { width: 100%; padding: 10px; }
   #view-app .ftab-add { margin-left: 0; }
 }
+
+/* ── Friends: Add Friend (0.12.1) ─────────────────────────────────────
+   Green (#248046) is reserved for the Add Friend tab and its actions.
+   Everything else keeps the theme's colours. */
+#view-app #add-friend-view .af-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+#view-app #add-friend-view .af-illustration { width: 120px; height: 80px; flex-shrink: 0; color: var(--text-muted); opacity: .6; }
+#view-app #add-friend-view .af-title { margin: 8px 0 6px; }
+#view-app .af-form { border: 1px solid var(--border-medium); background: var(--bg-input); border-radius: var(--radius); overflow: hidden; }
+#view-app .af-form:focus-within { border-color: #248046; }
+#view-app .af-form .af-form-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; padding: 10px 12px; margin: 0; }
+#view-app .af-form .add-friend-input { flex: 1; min-width: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none; padding: 6px 2px; }
+#view-app .af-divider { height: 1px; background: var(--border-medium); }
+#view-app .af-form .af-note-wrap { position: relative; margin: 0; }
+#view-app .af-form .af-note { border: 0; background: transparent; border-radius: 0; padding: 12px 14px 26px; min-height: 76px; display: block; }
+#view-app .af-form .af-count { position: absolute; right: 12px; bottom: 8px; margin: 0; pointer-events: none; }
+#view-app #add-friend-view .add-friend-btn,
+body #view-app #add-friend-view .add-friend-btn { background: #248046 !important; color: #fff !important; border: 0 !important; border-radius: 6px; padding: 9px 16px; font-size: .85rem; font-weight: 600; white-space: nowrap; box-shadow: none !important; transform: none; }
+#view-app #add-friend-view .add-friend-btn:hover:not(:disabled) { background: #248046 !important; filter: brightness(1.15); }
+#view-app #add-friend-view .add-friend-btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+#view-app #add-friend-view .add-friend-btn.loading { opacity: .75; cursor: progress; }
+#view-app .af-other { margin-top: 28px; padding-top: 0; border-top: 0; }
+#view-app .af-other-title { margin: 0 0 6px; font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+#view-app .af-other .af-text { margin-bottom: 12px; }
+#view-app .af-card svg { color: #248046; width: 24px; height: 24px; }
+#view-app .af-card { padding: 12px 14px; }
+#view-app .ftab-add { margin-left: 0 !important; }
+#view-app .ftab.ftab-add { background: #248046 !important; color: #fff !important; border-color: transparent !important; }
+#view-app .ftab.ftab-add:hover { filter: brightness(1.12); background: #248046 !important; }
+#view-app .ftab.ftab-add.active { background: transparent !important; color: #3ba55c !important; border: 1px solid #248046 !important; padding-left: 14px !important; }
+#view-app .ftab-badge { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 4px; border-radius: 8px; background: var(--danger); color: #fff; font-size: .65rem; font-weight: 700; line-height: 16px; text-align: center; }
+#view-app .friends-tab-bar .ftab { border-left-width: 1px !important; border-radius: 6px; }
+#view-app .friends-tab-bar .ftab.active { border-left: 1px solid transparent !important; padding-left: 14px !important; background: var(--bg-active) !important; }
+#view-app .friends-tab-bar { flex-wrap: wrap; align-items: center; }
+@media (max-width: 700px) {
+  #view-app #add-friend-view .af-illustration { display: none; }
+  #view-app .af-form .af-form-row { flex-wrap: wrap; }
+  #view-app .af-form .add-friend-btn { width: 100%; }
+}

@@ -1,6 +1,6 @@
 # Nyxie
 
-Discord-style chat. Current version: **0.12.0**.
+Discord-style chat. Current version: **0.12.1**.
 
 - Start: `npm install && JWT_SECRET=<32+ random characters> npm start`
 - Tests: `npm test`

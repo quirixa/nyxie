@@ -1,10 +1,16 @@
 // theme.js - Global theme manager for all pages
 
 // Apply theme on page load
+const NYXIE_THEMES = ['light', 'dark', 'esc', 'retro'];
+const NYXIE_DEFAULT_THEME = 'esc';
+// Missing or unknown preference -> ESC (the global default). An explicitly
+// chosen Light / Dark / Retro / ESC is always respected.
+function resolveTheme(t) {
+  try { t = t || localStorage.getItem('theme'); } catch (e) { t = null; }
+  return NYXIE_THEMES.includes(t) ? t : NYXIE_DEFAULT_THEME;
+}
 function applyTheme(theme) {
-  if (!theme) {
-    theme = localStorage.getItem('theme') || 'dark';
-  }
+  theme = resolveTheme(theme);
   
   // Remove any existing theme classes
   document.body.className = document.body.className
@@ -72,7 +78,7 @@ function setAccent(color) {
 
 // Auto-apply theme and accent when page loads
 document.addEventListener('DOMContentLoaded', function() {
-  applyTheme(localStorage.getItem('theme') || 'dark');
+  applyTheme();
   applyAccent();
 });
 // SPA note: this file is loaded once, globally, for the whole app

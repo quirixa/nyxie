@@ -337,7 +337,8 @@
 </style>
 <!-- Intentionally no global base target: message images must not inherit _blank behavior. -->
 </head>
-<body>
+<body class="theme-esc">
+<script>(function(){try{var t=localStorage.getItem('theme');if(['light','dark','esc','retro'].indexOf(t)<0)t='esc';document.body.className=document.body.className.split(' ').filter(function(c){return c.indexOf('theme-')!==0}).concat('theme-'+t).join(' ').trim();}catch(e){}})();</script>
 
 <!-- Router outlet -->
 <div id="app-root"></div>
@@ -560,15 +561,6 @@ __    __  __      __  __    __  ______  ________
                         <span>Friends</span>
                         <span class="badge" id="nav-friends-badge" style="display:none;background:#ed4245;color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:auto;"></span>
                     </div>
-                    <div class="nav-item" id="nav-add-friend" onclick="openAddFriend()">
-                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-                        <span>Add Friend</span>
-                    </div>
-                    <div class="nav-item" id="nav-requests" onclick="navigateTo('requests')">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-                        <span>Message Requests</span>
-                        <span class="badge" id="nav-requests-badge" style="display:none;background:#ed4245;color:#fff;font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:auto;"></span>
-                    </div>
                     <div class="nav-item" id="nav-marketplace" onclick="navigateTo('marketplace')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z"/><path d="M9 21V13h6v8"/></svg>
                         <span>Marketplace</span>
@@ -679,26 +671,35 @@ __    __  __      __  __    __  ______  ________
                         <button class="ftab active" id="ftab-all" onclick="switchFriendsTab('all')">All</button>
                         <button class="ftab" id="ftab-pending" style="display:none" onclick="switchFriendsTab('pending')">Pending <span id="ftab-pending-count"></span></button>
                         <button class="ftab" id="ftab-blocked" onclick="switchFriendsTab('blocked')">Blocked</button>
+                        <button class="ftab" id="ftab-requests" onclick="navigateTo('requests')">Message Requests <span class="ftab-badge" id="ftab-requests-badge" style="display:none"></span></button>
                         <button class="ftab ftab-add" id="ftab-add" onclick="switchFriendsTab('add')">Add Friend</button>
                     </div>
                     <div id="add-friend-view" style="display:none;">
-                        <h3 class="af-title">Add Friend</h3>
-                        <p class="af-text">You can add friends with their Nyxie username. Usernames are exact, so check the spelling.</p>
-                        <div class="add-friend-row">
-                            <input type="text" class="add-friend-input" id="add-friend-input" placeholder="You can add friends with their Nyxie username." maxlength="64" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();sendFriendRequest();}" />
-                            <button class="add-friend-btn" id="add-friend-send" onclick="sendFriendRequest()">Send Friend Request</button>
+                        <div class="af-head">
+                            <div class="af-head-text">
+                                <h3 class="af-title">Add Friend</h3>
+                                <p class="af-text">You can add friends with their Nyxie username. Usernames are exact, so check the spelling.</p>
+                            </div>
+                            <svg class="af-illustration" viewBox="0 0 120 80" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="40" cy="30" r="12"/><path d="M18 66c0-12 10-20 22-20s22 8 22 20"/><circle cx="84" cy="36" r="9" opacity=".7"/><path d="M68 68c0-10 7-16 16-16s16 6 16 16" opacity=".7"/><path d="M96 10v14M89 17h14"/></svg>
                         </div>
-                        <div class="af-note-wrap">
-                            <label class="af-label" for="add-friend-note">Personal message (optional)</label>
-                            <textarea id="add-friend-note" class="af-note" rows="2" maxlength="120" placeholder="Say hi, or remind them who you are" oninput="updateFriendNoteCount()"></textarea>
-                            <div class="af-count" id="add-friend-note-count">0/120</div>
+                        <div class="af-form" id="add-friend-form">
+                            <div class="add-friend-row af-form-row">
+                                <input type="text" class="add-friend-input" id="add-friend-input" placeholder="You can add friends with their Nyxie username." maxlength="64" autocomplete="off" aria-label="Username" onkeydown="if(event.key==='Enter'){event.preventDefault();sendFriendRequest();}" />
+                                <button class="add-friend-btn" id="add-friend-send" onclick="sendFriendRequest()">Send Friend Request</button>
+                            </div>
+                            <div class="af-divider"></div>
+                            <div class="af-note-wrap">
+                                <textarea id="add-friend-note" class="af-note" rows="3" maxlength="120" placeholder="Add a personal message (optional)" aria-label="Personal message (optional)" oninput="updateFriendNoteCount()"></textarea>
+                                <div class="af-count" id="add-friend-note-count">0/120</div>
+                            </div>
                         </div>
                         <div class="af-status" id="add-friend-status" style="display:none;" role="status" aria-live="polite"></div>
                         <div class="af-other">
-                            <div class="af-label">Other Places to Make Friends</div>
+                            <h4 class="af-other-title">Other Places to Make Friends</h4>
+                            <p class="af-text">Don't have a username on hand? Check out our list of public servers that includes everything from gaming to cooking, music, anime and more.</p>
                             <button class="af-card" onclick="goDiscoverServers()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-                                <span class="af-card-text"><b>Discover Servers</b><small>Find communities and meet people who share your interests.</small></span>
+                                <span class="af-card-text"><b>Explore Discoverable Servers</b></span>
                                 <span class="af-chevron">&rsaquo;</span>
                             </button>
                         </div>
@@ -715,6 +716,7 @@ __    __  __      __  __    __  ______  ________
                         <h2>Message Requests</h2>
                     </div>
                     <div class="friends-tab-bar">
+                        <button class="ftab" onclick="navigateTo('friends')">&lsaquo; Friends</button>
                         <button class="ftab active" id="rtab-incoming" onclick="switchRequestsTab('incoming')">Requests <span id="rtab-incoming-count"></span></button>
                         <button class="ftab" id="rtab-ignored" onclick="switchRequestsTab('ignored')">Ignored</button>
                         <button class="ftab" id="rtab-outgoing" onclick="switchRequestsTab('outgoing')">Sent</button>
@@ -1849,7 +1851,7 @@ __    __  __      __  __    __  ______  ________
                 <div class="nav-item-settings" data-tab="donate" onclick="switchTab('donate')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>Donate</span></div>
                 <div class="settings-sidebar-bottom">
                     <button class="logout-btn" onclick="logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log Out</button>
-                    <div class="version-text">nyxie beta v0.12.0 — 2026</div>
+                    <div class="version-text">nyxie beta v0.12.1 — 2026</div>
                 </div>
             </div>
 
@@ -2078,7 +2080,7 @@ __    __  __      __  __    __  ______  ________
                     <div class="settings-section">
                         <div class="section-title">THEME</div>
                         <div class="theme-preview-grid">
-                            <div class="theme-preview-card active" data-theme="dark" onclick="setTheme('dark')">
+                            <div class="theme-preview-card" data-theme="dark" onclick="setTheme('dark')">
                                 <div class="theme-preview">
                                     <div class="theme-preview-content dark-preview">
                                         <div class="preview-sidebar">
@@ -2144,7 +2146,7 @@ __    __  __      __  __    __  ______  ________
                                 </div>
                                 <div class="theme-preview-label">LIGHT</div>
                             </div>
-                            <div class="theme-preview-card" data-theme="esc" onclick="setTheme('esc')">
+                            <div class="theme-preview-card active" data-theme="esc" onclick="setTheme('esc')">
                                 <div class="theme-preview">
                                     <div class="theme-preview-content esc-preview">
                                         <div class="preview-sidebar">
@@ -2761,8 +2763,6 @@ __    __  __      __  __    __  ______  ________
       var text = name ? name.textContent.toLowerCase() : '';
       row.style.display = (!q || text.indexOf(q) !== -1) ? '' : 'none';
     });
-  }
-
   }
 </script>
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.1] - 2026-11-12
+
+### Changed
+- Add Friend and Message Requests removed from the main sidebar; they are tabs inside the existing Friends page (Add Friend in green, Message Requests with a pending count). The Friends sidebar item shows the combined friend-request + message-request badge.
+- Add Friend restyled: one bordered form (username + green Send Friend Request, divider, 120-character message with counter), illustration, "Other Places to Make Friends" and an Explore Discoverable Servers card. Green `#248046` is used only here.
+- ESC is the default theme everywhere (missing/invalid preference, new accounts, new devices); the class is applied before first paint so Dark no longer flashes. Explicit Light/Dark/Retro choices are respected.
+- Tests that looked for the old sidebar ids (`nav-requests`, `nav-requests-badge`, `nav-add-friend`) now use the Friends-page ids (`ftab-requests`, `ftab-requests-badge`); assertions otherwise unchanged.
+
+### Added
+- `tests/friends-ui-esc.test.js`.
+
+### Database
+- No migrations or schema changes in 0.12.1.
+
 ## [0.12.0] - 2026-11-10
 
 ### Added

@@ -182,7 +182,7 @@ function nyxieApplySynced(data) {
     }
     Object.keys(keep).forEach(k => localStorage.setItem(k, keep[k]));
   } finally { _nyxieApplyingSync = false; }
-  if (typeof applyTheme === 'function') applyTheme(localStorage.getItem('theme') || 'dark');
+  if (typeof applyTheme === 'function') applyTheme();
   if (typeof applyAccent === 'function') applyAccent();
   const font = localStorage.getItem('font');
   if (font) document.body.style.fontFamily = font + ', sans-serif';
