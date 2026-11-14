@@ -18,7 +18,9 @@ test('main sidebar has no Add Friend / Message Requests / Pending items; they li
   assert.ok(labels.some(l => l.startsWith('Friends')));
   const tabs = [...root.querySelectorAll('#friends-panel .friends-tab-bar .ftab')].map(e => e.textContent.trim());
   for (const t of ['Online', 'All', 'Add Friend']) assert.ok(tabs.some(x => x.startsWith(t)), t);
-  assert.ok(tabs.some(x => x.startsWith('Message Requests')));
+  assert.ok(!tabs.some(x => x.startsWith('Message Requests')), 'Message Requests is not a tab; it lives in the header inbox');
+  assert.ok(root.querySelector('#friends-header #inbox-btn') && root.querySelector('#friends-header #inbox-badge'));
+  assert.equal(root.querySelector('#ftab-blocked').style.display, 'none', 'Blocked is hidden until someone is blocked');
 });
 
 test('Add Friend: one bordered form holds username, divider and 120-char message; green button/tab', () => {

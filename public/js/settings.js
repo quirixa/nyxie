@@ -1228,6 +1228,17 @@ function initSettingsView() {
   // Keep this in step with CHANGELOG.md at the project root.
   const CHANGELOG = [
     {
+      title: 'Inbox in the Friends header',
+      version: '0.12.2',
+      date: 'November 14, 2026',
+      sections: [
+        { heading: 'Changed', items: [
+          'Message Requests moved out of the Friends tab bar into an Inbox icon in the Friends header. The Inbox holds Message Requests (only while someone has sent one), Mentions and Unreads, and its badge shows the combined count.',
+          'The Blocked tab now only appears while you have blocked someone, and it shows your blocked users with an Unblock button.'
+        ] }
+      ]
+    },
+    {
       title: 'Friends layout, ESC by default',
       version: '0.12.1',
       date: 'November 12, 2026',

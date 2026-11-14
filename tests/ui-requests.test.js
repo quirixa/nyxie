@@ -152,8 +152,8 @@ test('profile message to a non-friend becomes a request: Bob sees it live (badge
     await until(() => alice.$('#up-message-input').disabled);
     assert.match(alice.$('#up-message-hint').textContent, /Waiting for/);
     // Bob, live
-    await until(() => bob.$('#ftab-requests-badge').style.display !== 'none');
-    assert.equal(bob.$('#ftab-requests-badge').textContent, '1');
+    await until(() => bob.$('#inbox-badge').style.display !== 'none');
+    assert.equal(bob.$('#inbox-badge').textContent, '1');
     assert.equal(bob.$$('#dm-list .dm-item').length, 0);                      // never an ordinary DM entry
     bob.w.navigateTo('requests');
     await until(() => bob.$$('#requests-list .req-card').length === 1);
@@ -167,7 +167,7 @@ test('profile message to a non-friend becomes a request: Bob sees it live (badge
     // Accept → a real DM appears, badge clears, chat opens
     bob.w.acceptMessageRequest(card.dataset.requestId);
     await until(() => bob.$$('#dm-list .dm-item').length === 1 && bob.$('#chat-view').style.display !== 'none');
-    assert.equal(bob.$('#ftab-requests-badge').style.display, 'none');
+    assert.equal(bob.$('#inbox-badge').style.display, 'none');
     await until(() => alice.$$('#dm-list .dm-item').length === 1);            // the sender is notified and gets the DM too
     assert.deepEqual(notDefinedErrors(bob), []); assert.deepEqual(notDefinedErrors(alice), []);
   } finally { bob.close(); alice.close(); }

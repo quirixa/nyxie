@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.2] - 2026-11-14
+
+### Changed
+- Message Requests is no longer a Friends tab. An Inbox icon in the Friends header opens a popover with Message Requests (shown only while there are incoming requests; compact Accept/Ignore rows plus "View all requests"), Mentions and Unreads. Its badge counts all three. Mentions are kept in memory for the session only and never contain message text.
+- The Blocked tab is hidden unless you have blocked users, and now renders a real blocked list with Unblock (previously it showed the friends list). Blocking or unblocking from a profile refreshes it.
+- Test ids `ftab-requests` / `ftab-requests-badge` became `inbox-btn` / `inbox-badge`.
+
+### Database
+- No migrations or schema changes in 0.12.2.
+
 ## [0.12.1] - 2026-11-12
 
 ### Changed

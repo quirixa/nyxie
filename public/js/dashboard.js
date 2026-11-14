@@ -1092,6 +1092,11 @@ function initDashboardView() {
           if (msg.from?.id !== currentUser.id) {
             if (!notifiedMsgIds.has(msg.message_id)) { playNotificationSound(); markNotified(msg.message_id); }
             toast(`💬 ${msg.from?.display_name || msg.from?.username || 'Someone'} mentioned you`);
+            if (currentRoom?.id !== msg.room_id && !mentionInbox.some(x => x.message_id === msg.message_id)) {
+              mentionInbox.unshift({ room_id: msg.room_id, message_id: msg.message_id, from: msg.from, at: Date.now() });
+              if (mentionInbox.length > 50) mentionInbox.length = 50;
+              updateInboxBadge();
+            }
           }
           break;
         }
@@ -1963,11 +1968,12 @@ function initDashboardView() {
   function markUnread(roomId) {
     if (currentRoom?.id === roomId) return;
     unreadCounts[roomId] = (unreadCounts[roomId] || 0) + 1;
-    renderDMList();
+    renderDMList(); updateInboxBadge();
   }
   function clearUnread(roomId) {
     delete unreadCounts[roomId];
-    renderDMList();
+    mentionInbox = mentionInbox.filter(m => m.room_id !== roomId);
+    renderDMList(); updateInboxBadge();
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3829,11 +3835,7 @@ function initDashboardView() {
   let _requestSending = false;
 
   function updateRequestsBadge() {
-    const badge = document.getElementById('ftab-requests-badge');
-    if (badge) {
-      badge.style.display = msgRequests.pending > 0 ? 'inline-block' : 'none';
-      badge.textContent = msgRequests.pending > 99 ? '99+' : String(msgRequests.pending);
-    }
+    updateInboxBadge();
     if (typeof updateFriendsBadge === 'function' && typeof friendRequests !== 'undefined') updateFriendsBadge();
   }
 
@@ -4376,6 +4378,7 @@ function initDashboardView() {
     const result = blocked ? await api('DELETE', `/friends/block/${userId}`) : await api('POST', `/friends/block/${userId}`, {});
     if (!result?.ok) return toast(result?.error || `Failed to ${blocked ? 'unblock' : 'block'} user`);
     toast(blocked ? 'User unblocked' : 'User blocked');
+    try { await loadFriendsData(); } catch (_) {}
     try { const fresh = await api('GET', `/users/${userId}`); if (fresh?.user) await syncProfileRelationshipState(fresh.user); } catch (_) {}
   }
   // Admin shortcut: profile → Manage Badges. Opens the Admin panel's Badges
@@ -4582,8 +4585,9 @@ function initDashboardView() {
     openRoom(dm.id);
   }
   async function loadFriendsData() {
-    const [fRes, rRes] = await Promise.all([ api('GET', '/friends'), api('GET', '/friends/requests') ]);
+    const [fRes, rRes, bRes] = await Promise.all([ api('GET', '/friends'), api('GET', '/friends/requests'), api('GET', '/friends/blocked') ]);
     friends = fRes?.friends || [];
+    blockedUsers = bRes?.blocked || [];
     friendRequests = { incoming: rRes?.incoming || [], outgoing: rRes?.outgoing || [] };
     updateFriendsBadge();
     return { friends, friendRequests };
@@ -4594,6 +4598,10 @@ function initDashboardView() {
     const total = pending + (msgRequests && msgRequests.pending || 0);
     const badge = document.getElementById('nav-friends-badge');
     if (badge) { if (total > 0) { badge.style.display = 'inline'; badge.textContent = total > 99 ? '99+' : total; } else badge.style.display = 'none'; }
+    // Blocked only appears while there is at least one blocked user.
+    const bTab = document.getElementById('ftab-blocked');
+    if (bTab) bTab.style.display = blockedUsers.length ? '' : 'none';
+    const bc = document.getElementById('ftab-blocked-count'); if (bc) bc.textContent = blockedUsers.length ? `(${blockedUsers.length})` : '';
     document.getElementById('ftab-pending-count').textContent = pending ? `(${pending})` : '';
     // The Pending tab only exists while there's at least one request (in or out).
     const pTab = document.getElementById('ftab-pending');
@@ -4609,6 +4617,67 @@ function initDashboardView() {
     if (listEl) listEl.style.display = tab === 'add' ? 'none' : '';
     if (tab === 'add') { setTimeout(() => document.getElementById('add-friend-input')?.focus(), 30); return; }
     renderFriendsList();
+  }
+  async function unblockUser(id) {
+    const res = await api('DELETE', `/friends/block/${encodeURIComponent(id)}`);
+    if (!res?.ok) return toast(res?.error || 'Could not unblock');
+    toast('User unblocked');
+    await loadFriendsData();
+    if (!blockedUsers.length) switchFriendsTab('all'); else renderFriendsList();
+  }
+
+  // ── Inbox (Friends header): message requests, mentions, unreads ──
+  function _inboxUnreadList() { return dms.filter(d => (unreadCounts[d.id] || 0) > 0); }
+  function inboxCount() { return (msgRequests.pending || 0) + mentionInbox.length + _inboxUnreadList().length; }
+  function updateInboxBadge() {
+    const b = document.getElementById('inbox-badge');
+    if (b) { const n = inboxCount(); b.style.display = n ? 'inline-block' : 'none'; b.textContent = n > 99 ? '99+' : String(n); }
+    if (document.getElementById('inbox-panel')?.style.display !== 'none') renderInbox();
+  }
+  function toggleInbox(ev) {
+    ev?.stopPropagation();
+    const p = document.getElementById('inbox-panel'); if (!p) return;
+    const open = p.style.display === 'none';
+    p.style.display = open ? 'block' : 'none';
+    document.getElementById('inbox-btn')?.setAttribute('aria-expanded', String(open));
+    if (open) { _inboxTab = null; renderInbox(); }
+  }
+  function closeInbox() { const p = document.getElementById('inbox-panel'); if (p) p.style.display = 'none'; document.getElementById('inbox-btn')?.setAttribute('aria-expanded', 'false'); }
+  document.addEventListener('click', e => { if (!e.target.closest?.('.inbox-wrap')) closeInbox(); });
+  function setInboxTab(t) { _inboxTab = t; renderInbox(); }
+  function renderInbox() {
+    const tabsEl = document.getElementById('inbox-tabs'), body = document.getElementById('inbox-body');
+    if (!tabsEl || !body) return;
+    // The Message Requests section only exists while someone has sent one.
+    const tabs = [];
+    if (msgRequests.incoming.length) tabs.push(['requests', 'Message Requests', msgRequests.incoming.length]);
+    tabs.push(['mentions', 'Mentions', mentionInbox.length], ['unreads', 'Unreads', _inboxUnreadList().length]);
+    if (!tabs.some(t => t[0] === _inboxTab)) _inboxTab = tabs[0][0];
+    tabsEl.innerHTML = tabs.map(([k, label, n]) => `<button class="inbox-tab${k === _inboxTab ? ' active' : ''}" onclick="setInboxTab('${k}')">${label}${n ? ` <span class="inbox-count">${n}</span>` : ''}</button>`).join('');
+    const row = (avatar, name, sub, actions, click) => `<div class="inbox-row"${click ? ` onclick="${click}"` : ''}><div class="fr-avatar" style="background:${hashColor(name)}">${avatar}</div><div class="inbox-info"><div class="fr-name">${escapeHtml(name)}</div><div class="fr-sub">${sub}</div></div>${actions || ''}</div>`;
+    if (_inboxTab === 'requests') {
+      body.innerHTML = msgRequests.incoming.map(r => {
+        const p = r.sender; if (!p) return '';
+        const name = p.display_name || p.username;
+        const av = p.avatar ? `<img src="${versionedMediaUrl(p.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(p.id);
+        const preview = r._text == null ? 'Message can’t be decrypted on this device' : escapeHtml(r._text.length > 60 ? r._text.slice(0, 60) + '…' : r._text);
+        const mutual = r.mutual_servers?.length ? ` · ${r.mutual_servers.length} mutual server${r.mutual_servers.length > 1 ? 's' : ''}` : '';
+        return row(av, name, `@${escapeHtml(p.username)}${mutual}<br>${preview}`, `<div class="inbox-actions"><button class="req-btn primary" onclick="event.stopPropagation();closeInbox();acceptMessageRequest('${r.id}')">Accept</button><button class="req-btn" onclick="event.stopPropagation();ignoreMessageRequest('${r.id}')">Ignore</button></div>`);
+      }).join('') + `<button class="inbox-more" onclick="closeInbox();navigateTo('requests')">View all requests</button>`;
+    } else if (_inboxTab === 'mentions') {
+      body.innerHTML = mentionInbox.length ? mentionInbox.map(m => {
+        const name = m.from?.display_name || m.from?.username || 'Someone';
+        return row(identiconImg(m.from?.id || m.room_id), name, 'mentioned you', '', `closeInbox();openRoom('${escapeJs(m.room_id)}')`);
+      }).join('') : `<div class="friends-empty">No mentions</div>`;
+    } else {
+      const list = _inboxUnreadList();
+      body.innerHTML = list.length ? list.map(dm => {
+        const name = dm.display_name || dm.name || 'Unknown';
+        const av = dm._avatar ? `<img src="${versionedMediaUrl(dm._avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (dm._otherId ? identiconImg(dm._otherId) : escapeHtml(name[0].toUpperCase()));
+        const n = unreadCounts[dm.id];
+        return row(av, name, `${n} unread message${n > 1 ? 's' : ''}`, '', `closeInbox();openRoom('${dm.id}')`);
+      }).join('') : `<div class="friends-empty">You’re all caught up</div>`;
+    }
   }
   async function openAddFriend() {
     await navigateTo('friends');
@@ -4629,17 +4698,32 @@ function initDashboardView() {
   }
   function goDiscoverServers() { if (typeof showDiscoverView === 'function') showDiscoverView(); }
   let _friendSending = false;
+  // In-memory only (never persisted, never contains message text): who @mentioned us this session.
+  let mentionInbox = [];
+  let blockedUsers = [];
+  let _inboxTab = null;
   function renderFriendsList() {
     if (currentFriendsTab === 'add') return;   // the Add Friend view has its own content
     const el = document.getElementById('friends-list');
     const { incoming, outgoing } = friendRequests;
     const pendingTab = document.getElementById('ftab-pending');
     if (pendingTab) pendingTab.style.display = (incoming.length + outgoing.length) ? '' : 'none';
+    if (currentFriendsTab === 'blocked' && !blockedUsers.length) currentFriendsTab = 'all';
     if (currentFriendsTab === 'pending' && !incoming.length && !outgoing.length) {
       // last request was handled while viewing Pending: fall back to All
       currentFriendsTab = 'all';
       document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
       document.getElementById('ftab-all')?.classList.add('active');
+    }
+    if (currentFriendsTab === 'blocked') {
+      el.innerHTML = blockedUsers.map(u => {
+        const name = u.display_name || u.username;
+        const av = u.avatar ? `<img src="${versionedMediaUrl(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : identiconImg(u.id);
+        return `<div class="friend-row"><div class="fr-avatar-wrap"><div class="fr-avatar" style="background:${hashColor(name)}">${av}</div></div>
+          <div class="fr-info"><div class="fr-name">${escapeHtml(name)}</div><div class="fr-sub">@${escapeHtml(u.username)} · Blocked</div></div>
+          <div class="fr-actions"><button class="req-btn" onclick="unblockUser('${u.id}')">Unblock</button></div></div>`;
+      }).join('');
+      return;
     }
     if (currentFriendsTab === 'pending') {
       if (!incoming.length && !outgoing.length) { el.innerHTML = `<div class="friends-empty">No pending requests</div>`; return; }
@@ -5106,6 +5190,10 @@ function initDashboardView() {
   window.updateFriendNoteCount = updateFriendNoteCount;
   window.goDiscoverServers = goDiscoverServers;
   window.switchRequestsTab = switchRequestsTab;
+  window.toggleInbox = toggleInbox;
+  window.closeInbox = closeInbox;
+  window.setInboxTab = setInboxTab;
+  window.unblockUser = unblockUser;
   window.acceptMessageRequest = acceptMessageRequest;
   window.ignoreMessageRequest = ignoreMessageRequest;
   window.denyMessageRequest = denyMessageRequest;

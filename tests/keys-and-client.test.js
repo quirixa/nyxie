@@ -136,7 +136,7 @@ test('UI structure: Friends tabs, Add Friend view, requests panel and sidebar en
   const dom = new JSDOM(HTML);
   const appRoot = dom.window.document.querySelector('#tpl-app').content;      // the app lives inside a <template>
   const $ = sel => appRoot.querySelector(sel);
-  for (const id of ['ftab-online', 'ftab-all', 'ftab-add', 'add-friend-view', 'add-friend-input', 'add-friend-note', 'add-friend-note-count', 'add-friend-send', 'add-friend-status', 'requests-panel', 'ftab-requests', 'ftab-requests-badge', 'nav-friends', 'search-inner', 'dm-list']) assert.ok($('#' + id), '#' + id + ' missing');
+  for (const id of ['ftab-online', 'ftab-all', 'ftab-add', 'add-friend-view', 'add-friend-input', 'add-friend-note', 'add-friend-note-count', 'add-friend-send', 'add-friend-status', 'requests-panel', 'inbox-btn', 'inbox-badge', 'nav-friends', 'search-inner', 'dm-list']) assert.ok($('#' + id), '#' + id + ' missing');
   assert.equal($('#add-friend-note').getAttribute('maxlength'), '120');
   assert.match($('#add-friend-view').textContent, /Other Places to Make Friends/);
   assert.match($('#add-friend-view').textContent, /Discoverable Servers/);
