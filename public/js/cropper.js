@@ -320,8 +320,68 @@
   window.openAvatarCropper = function(file) {
     if (file) initCropper(file, 'avatar');
   };
-  window.openBannerCropper = function(file) {
-    if (file) initCropper(file, 'banner');
+  // Canvas cropping flattens animation into a single frame, so animated
+  // banners (GIF / animated WebP) are uploaded as-is. CSS background-size:
+  // cover handles fitting them to the banner area.
+  function isAnimatedImage(file) {
+    return new Promise(resolve => {
+      const name = (file.name || '').toLowerCase();
+      if (file.type === 'image/gif' || name.endsWith('.gif')) return resolve(true);
+      if (file.type === 'image/webp' || name.endsWith('.webp')) {
+        const r = new FileReader();
+        r.onload = () => {
+          const bytes = new Uint8Array(r.result);
+          let txt = '';
+          for (let i = 0; i < bytes.length; i++) txt += String.fromCharCode(bytes[i]);
+          resolve(txt.indexOf('ANIM') !== -1);
+        };
+        r.onerror = () => resolve(false);
+        r.readAsArrayBuffer(file.slice(0, 64 * 1024));
+        return;
+      }
+      resolve(false);
+    });
+  }
+
+  async function uploadBannerRaw(file) {
+    if (file.size > 10 * 1024 * 1024) {
+      safeToast('Banner must be under 10MB');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('nyxie_token');
+      if (!token) throw new Error('No token');
+      const formData = new FormData();
+      formData.append('banner', file, file.name);
+      const res = await fetch('/api/users/banner', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      applyBannerResult(data);
+      safeToast('Banner updated!');
+    } catch (err) {
+      safeToast('Upload error: ' + err.message);
+    } finally {
+      document.querySelectorAll('input[type="file"]').forEach(inp => inp.value = '');
+    }
+  }
+
+  function applyBannerResult(data) {
+    if (typeof versionedMediaUrl === 'function' && data.banner) versionedMediaUrl(data.banner, true);
+    const user = JSON.parse(localStorage.getItem('nyxie_user') || '{}');
+    user.banner = data.banner; user.banner_color = null;
+    localStorage.setItem('nyxie_user', JSON.stringify(user));
+    if (typeof currentUser !== 'undefined') { currentUser.banner = data.banner; currentUser.banner_color = null; }
+    if (typeof loadProfileForm === 'function') loadProfileForm();
+  }
+
+  window.openBannerCropper = async function(file) {
+    if (!file) return;
+    if (await isAnimatedImage(file)) return uploadBannerRaw(file);
+    initCropper(file, 'banner');
   };
   window.closeCropper = closeCropper;
 })();

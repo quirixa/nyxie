@@ -4266,6 +4266,7 @@ function initDashboardView() {
     const bioEl = document.getElementById('pp-bio');
     if (currentUser.bio) { bioEl.textContent = currentUser.bio; bioEl.style.display = 'block'; } else { bioEl.style.display = 'none'; bioEl.textContent = ''; }
     const bannerEl = document.getElementById('pp-banner');
+    bannerEl.classList.toggle('has-custom-banner', !!(currentUser.banner || currentUser.banner_color));
     if (currentUser.banner) bannerEl.style.background = `url("${versionedMediaUrl(currentUser.banner)}") center/cover no-repeat`;
     else if (currentUser.banner_color) bannerEl.style.background = currentUser.banner_color;
     else bannerEl.style.background = `linear-gradient(135deg, ${hashColor(currentUser.username)}, #fd6671)`;

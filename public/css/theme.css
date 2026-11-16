@@ -313,7 +313,10 @@ mark,
   font-weight: 700;
 }
 .pp-banner {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+  /* No !important: dashboard.js sets the user's banner image/colour inline,
+     and an !important here made that inline style lose (own popout always
+     showed the gradient). The base gradient also lives in dashboard.css. */
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
 }
 
 /* ---- Scrollbar ---- */
@@ -731,7 +734,7 @@ body.theme-retro .brand-small {
   -webkit-text-fill-color: #000 !important;
   color: #000 !important;
 }
-body.theme-retro .pp-banner:not(.profile-surface):not(.profile-surface *) {
+body.theme-retro .pp-banner:not(.profile-surface):not(.profile-surface *):not(.has-custom-banner) {
   background: #c0c0c0 !important;
 }
 body.theme-retro .msg-row.outgoing .msg-author {
